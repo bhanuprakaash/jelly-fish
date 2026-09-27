@@ -33,7 +33,7 @@ Status: spec, 2026-09-27. Terms follow [`CONTEXT.md`](../../CONTEXT.md): an **Ag
 - Honoring a Skill's `allowed-tools` (D15).
 - Steering a Child Session directly (D23).
 - Sharing Agents or Skills with other users (product.md: teams/workspaces later).
-- How Skill files are laid out and copied into the Sandbox, and how a shared Sandbox is owned across a session tree: Sandbox spec (TODO.md).
+- How Skill files are laid out and copied into the Sandbox, and how a shared Sandbox is owned across a session tree: Sandbox spec ([#23](https://github.com/bhanuprakaash/jelly-fish/issues/23)).
 - A test run inside the Agent form before saving; start a chat with the new Agent instead (D30).
 - Tuning the caps (depth 2, 5 children, 5k-token body, 5 MB import) and the default Budget (D25) with evals.
 

@@ -31,7 +31,7 @@ Status: spec, 2026-09-27. Terms follow [`CONTEXT.md`](../../CONTEXT.md): the ste
 **Out (deferred)**
 - The small-LLM fallback mentioned in ADR 0004 and agent-loop.md §4.4 — removed by Decision 1; this spec's chain (rules → Jev → user) supersedes that wording.
 - Shell and file tools — they don't exist until the Sandbox (ADR 0003), so the mode table has no row for them.
-- Compound shell command splitting and any other shell-specific Approver handling — moved to the Sandbox item in TODO.md (Decision 17).
+- Compound shell command splitting and any other shell-specific Approver handling — moved to the Sandbox design issue [#23](https://github.com/bhanuprakaash/jelly-fish/issues/23) (Decision 17).
 - Any full-auto exception besides the rug-pull one (Decision 6) — none decided yet.
 - Editing an Approval Rule: rules are delete-only; recreate one by approving again (Decision 23).
 - The Quota reset period and date: defined in [usage-metering.md](usage-metering.md) (monthly, 1st, UTC).
@@ -252,12 +252,12 @@ All decided 2026-09-27.
 14. **Child Sessions get their own card**, labelled with the child's Agent name.
 15. **Jev thresholds are per tool class** (read-only / write / destructive), fixed by the platform and tuned via evals. Users never see them.
 16. **No hash for built-in tools**; they ship with the binary.
-17. **Compound shell command splitting and shell handling before the Sandbox are out of scope**; they moved to the Sandbox item in TODO.md.
+17. **Compound shell command splitting and shell handling before the Sandbox are out of scope**; they moved to the Sandbox design issue [#23](https://github.com/bhanuprakaash/jelly-fish/issues/23).
 18. **Rug-pull baseline at connect.** Every Connector tool's hash is saved when the Connector is added to the Project (its first `tools/list`), not on Approval Rules, so full-auto is covered. Approving a changed tool stores the new hash. Amends mcp-client.md Decision 12.
 19. **Jev deny = blocked.** The call doesn't run; the model gets "blocked by auto mode: <short reason>" and can try another way. The user sees an inline chat line, no push, no "Allow anyway". After 3 Jev denies in a row in one session (tuned via evals), the next one becomes an ordinary ask, so the agent can't loop.
 20. **A Jev deny in a batch skips the later calls**, the same as a user deny.
 21. **"Approve all" approves once.** It never creates an Approval Rule; saving a rule is always a choice about one specific call.
-22. **Quota banner has no date yet**: "until your limit resets". The reset period and date belong to Usage metering (TODO.md). *Resolved 2026-09-27*: monthly, reset 00:00 UTC on the 1st; banner says "until Oct 1" ([usage-metering.md](usage-metering.md) D4).
+22. **Quota banner has no date yet**: "until your limit resets". The reset period and date belong to Usage metering. *Resolved 2026-09-27*: monthly, reset 00:00 UTC on the 1st; banner says "until Oct 1" ([usage-metering.md](usage-metering.md) D4).
 23. **Managing rules**: Settings → Permissions (everywhere) and Project settings → Permissions (that Project). Each row: tool, argument patterns, created date, Delete. No edit; delete and approve again.
 24. **Mode switches are logged** as `session.config_changed`; `/agent` resets the mode to the new Agent's saved mode (2026-09-27, [agents-skills.md](agents-skills.md) D17–D18).
 25. **Jev in a Child Session** sees the root session's user messages, never the `delegate` task as user intent (2026-09-27, [agents-skills.md](agents-skills.md) D27).
