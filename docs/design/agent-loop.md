@@ -342,7 +342,7 @@ All accepted 2026-09-26.
 
 None.
 
-**Deferred to other specs** (tracked in [TODO.md](../../TODO.md)):
+**Deferred to other specs** (tracked in GitHub issues; Sandbox: [#23](https://github.com/bhanuprakaash/jelly-fish/issues/23)):
 - Full MCP client behavior (transports, OAuth, Connector setup) → [mcp-client.md](mcp-client.md).
 - Process-group kill timings (TERM → grace → KILL) → sandbox spec.
 
