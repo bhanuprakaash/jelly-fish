@@ -6,6 +6,7 @@ resources:
   - postgres.yaml
   - minio.yaml
   - mailpit.yaml
+  - app.yaml
 secretGenerator:
   - name: postgres-secrets
     envs:

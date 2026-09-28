@@ -6,10 +6,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/fstest"
 )
 
+func testWebFS() fstest.MapFS {
+	return fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("shell")},
+		"app.js":     &fstest.MapFile{Data: []byte("console.log('hi')")},
+	}
+}
+
 func TestHello(t *testing.T) {
-	srv := NewServer(":0", slog.New(slog.DiscardHandler))
+	srv := NewServer(":0", slog.New(slog.DiscardHandler), testWebFS())
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/hello", nil)
@@ -27,5 +35,34 @@ func TestHello(t *testing.T) {
 	}
 	if body.Message != "hello" {
 		t.Fatalf("message = %q, want %q", body.Message, "hello")
+	}
+}
+
+func TestSPA(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"root serves index", "/", "shell"},
+		{"unknown route falls back to index", "/sessions/123", "shell"},
+		{"known asset served directly", "/app.js", "console.log('hi')"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := NewServer(":0", slog.New(slog.DiscardHandler), testWebFS())
+
+			rr := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			srv.Handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if rr.Body.String() != tt.want {
+				t.Fatalf("body = %q, want %q", rr.Body.String(), tt.want)
+			}
+		})
 	}
 }
