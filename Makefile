@@ -20,7 +20,7 @@ serve:
 	tailscale serve --bg 443 localhost:8080
 
 test:
-	go test ./...
+	go test -race ./...
 
 lint:
 	$(GOLANGCI_LINT) run
