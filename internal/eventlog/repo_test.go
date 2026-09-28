@@ -86,6 +86,45 @@ func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
+	pool := newTestPool(t)
+	repo := eventlog.NewRepo(pool)
+	scope := eventlog.DevScope()
+	sessionID := uuid.New()
+
+	const n = 10
+	var wg sync.WaitGroup
+	lasts := make([]int64, n)
+	errs := make([]error, n)
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			lasts[i], errs[i] = repo.CreateSession(context.Background(), scope, sessionID, uuid.New(), "hello")
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		// One goroutine's INSERT always hits the others' unique violation on
+		// sessionID; that must resolve like a repeat, not fail the request.
+		if err != nil {
+			t.Fatalf("CreateSession[%d]: %v", i, err)
+		}
+		if lasts[i] != 2 {
+			t.Errorf("CreateSession[%d] last_seq = %d, want 2", i, lasts[i])
+		}
+	}
+
+	evs, err := repo.ListEvents(t.Context(), scope, sessionID, 0)
+	if err != nil {
+		t.Fatalf("ListEvents: %v", err)
+	}
+	if len(evs) != 2 {
+		t.Fatalf("len(events) = %d, want 2 (race produced only one session)", len(evs))
+	}
+}
+
 func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 	pool := newTestPool(t)
 	repo := eventlog.NewRepo(pool)

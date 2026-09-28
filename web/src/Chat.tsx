@@ -17,7 +17,7 @@ function bubbleText(payload: unknown): string {
 
 export function Chat({ sessionId, isNew }: Props) {
   const [started, setStarted] = useState(!isNew)
-  const { events, connected } = useSessionStream(sessionId, started)
+  const { events, connected, failed } = useSessionStream(sessionId, started)
   // A brand-new chat has a session once its first message creates one; a
   // reopened chat has one once the stream confirms it (streaming's onopen
   // only succeeds once the session exists).
@@ -51,7 +51,7 @@ export function Chat({ sessionId, isNew }: Props) {
   }
 
   const bubbles = events.filter((e) => e.type === 'user.message')
-  const loading = !isNew && !connected
+  const loading = !isNew && !connected && !failed
 
   return (
     <div className="flex min-h-svh flex-col bg-neutral-950 text-neutral-100">
@@ -63,7 +63,10 @@ export function Chat({ sessionId, isNew }: Props) {
 
       <main className="flex-1 space-y-3 overflow-y-auto px-4 py-6">
         {loading && <p className="text-center text-neutral-500">Loading…</p>}
-        {!loading && bubbles.length === 0 && (
+        {failed && (
+          <p className="text-center text-red-400">Could not open this chat.</p>
+        )}
+        {!loading && !failed && bubbles.length === 0 && (
           <p className="text-center text-neutral-500">Say something to start the chat.</p>
         )}
         {bubbles.map((e) => (

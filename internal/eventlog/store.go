@@ -63,7 +63,10 @@ func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *T
 		return nil, fmt.Errorf("bump last_seq: %w", err)
 	}
 
-	all := evs
+	// Copy rather than append to evs directly: its backing array may have
+	// spare capacity the caller still owns.
+	all := make([]NewEvent, len(evs), len(evs)+1)
+	copy(all, evs)
 	if next != nil {
 		all = append(all, next.event(fromStatus))
 	}
