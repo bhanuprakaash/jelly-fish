@@ -38,12 +38,18 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 			return nil
 		}
 
-		_, err = tx.Exec(ctx, `
-			INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at)
-			VALUES ($1, $2, $3, $4, $5, $6, 2, now())`,
-			sessionID, scope.WorkspaceID, devProject(), scope.UserID, devAgent(), StatusRunnable)
-		if err != nil {
-			if isUniqueViolation(err) {
+		// A savepoint, so a unique-violation here only unwinds the insert:
+		// Postgres otherwise aborts the whole transaction on any statement
+		// error, which would break the fallback query below.
+		insertErr := pgx.BeginFunc(ctx, tx, func(spTx pgx.Tx) error {
+			_, err := spTx.Exec(ctx, `
+				INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at)
+				VALUES ($1, $2, $3, $4, $5, $6, 2, now())`,
+				sessionID, scope.WorkspaceID, devProject(), scope.UserID, devAgent(), StatusRunnable)
+			return err
+		})
+		if insertErr != nil {
+			if isUniqueViolation(insertErr) {
 				// Raced with another create, or the id collides with another
 				// tenant's session: either way, resolve like a repeat.
 				found, err := scanLastSeq(ctx, tx, scope, sessionID, &last)
@@ -55,7 +61,7 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 				}
 				return nil
 			}
-			return fmt.Errorf("insert session: %w", err)
+			return fmt.Errorf("insert session: %w", insertErr)
 		}
 
 		actor := "user:" + scope.UserID.String()
@@ -110,7 +116,10 @@ func (r *Repo) existingMessageSeq(ctx context.Context, scope TenantScope, sessio
 		sessionID, scope.WorkspaceID, scope.UserID, TypeUserMessage, clientMsgID.String(),
 	).Scan(&seq)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, ErrNotFound
+		// Store.Append only returned ErrDuplicate because this row exists;
+		// its absence here means something else changed the log concurrently,
+		// not that the session itself is missing.
+		return 0, fmt.Errorf("look up existing user.message for client_msg_id %s: %w", clientMsgID, err)
 	}
 	return seq, err
 }

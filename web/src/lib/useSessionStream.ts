@@ -8,6 +8,11 @@ import type { UIEvent } from './api'
 export function useSessionStream(sessionId: string, enabled: boolean) {
   const [events, setEvents] = useState<UIEvent[]>([])
   const [connected, setConnected] = useState(false)
+  // True once the browser gives up on the connection for good (e.g. a 404
+  // for a session that doesn't exist): EventSource never retries that case,
+  // so without tracking it separately "connected" would just stay false
+  // forever with no way to tell "still connecting" from "never will".
+  const [failed, setFailed] = useState(false)
   const lastSeqRef = useRef(0)
 
   useEffect(() => {
@@ -16,12 +21,19 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
     let es: EventSource | null = null
 
     const open = () => {
+      setFailed(false)
       es = new EventSource(`/api/sessions/${sessionId}/events?after=${lastSeqRef.current}`)
       es.onopen = () => setConnected(true)
       es.onmessage = (e) => {
         const evt = JSON.parse(e.data) as UIEvent
         lastSeqRef.current = evt.seq
         setEvents((prev) => [...prev, evt])
+      }
+      es.onerror = () => {
+        setConnected(false)
+        if (es?.readyState === EventSource.CLOSED) {
+          setFailed(true)
+        }
       }
     }
 
@@ -43,5 +55,5 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
     }
   }, [sessionId, enabled])
 
-  return { events, connected }
+  return { events, connected, failed }
 }
