@@ -1,0 +1,175 @@
+package eventlog
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// Repo is the API-facing, tenant-scoped view of the event log. Every
+// exported method takes a TenantScope (enforced by TestRepoMethodsTakeScope)
+// and reports a session outside it as ErrNotFound (event-log.md §5.15).
+type Repo struct {
+	pool  *pgxpool.Pool
+	store *Store
+}
+
+// NewRepo builds a Repo backed by pool.
+func NewRepo(pool *pgxpool.Pool) *Repo {
+	return &Repo{pool: pool, store: NewStore(pool)}
+}
+
+// CreateSession creates a session with a session.created + user.message pair
+// (session.created snapshotting the hard-coded "General" agent) and returns
+// its last_seq. Repeating the same sessionID returns the existing session's
+// last_seq instead of creating a second one.
+func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text string) (int64, error) {
+	var last int64
+	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		found, err := scanLastSeq(ctx, tx, scope, sessionID, &last)
+		if err != nil {
+			return err
+		}
+		if found {
+			return nil
+		}
+
+		_, err = tx.Exec(ctx, `
+			INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 2, now())`,
+			sessionID, scope.WorkspaceID, devProject(), scope.UserID, devAgent(), StatusRunnable)
+		if err != nil {
+			if isUniqueViolation(err) {
+				// Raced with another create, or the id collides with another
+				// tenant's session: either way, resolve like a repeat.
+				found, err := scanLastSeq(ctx, tx, scope, sessionID, &last)
+				if err != nil {
+					return err
+				}
+				if !found {
+					return ErrNotFound
+				}
+				return nil
+			}
+			return fmt.Errorf("insert session: %w", err)
+		}
+
+		actor := "user:" + scope.UserID.String()
+		if err := insertEvent(ctx, tx, sessionID, scope.WorkspaceID, 1, NewEvent{
+			Type: TypeSessionCreated, Actor: actor, Payload: sessionCreatedPayload(),
+		}); err != nil {
+			return err
+		}
+		if err := insertEvent(ctx, tx, sessionID, scope.WorkspaceID, 2, NewEvent{
+			Type: TypeUserMessage, Actor: actor, Payload: userMessagePayload(clientMsgID, text),
+		}); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `SELECT pg_notify('jf_runnable', $1)`, sessionID.String()); err != nil {
+			return fmt.Errorf("notify jf_runnable: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `SELECT pg_notify('jf_activity', $1)`, scope.UserID.String()+":"+sessionID.String()); err != nil {
+			return fmt.Errorf("notify jf_activity: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `SELECT pg_notify('jf_events', $1)`, sessionID.String()+":2"); err != nil {
+			return fmt.Errorf("notify jf_events: %w", err)
+		}
+		last = 2
+		return nil
+	})
+	return last, err
+}
+
+// PostMessage appends a follow-up user.message to an existing session and
+// returns its seq. Repeating the same clientMsgID returns the existing seq
+// instead of appending a second event.
+func (r *Repo) PostMessage(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text string) (int64, error) {
+	actor := "user:" + scope.UserID.String()
+	seqs, err := r.store.Append(ctx, sessionID, &scope, []NewEvent{
+		{Type: TypeUserMessage, Actor: actor, Payload: userMessagePayload(clientMsgID, text)},
+	}, nil)
+	if err != nil {
+		if errors.Is(err, ErrDuplicate) {
+			return r.existingMessageSeq(ctx, scope, sessionID, clientMsgID)
+		}
+		return 0, err
+	}
+	return seqs[0], nil
+}
+
+func (r *Repo) existingMessageSeq(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID) (int64, error) {
+	var seq int64
+	err := r.pool.QueryRow(ctx, `
+		SELECT e.seq FROM events e JOIN sessions s ON s.id = e.session_id
+		WHERE e.session_id = $1 AND s.workspace_id = $2 AND s.user_id = $3
+		  AND e.type = $4 AND e.payload->>'client_msg_id' = $5`,
+		sessionID, scope.WorkspaceID, scope.UserID, TypeUserMessage, clientMsgID.String(),
+	).Scan(&seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return seq, err
+}
+
+// SessionLastSeq returns a session's last_seq, or ErrNotFound if it doesn't
+// exist in scope.
+func (r *Repo) SessionLastSeq(ctx context.Context, scope TenantScope, sessionID uuid.UUID) (int64, error) {
+	var last int64
+	found, err := scanLastSeq(ctx, r.pool, scope, sessionID, &last)
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, ErrNotFound
+	}
+	return last, nil
+}
+
+// ListEvents returns sid's events with seq > after, in order.
+func (r *Repo) ListEvents(ctx context.Context, scope TenantScope, sessionID uuid.UUID, after int64) ([]Event, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT e.seq, e.type, e.actor, coalesce(e.correlation_id, ''), e.payload, e.created_at
+		FROM events e JOIN sessions s ON s.id = e.session_id
+		WHERE e.session_id = $1 AND s.workspace_id = $2 AND s.user_id = $3 AND e.seq > $4
+		ORDER BY e.seq`,
+		sessionID, scope.WorkspaceID, scope.UserID, after)
+	if err != nil {
+		return nil, fmt.Errorf("query events: %w", err)
+	}
+	defer rows.Close()
+
+	var evs []Event
+	for rows.Next() {
+		var e Event
+		if err := rows.Scan(&e.Seq, &e.Type, &e.Actor, &e.CorrelationID, &e.Payload, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		evs = append(evs, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events: %w", err)
+	}
+	return evs, nil
+}
+
+type queryRower interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func scanLastSeq(ctx context.Context, q queryRower, scope TenantScope, sessionID uuid.UUID, last *int64) (bool, error) {
+	err := q.QueryRow(ctx,
+		`SELECT last_seq FROM sessions WHERE id = $1 AND workspace_id = $2 AND user_id = $3`,
+		sessionID, scope.WorkspaceID, scope.UserID,
+	).Scan(last)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("look up session: %w", err)
+	}
+	return true, nil
+}
