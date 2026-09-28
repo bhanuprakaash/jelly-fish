@@ -102,6 +102,10 @@ _Avoid_: Shortcut, macro
 An LLM vendor that the user's own key unlocks, such as Anthropic, OpenAI, or Gemini.
 _Avoid_: Vendor, backend, gateway
 
+**Fake Provider**:
+A scripted stand-in model (for example one that echoes the user's text) that behaves like a Provider but needs no key and bills nothing. It exists only in dev builds and tests; it is not a Provider.
+_Avoid_: Echo provider, mock model, test model
+
 **Provider Key**:
 A user's own API key for a provider (BYOK).
 _Avoid_: Token, credential, secret

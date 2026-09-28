@@ -218,6 +218,11 @@ All accepted 2026-09-27 (grilling Q0–Q13; Q2, Q3, Q6, Q8 closed in research re
 11. **Prod = HTTPS / HTTP/2; local dev = plain http** with the 6-connections-per-origin limit accepted. (Q0 follow-up)
 12. **Desktop and mobile browsers are one client**; build each slice on desktop, verify it on a phone before it's done. (Follow-up)
 
+Accepted 2026-09-28 (S1 slice grill):
+
+15. **Phone check = Android Chrome (installed PWA)**, replacing iOS Safari for every slice. The hide/show rule (D6) stays.
+16. **HTTP paths are relative to `/api`** (`GET /api/sessions/{id}/events`, `GET /api/activity`), matching the PWA proxy and service-worker denylist.
+
 Accepted 2026-09-27 (open-gap round, Q14–Q15):
 
 13. **Stream cap**: at most 20 open streams (Session + Activity) per user per API node; the 21st gets `429`, which also stops `EventSource` retrying.
@@ -254,7 +259,7 @@ Accepted 2026-09-27 (open-gap round, Q14–Q15):
 - Metrics expose open streams, dropped deltas, write-deadline closes and `429` refusals.
 - Responses carry `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`, and no `Content-Encoding`.
 - Smoke test behind the prod proxy: the first delta of a long turn reaches the browser before `llm.response` is committed.
-- PWA: hiding the page closes every `EventSource`; showing it reopens each with `?after=lastSeq`; checked on iOS Safari (installed PWA) and desktop Chrome.
+- PWA: hiding the page closes every `EventSource`; showing it reopens each with `?after=lastSeq`; checked on Android Chrome (installed PWA) and desktop Chrome (D15).
 
 ## 12. Open gaps
 

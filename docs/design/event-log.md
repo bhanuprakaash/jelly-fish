@@ -474,7 +474,7 @@ type DeltaBus interface {
 ### 5.12 SSE live + replay
 
 ```
-GET /sessions/{id}/events    (Last-Event-ID: 41, or ?after=41)
+GET /api/sessions/{id}/events    (Last-Event-ID: 41, or ?after=41)
 1. authz via TenantScope
 2. subscribe to the in-process hub for {id} (fed by LISTEN jf_events + DeltaBus on the API node)
 3. SELECT * FROM events WHERE session_id=$1 AND seq > 41 ORDER BY seq   → send each with "id: <seq>"
@@ -532,6 +532,7 @@ func (s *Store) HardDelete(ctx context.Context, ts TenantScope, root uuid.UUID) 
 - `workspace_id` on `sessions` and `events`; `project_id` and `user_id` on `sessions`.
 - Every repository method takes a `TenantScope{WorkspaceID, UserID}` and filters by it. A session in another workspace is "not found".
 - Workers are the only cross-tenant readers, and only through the claim query; after claim they act on that one session.
+- Two types: the API-facing `Repo`, where every method takes `TenantScope` (enforced by a test), and the Worker's `Store` (claim, heartbeat, `Append`, `Load` by session id), which is exempt because the claim is its authorization.
 
 ### 5.16 Retry after `failed`
 
