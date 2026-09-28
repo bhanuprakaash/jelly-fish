@@ -9,7 +9,7 @@ Single Go binary with roles `api`, `worker`, `migrate` (`cmd/jelly-fish`). Postg
 - `make fmt`: auto-fix formatting
 - `make infra` / `make db`: local k8s infra / port-forward postgres to `:5433`
 
-Run `make lint test` before calling a change done.
+Run `make lint test` before calling a change done. For changes to `internal/api`, `internal/health`, `internal/worker`, `internal/migrate`, `cmd/jelly-fish`, or `web/`, also run the `verify-jelly-fish` skill to prove the change against a live run, not just tests. Run `maintain-verification-skill` occasionally to catch drift between that skill's feature map and the app.
 
 ## Docs
 
