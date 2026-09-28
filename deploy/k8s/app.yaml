@@ -18,7 +18,7 @@ spec:
         runAsGroup: 65532
       initContainers:
         - name: migrate
-          image: localhost:5000/jelly-fish:latest
+          image: localhost:5001/jelly-fish:latest
           imagePullPolicy: Always
           args: ["migrate"]
           envFrom:
@@ -29,7 +29,7 @@ spec:
               value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
       containers:
         - name: api
-          image: localhost:5000/jelly-fish:latest
+          image: localhost:5001/jelly-fish:latest
           imagePullPolicy: Always
           args: ["api"]
           ports:
@@ -91,7 +91,7 @@ spec:
         runAsGroup: 65532
       containers:
         - name: worker
-          image: localhost:5000/jelly-fish:latest
+          image: localhost:5001/jelly-fish:latest
           imagePullPolicy: Always
           args: ["worker"]
           ports:
