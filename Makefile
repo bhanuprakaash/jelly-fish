@@ -16,8 +16,8 @@ deploy:
 
 serve:
 	kubectl port-forward -n jelly-fish svc/api 8080:8080 & \
-	kubectl port-forward -n jelly-fish svc/postgres 5432:5432 & \
-	tailscale serve --bg 443 localhost:8080
+	kubectl port-forward -n jelly-fish svc/postgres 5433:5432 & \
+	tailscale serve --bg --https=443 localhost:8080
 
 test:
 	go test -race ./...
