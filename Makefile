@@ -1,4 +1,4 @@
-.PHONY: infra db deploy serve test lint fmt sandbox
+.PHONY: infra db deploy serve test lint fmt
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 IMAGE := localhost:5001/jelly-fish:latest
@@ -27,7 +27,3 @@ lint:
 
 fmt:
 	$(GOLANGCI_LINT) fmt
-
-sandbox:
-	sbx create --clone --name jelly-fish --kit ./.sbx/jelly-fish claude .
-	sbx cp ~/.claude/CLAUDE.md jelly-fish:/home/agent/.claude/CLAUDE.md
