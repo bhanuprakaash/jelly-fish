@@ -9,8 +9,10 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/api"
 	"github.com/bhanuprakaash/jelly-fish/internal/config"
+	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
+	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/web"
 )
 
@@ -26,10 +28,14 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("load web assets: %w", err)
 	}
 
+	repo := eventlog.NewRepo(pool)
+	hub := stream.NewHub()
+
 	healthSrv := health.NewServer(cfg.HealthAddr, pg.NewReadinessChecker(pool), logger)
-	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS)
+	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub)
 
 	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { hub.Listen(gctx, pool, logger); return nil })
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
 	g.Go(func() error { return runHTTPServer(gctx, apiSrv, logger) })
 	return g.Wait()

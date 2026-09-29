@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
+
+	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
 
 func testWebFS() fstest.MapFS {
@@ -16,8 +18,12 @@ func testWebFS() fstest.MapFS {
 	}
 }
 
+func newTestServer(repo SessionRepo) *http.Server {
+	return NewServer(":0", slog.New(slog.DiscardHandler), testWebFS(), repo, stream.NewHub())
+}
+
 func TestHello(t *testing.T) {
-	srv := NewServer(":0", slog.New(slog.DiscardHandler), testWebFS())
+	srv := newTestServer(&fakeRepo{})
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/hello", nil)
@@ -51,7 +57,7 @@ func TestSPA(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := NewServer(":0", slog.New(slog.DiscardHandler), testWebFS())
+			srv := newTestServer(&fakeRepo{})
 
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
