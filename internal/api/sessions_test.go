@@ -146,10 +146,12 @@ func TestSessionEventsHandler(t *testing.T) {
 
 	t.Run("replays events then closes on disconnect", func(t *testing.T) {
 		repo := &fakeRepo{
-			lastSeq: 2,
+			lastSeq: 3,
 			events: []eventlog.Event{
 				{Seq: 1, Type: eventlog.TypeSessionCreated, CreatedAt: time.Now(), Payload: []byte(`{"a":1}`)},
 				{Seq: 2, Type: eventlog.TypeUserMessage, CreatedAt: time.Now(), Payload: []byte(`{"b":2}`)},
+				// No serializer for this type, so it must never reach the wire.
+				{Seq: 3, Type: "internal.no_serializer", CreatedAt: time.Now(), Payload: []byte(`{"secret":3}`)},
 			},
 		}
 		srv := newTestServer(repo)
@@ -182,6 +184,9 @@ func TestSessionEventsHandler(t *testing.T) {
 		}
 		if !strings.Contains(body, "id: 2\n") {
 			t.Errorf("body missing seq 2 frame: %q", body)
+		}
+		if strings.Contains(body, "id: 3\n") || strings.Contains(body, "secret") {
+			t.Errorf("event with no serializer was sent: %q", body)
 		}
 	})
 }
