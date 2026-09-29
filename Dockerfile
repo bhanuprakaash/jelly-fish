@@ -7,12 +7,13 @@ COPY web/ ./
 RUN pnpm build
 
 FROM golang:1.25-alpine AS go
+ARG TAGS=
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /web/dist ./web/dist
-RUN CGO_ENABLED=0 go build -o /out/jelly-fish ./cmd/jelly-fish
+RUN CGO_ENABLED=0 go build -tags "$TAGS" -o /out/jelly-fish ./cmd/jelly-fish
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=go /out/jelly-fish /jelly-fish

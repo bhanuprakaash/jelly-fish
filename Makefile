@@ -10,7 +10,7 @@ db:
 	kubectl port-forward -n jelly-fish svc/postgres 5433:5432
 
 deploy:
-	docker build -t $(IMAGE) .
+	docker build --build-arg TAGS=dev -t $(IMAGE) .
 	docker push $(IMAGE)
 	kubectl apply -k deploy/k8s
 

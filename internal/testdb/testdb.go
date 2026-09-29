@@ -1,4 +1,5 @@
-package eventlog_test
+// Package testdb gives tests an isolated, migrated Postgres database.
+package testdb
 
 import (
 	"context"
@@ -12,16 +13,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
 
 	"github.com/bhanuprakaash/jelly-fish/internal/migrate"
 )
 
-// newTestPool creates a fresh, migrated database on the server pointed to by
+// NewPool creates a fresh, migrated database on the server pointed to by
 // TEST_DATABASE_URL, isolated to this test, and returns a pool for it. It
 // skips the test if TEST_DATABASE_URL is unset (event-log.md "Tests: real
 // Postgres").
-func newTestPool(t *testing.T) *pgxpool.Pool {
+func NewPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
 	base := os.Getenv("TEST_DATABASE_URL")
@@ -29,7 +30,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	admin, err := pgxpool.New(ctx, base)
 	if err != nil {
 		t.Fatalf("connect admin pool: %v", err)

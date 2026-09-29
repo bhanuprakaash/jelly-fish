@@ -1,0 +1,183 @@
+package worker_test
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/fake"
+	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
+	"github.com/bhanuprakaash/jelly-fish/internal/worker"
+)
+
+func startWorker(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	w := worker.New(pool, fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}, slog.New(slog.DiscardHandler))
+	done := make(chan struct{})
+	go func() { w.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+}
+
+func waitStatus(t *testing.T, pool *pgxpool.Pool, sid uuid.UUID, want string, turns int) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		var status string
+		var got int
+		if err := pool.QueryRow(t.Context(), `SELECT status, turns FROM sessions WHERE id = $1`, sid).Scan(&status, &got); err != nil {
+			t.Fatal(err)
+		}
+		if status == want && got == turns {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("session never reached status %s with %d turns", want, turns)
+}
+
+func assertFoldMatchesRow(t *testing.T, pool *pgxpool.Pool, sid uuid.UUID) {
+	t.Helper()
+	evs, err := eventlog.NewStore(pool).Load(t.Context(), sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := worker.Fold(evs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	var last, tokens, cost int64
+	var turns int
+	err = pool.QueryRow(t.Context(),
+		`SELECT status, last_seq, tokens_used, cost_micros, turns FROM sessions WHERE id = $1`, sid,
+	).Scan(&status, &last, &tokens, &cost, &turns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Status != status || st.LastSeq != last || st.TokensUsed != tokens || st.CostMicros != cost || st.Turns != turns {
+		t.Fatalf("fold = {%s %d %d %d %d}, row = {%s %d %d %d %d}",
+			st.Status, st.LastSeq, st.TokensUsed, st.CostMicros, st.Turns, status, last, tokens, cost, turns)
+	}
+}
+
+func TestWorkerRepliesAndParks(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool)
+	scope := eventlog.DevScope()
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hello world"); err != nil {
+		t.Fatal(err)
+	}
+	startWorker(t, pool)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 1)
+	assertFoldMatchesRow(t, pool, sid)
+
+	var usageRows int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM usage WHERE session_id = $1 AND provider = 'fake'`, sid).Scan(&usageRows); err != nil {
+		t.Fatal(err)
+	}
+	if usageRows != 2 {
+		t.Fatalf("usage rows = %d, want 2 (input, output)", usageRows)
+	}
+
+	// A follow-up resumes the parked session for a second turn.
+	if _, err := repo.PostMessage(t.Context(), scope, sid, uuid.New(), "again"); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 2)
+	assertFoldMatchesRow(t, pool, sid)
+}
+
+func TestParkAfterNewMessageIsStale(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool)
+	store := eventlog.NewStore(pool)
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	c, ok, err := store.Claim(t.Context(), "w1")
+	if err != nil || !ok {
+		t.Fatalf("Claim: ok=%v err=%v", ok, err)
+	}
+	folded := int64(3) // created, user.message, claimed
+
+	// A message lands between fold and park.
+	if _, err := repo.PostMessage(t.Context(), eventlog.DevScope(), sid, uuid.New(), "more"); err != nil {
+		t.Fatal(err)
+	}
+
+	f := c.Fence
+	f.ExpectSeq = &folded
+	_, err = store.AppendFenced(t.Context(), sid, f, nil, &eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "end_turn"})
+	if !errors.Is(err, eventlog.ErrStale) {
+		t.Fatalf("park err = %v, want ErrStale", err)
+	}
+
+	evs, err := store.Load(t.Context(), sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := worker.Fold(evs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := worker.Decide(st).Kind; got != worker.StepStartTurn {
+		t.Fatalf("Decide after refold = %d, want StepStartTurn", got)
+	}
+}
+
+func TestFencedAppendFromOldEpochIsRejected(t *testing.T) {
+	pool := testdb.NewPool(t)
+	store := eventlog.NewStore(pool)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := store.Claim(t.Context(), "w1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := c.Fence
+	stale.Epoch--
+	_, err = store.AppendFenced(t.Context(), sid, stale, []eventlog.NewEvent{{Type: "x", Actor: "w", Payload: map[string]int{}}}, nil)
+	if !errors.Is(err, eventlog.ErrLeaseLost) {
+		t.Fatalf("err = %v, want ErrLeaseLost", err)
+	}
+}
+
+func TestRescuedTurnIsRerun(t *testing.T) {
+	pool := testdb.NewPool(t)
+	store := eventlog.NewStore(pool)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+
+	// A worker claims, starts a turn, and dies before the reply.
+	c, _, err := store.Claim(t.Context(), "dead")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.AppendFenced(t.Context(), sid, c.Fence, []eventlog.NewEvent{{
+		Type: eventlog.TypeTurnStarted, Actor: "worker:dead",
+		Payload: map[string]any{"turn_id": "t1", "input_through_seq": 3},
+	}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE sessions SET lease_expires_at = now() - interval '1 second' WHERE id = $1`, sid); err != nil {
+		t.Fatal(err)
+	}
+
+	startWorker(t, pool)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 1)
+	assertFoldMatchesRow(t, pool, sid)
+}

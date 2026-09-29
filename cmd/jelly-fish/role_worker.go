@@ -27,6 +27,6 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
-	g.Go(func() error { worker.Run(gctx, logger); return nil })
+	g.Go(func() error { worker.New(pool, newProvider(), logger).Run(gctx); return nil })
 	return g.Wait()
 }

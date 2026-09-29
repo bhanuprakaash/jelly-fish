@@ -12,10 +12,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
 )
 
 func TestCreateSession(t *testing.T) {
-	pool := newTestPool(t)
+	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	scope := eventlog.DevScope()
 	sessionID := uuid.New()
@@ -59,7 +60,7 @@ func TestCreateSession(t *testing.T) {
 }
 
 func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
-	pool := newTestPool(t)
+	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	scope := eventlog.DevScope()
 	sessionID := uuid.New()
@@ -87,7 +88,7 @@ func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
 }
 
 func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
-	pool := newTestPool(t)
+	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	scope := eventlog.DevScope()
 	sessionID := uuid.New()
@@ -126,7 +127,7 @@ func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
 }
 
 func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
-	pool := newTestPool(t)
+	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	scope := eventlog.DevScope()
 	sessionID := uuid.New()
@@ -158,7 +159,7 @@ func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 }
 
 func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
-	pool := newTestPool(t)
+	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	scope := eventlog.DevScope()
 	sessionID := uuid.New()
@@ -220,7 +221,7 @@ func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 }
 
 func TestTenancy_WrongScopeIsNotFound(t *testing.T) {
-	pool := newTestPool(t)
+	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	scope := eventlog.DevScope()
 	other := eventlog.TenantScope{WorkspaceID: uuid.New(), UserID: uuid.New()}

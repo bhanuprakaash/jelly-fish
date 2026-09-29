@@ -8,10 +8,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
 )
 
 func TestStoreAppend_StatusChangeIsProjectedInSameTx(t *testing.T) {
-	pool := newTestPool(t)
+	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	store := eventlog.NewStore(pool)
 	scope := eventlog.DevScope()
@@ -63,7 +64,7 @@ func TestStoreAppend_StatusChangeIsProjectedInSameTx(t *testing.T) {
 }
 
 func TestStoreAppend_UnknownSessionIsNotFound(t *testing.T) {
-	pool := newTestPool(t)
+	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 
 	_, err := store.Append(t.Context(), uuid.New(), nil, []eventlog.NewEvent{
@@ -71,5 +72,29 @@ func TestStoreAppend_UnknownSessionIsNotFound(t *testing.T) {
 	}, nil)
 	if !errors.Is(err, eventlog.ErrNotFound) {
 		t.Fatalf("Append on unknown session: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestAppendFenced_NoOpStillChecksLease(t *testing.T) {
+	pool := testdb.NewPool(t)
+	store := eventlog.NewStore(pool)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	c, _, err := store.Claim(t.Context(), "w1")
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	stale := c.Fence
+	stale.Epoch--
+
+	// The status change doesn't apply (session is running), leaving nothing
+	// to write; a stale fence must still be rejected.
+	_, err = store.AppendFenced(t.Context(), sid, stale, nil, &eventlog.StatusChange{
+		To: eventlog.StatusRunnable, From: []string{eventlog.StatusAwaitingUser},
+	})
+	if !errors.Is(err, eventlog.ErrLeaseLost) {
+		t.Fatalf("err = %v, want ErrLeaseLost", err)
 	}
 }

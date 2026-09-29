@@ -19,3 +19,16 @@ func userMessagePayload(clientMsgID uuid.UUID, text string) map[string]any {
 		"message":       msg.UserText(text),
 	}
 }
+
+// UsageRecorded is the payload of a usage.recorded event (event-log.md §4).
+type UsageRecorded struct {
+	Kind       string `json:"kind"`
+	Provider   string `json:"provider"`
+	Model      string `json:"model,omitempty"`
+	Quantity   int64  `json:"quantity"`
+	Unit       string `json:"unit"`
+	CostMicros int64  `json:"cost_micros"`
+}
+
+// KindLLM is the usage kind that feeds the session's budget counters.
+const KindLLM = "llm"

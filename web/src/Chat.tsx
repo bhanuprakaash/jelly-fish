@@ -50,7 +50,7 @@ export function Chat({ sessionId, isNew }: Props) {
     }
   }
 
-  const bubbles = events.filter((e) => e.type === 'user.message')
+  const bubbles = events.filter((e) => e.type === 'user.message' || e.type === 'llm.response')
   const loading = !isNew && !connected && !failed
 
   return (
@@ -72,7 +72,9 @@ export function Chat({ sessionId, isNew }: Props) {
         {bubbles.map((e) => (
           <div
             key={e.seq}
-            className="ml-auto max-w-md rounded-2xl bg-neutral-800 px-4 py-2 whitespace-pre-wrap"
+            className={`max-w-md rounded-2xl px-4 py-2 whitespace-pre-wrap ${
+              e.type === 'user.message' ? 'ml-auto bg-neutral-800' : 'mr-auto bg-neutral-900'
+            }`}
           >
             {bubbleText(e.payload)}
           </div>

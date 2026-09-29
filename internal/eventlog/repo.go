@@ -65,12 +65,12 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 		}
 
 		actor := "user:" + scope.UserID.String()
-		if err := insertEvent(ctx, tx, sessionID, scope.WorkspaceID, 1, NewEvent{
+		if err := insertEvent(ctx, tx, sessionID, scope.WorkspaceID, 1, nil, NewEvent{
 			Type: TypeSessionCreated, Actor: actor, Payload: sessionCreatedPayload(),
 		}); err != nil {
 			return err
 		}
-		if err := insertEvent(ctx, tx, sessionID, scope.WorkspaceID, 2, NewEvent{
+		if err := insertEvent(ctx, tx, sessionID, scope.WorkspaceID, 2, nil, NewEvent{
 			Type: TypeUserMessage, Actor: actor, Payload: userMessagePayload(clientMsgID, text),
 		}); err != nil {
 			return err
@@ -85,13 +85,18 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 }
 
 // PostMessage appends a follow-up user.message to an existing session and
-// returns its seq. Repeating the same clientMsgID returns the existing seq
-// instead of appending a second event.
+// returns its seq, resuming the session if it was waiting on the user.
+// Repeating the same clientMsgID returns the existing seq instead of
+// appending a second event.
 func (r *Repo) PostMessage(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text string) (int64, error) {
 	actor := "user:" + scope.UserID.String()
 	seqs, err := r.store.Append(ctx, sessionID, &scope, []NewEvent{
 		{Type: TypeUserMessage, Actor: actor, Payload: userMessagePayload(clientMsgID, text)},
-	}, nil)
+	}, &StatusChange{
+		To:     StatusRunnable,
+		Reason: "user_message",
+		From:   []string{StatusAwaitingUser, StatusCompleted, StatusFailed},
+	})
 	if err != nil {
 		if errors.Is(err, ErrDuplicate) {
 			return r.existingMessageSeq(ctx, scope, sessionID, clientMsgID)

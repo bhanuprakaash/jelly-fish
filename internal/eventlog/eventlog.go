@@ -5,6 +5,7 @@ package eventlog
 
 import (
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,14 +13,24 @@ import (
 
 // Event types this slice writes and reads (event-log.md §4).
 const (
-	TypeSessionCreated = "session.created"
-	TypeUserMessage    = "user.message"
-	TypeStatusChanged  = "session.status_changed"
+	TypeSessionCreated   = "session.created"
+	TypeUserMessage      = "user.message"
+	TypeStatusChanged    = "session.status_changed"
+	TypeTurnStarted      = "turn.started"
+	TypeTurnInterrupted  = "turn.interrupted"
+	TypeLLMResponse      = "llm.response"
+	TypeUsageRecorded    = "usage.recorded"
+	TypeSessionError     = "session.error"
+	TypeSessionCompleted = "session.completed"
 )
 
 // Session statuses this slice uses (event-log.md §3).
 const (
-	StatusRunnable = "runnable"
+	StatusRunnable     = "runnable"
+	StatusRunning      = "running"
+	StatusAwaitingUser = "awaiting_user"
+	StatusCompleted    = "completed"
+	StatusFailed       = "failed"
 )
 
 // ErrNotFound is returned for a session that doesn't exist, or belongs to
@@ -29,6 +40,15 @@ var ErrNotFound = errors.New("session not found")
 // ErrDuplicate is returned internally when a unique constraint (e.g. a
 // repeated client_msg_id) rejects an insert; callers translate it.
 var ErrDuplicate = errors.New("duplicate event")
+
+// ErrStale is returned by a fenced park whose ExpectSeq no longer matches
+// last_seq: new events arrived after the fold, so the Worker must refold
+// (event-log.md §5.1).
+var ErrStale = errors.New("session has new events")
+
+// ErrLeaseLost is returned by a fenced append from a Worker that no longer
+// holds the Lease.
+var ErrLeaseLost = errors.New("lease lost")
 
 // Event is one row of the append-only log.
 type Event struct {
@@ -50,9 +70,16 @@ type NewEvent struct {
 
 // StatusChange appends session.status_changed and updates sessions.status in
 // the same transaction as the rest of an Append call (event-log.md §3, §5.1).
+// A non-empty From restricts it to sessions currently in one of those
+// statuses; otherwise the change is skipped and the events are still written.
 type StatusChange struct {
 	To     string
 	Reason string
+	From   []string
+}
+
+func (sc StatusChange) applies(current string) bool {
+	return len(sc.From) == 0 || slices.Contains(sc.From, current)
 }
 
 func (sc StatusChange) event(from string) NewEvent {
@@ -65,6 +92,14 @@ func (sc StatusChange) event(from string) NewEvent {
 			"reason": sc.Reason,
 		},
 	}
+}
+
+// Fence proves an append comes from the Worker holding the Lease
+// (event-log.md §5.1). ExpectSeq is set on appends that park the session.
+type Fence struct {
+	Owner     string
+	Epoch     int64
+	ExpectSeq *int64
 }
 
 // TenantScope narrows every Repo call to one workspace and user
