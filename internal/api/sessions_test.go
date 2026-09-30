@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -38,8 +39,14 @@ func (f *fakeRepo) SessionLastSeq(context.Context, eventlog.TenantScope, uuid.UU
 	return f.lastSeq, f.lastSeqErr
 }
 
-func (f *fakeRepo) ListEvents(context.Context, eventlog.TenantScope, uuid.UUID, int64) ([]eventlog.Event, error) {
-	return f.events, f.listErr
+func (f *fakeRepo) ListEvents(_ context.Context, _ eventlog.TenantScope, _ uuid.UUID, after int64) ([]eventlog.Event, error) {
+	var evs []eventlog.Event
+	for _, e := range f.events {
+		if e.Seq > after {
+			evs = append(evs, e)
+		}
+	}
+	return evs, f.listErr
 }
 
 func TestCreateSessionHandler(t *testing.T) {
@@ -71,7 +78,7 @@ func TestCreateSessionHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := newTestServer(tt.repo)
+			srv := newTestServer(t, tt.repo)
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(tt.body))
 			rr := httptest.NewRecorder()
 			srv.Handler.ServeHTTP(rr, req)
@@ -123,7 +130,7 @@ func TestPostMessageHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := newTestServer(tt.repo)
+			srv := newTestServer(t, tt.repo)
 			path := "/api/sessions/" + uuid.New().String() + "/messages"
 			req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(tt.body))
 			rr := httptest.NewRecorder()
@@ -138,7 +145,7 @@ func TestPostMessageHandler(t *testing.T) {
 
 func TestSessionEventsHandler(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
-		srv := newTestServer(&fakeRepo{lastSeqErr: eventlog.ErrNotFound})
+		srv := newTestServer(t, &fakeRepo{lastSeqErr: eventlog.ErrNotFound})
 		req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+uuid.New().String()+"/events", nil)
 		rr := httptest.NewRecorder()
 		srv.Handler.ServeHTTP(rr, req)
@@ -159,7 +166,7 @@ func TestSessionEventsHandler(t *testing.T) {
 				{Seq: 4, Type: eventlog.TypeTurnInterrupted, CreatedAt: time.Now(), Payload: []byte(`{"turn_id":"t1"}`)},
 			},
 		}
-		srv := newTestServer(repo)
+		srv := newTestServer(t, repo)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+uuid.New().String()+"/events", nil).WithContext(ctx)
@@ -204,7 +211,9 @@ func TestSessionEventsHandler(t *testing.T) {
 type streamWriter struct {
 	mu        sync.Mutex
 	header    http.Header
+	status    int
 	buf       strings.Builder
+	writeErr  error
 	armed     bool
 	unarmed   int
 	deadlines []time.Duration
@@ -217,11 +226,18 @@ func newStreamWriter() *streamWriter {
 
 func (w *streamWriter) Header() http.Header { return w.header }
 
-func (w *streamWriter) WriteHeader(int) {}
+func (w *streamWriter) WriteHeader(status int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.status = status
+}
 
 func (w *streamWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.writeErr != nil {
+		return 0, w.writeErr
+	}
 	if !w.armed {
 		w.unarmed++
 	}
@@ -263,12 +279,29 @@ func (w *streamWriter) waitFor(t *testing.T, want string) {
 	}
 }
 
+func newStreams(t *testing.T, repo SessionRepo, hub *stream.Hub, deltas DeltaSubscriber) *sessionStreams {
+	t.Helper()
+	return &sessionStreams{
+		repo: repo, hub: hub, deltas: deltas, metrics: newTestMetrics(t), logger: slog.New(slog.DiscardHandler),
+		limiter:      newStreamLimiter(maxStreamsPerUser),
+		writeTimeout: writeTimeout,
+		pingInterval: pingInterval,
+	}
+}
+
 // serve runs h against a streamWriter until the returned stop is called.
 func serve(t *testing.T, h http.HandlerFunc, sid uuid.UUID) (w *streamWriter, stop func()) {
 	t.Helper()
+	return serveRequest(t, h, sid, "", nil)
+}
+
+// serveRequest is serve with a query string and extra request headers.
+func serveRequest(t *testing.T, h http.HandlerFunc, sid uuid.UUID, query string, header http.Header) (w *streamWriter, stop func()) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+sid.String()+"/events", nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+sid.String()+"/events"+query, nil).WithContext(ctx)
 	req.SetPathValue("id", sid.String())
+	maps.Copy(req.Header, header)
 	w = newStreamWriter()
 	done := make(chan struct{})
 	go func() {
@@ -287,7 +320,7 @@ func serve(t *testing.T, h http.HandlerFunc, sid uuid.UUID) (w *streamWriter, st
 
 func TestSessionEventsStreamsDeltasWithoutID(t *testing.T) {
 	bus := &fakeDeltaBus{ch: make(chan stream.Delta, 1)}
-	h := handleSessionEvents(&fakeRepo{}, stream.NewHub(), bus, slog.New(slog.DiscardHandler))
+	h := newStreams(t, &fakeRepo{}, stream.NewHub(), bus).handle
 	w, stop := serve(t, h, uuid.New())
 	defer stop()
 
@@ -302,7 +335,7 @@ func TestSessionEventsStreamsDeltasWithoutID(t *testing.T) {
 func TestSessionEventsArmsWriteDeadlineBeforeEveryWrite(t *testing.T) {
 	bus := &fakeDeltaBus{ch: make(chan stream.Delta, 2)}
 	repo := &fakeRepo{lastSeq: 1, events: []eventlog.Event{{Seq: 1, Type: eventlog.TypeUserMessage, Payload: []byte(`{}`)}}}
-	h := handleSessionEvents(repo, stream.NewHub(), bus, slog.New(slog.DiscardHandler))
+	h := newStreams(t, repo, stream.NewHub(), bus).handle
 	w, stop := serve(t, h, uuid.New())
 
 	bus.ch <- stream.Delta{TurnID: "t1", Kind: stream.KindText, Text: "a"}
@@ -349,7 +382,7 @@ func TestSessionEventsSendsQueuedDeltasBeforeDurableFrames(t *testing.T) {
 			bus.ch <- stream.Delta{TurnID: "t1", Kind: stream.KindText, Text: "last words"}
 			hub.Notify(sid)
 		}
-		h := handleSessionEvents(&stagedRepo{}, hub, bus, slog.New(slog.DiscardHandler))
+		h := newStreams(t, &stagedRepo{}, hub, bus).handle
 		w, stop := serve(t, h, sid)
 
 		w.waitFor(t, "id: 1\n")

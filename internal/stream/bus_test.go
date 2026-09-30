@@ -24,19 +24,23 @@ func TestSlowSubscriberFreezesTurnOthersUnaffected(t *testing.T) {
 	fast, unsubscribeFast := bus.Subscribe(sid)
 	defer unsubscribeFast()
 
-	deliver := func(turnID, text string) {
+	deliver := func(turnID, text string, wantDropped int) {
 		t.Helper()
-		if err := bus.deliverPayload(payload(t, sid, turnID, text)); err != nil {
+		dropped, err := bus.deliverPayload(payload(t, sid, turnID, text))
+		if err != nil {
 			t.Fatal(err)
+		}
+		if dropped != wantDropped {
+			t.Fatalf("deliver %q dropped for %d subscribers, want %d", text, dropped, wantDropped)
 		}
 	}
 
 	// Fill slow's buffer, then overflow it: the overflowing delta is lost.
 	for range subscriberBuffer {
-		deliver("t1", "x")
+		deliver("t1", "x", 0)
 		<-fast
 	}
-	deliver("t1", "lost")
+	deliver("t1", "lost", 1)
 	<-fast
 
 	// Once slow catches up, later deltas of the gapped turn still skip it, so
@@ -44,7 +48,7 @@ func TestSlowSubscriberFreezesTurnOthersUnaffected(t *testing.T) {
 	for range subscriberBuffer {
 		<-slow
 	}
-	deliver("t1", "after")
+	deliver("t1", "after", 1)
 	if d := <-fast; d.Text != "after" {
 		t.Fatalf("fast subscriber got %q, want after", d.Text)
 	}
@@ -55,7 +59,7 @@ func TestSlowSubscriberFreezesTurnOthersUnaffected(t *testing.T) {
 	}
 
 	// Another turn is unaffected.
-	deliver("t2", "fresh")
+	deliver("t2", "fresh", 0)
 	if d := <-slow; d.TurnID != "t2" {
 		t.Fatalf("slow subscriber got turn %q, want t2", d.TurnID)
 	}

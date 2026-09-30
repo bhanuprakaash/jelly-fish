@@ -7,11 +7,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
@@ -96,77 +98,104 @@ func handlePostMessage(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
 	}
 }
 
-// handleSessionEvents serves the Session stream: a replay of events with
-// seq > after, then live via Hub hints, interleaved with text deltas
-// (event-log.md §5.12, streaming.md §5.1).
-func handleSessionEvents(repo SessionRepo, hub *stream.Hub, deltas DeltaSubscriber, logger *slog.Logger) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		sessionID, ok := pathUUID(w, r)
-		if !ok {
+// sessionStreams serves the Session stream.
+type sessionStreams struct {
+	repo    SessionRepo
+	hub     *stream.Hub
+	deltas  DeltaSubscriber
+	limiter *streamLimiter
+	metrics *stream.Metrics
+	logger  *slog.Logger
+	// writeTimeout bounds each write; pingInterval paces the idle ping.
+	writeTimeout time.Duration
+	pingInterval time.Duration
+}
+
+// handle serves the Session stream: a replay of events with seq > after, then
+// live via Hub hints, interleaved with text deltas (event-log.md §5.12,
+// streaming.md §5.1).
+func (s *sessionStreams) handle(w http.ResponseWriter, r *http.Request) {
+	sessionID, ok := pathUUID(w, r)
+	if !ok {
+		return
+	}
+	scope := eventlog.DevScope()
+	ctx := r.Context()
+
+	lastSeq, err := s.repo.SessionLastSeq(ctx, scope, sessionID)
+	if err != nil {
+		if errors.Is(err, eventlog.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "session not found")
 			return
 		}
-		scope := eventlog.DevScope()
-		ctx := r.Context()
+		s.logger.Error("look up session", "error", err, "session_id", sessionID)
+		writeError(w, http.StatusInternalServerError, "could not open stream")
+		return
+	}
+	release, ok := s.limiter.acquire(scope.UserID)
+	if !ok {
+		s.metrics.Refusals.Inc()
+		writeError(w, http.StatusTooManyRequests, "too many open streams")
+		return
+	}
+	defer release()
+	open := s.metrics.OpenStreams.WithLabelValues(stream.KindSession)
+	open.Inc()
+	defer open.Dec()
+	after := parseAfter(r, lastSeq)
 
-		lastSeq, err := repo.SessionLastSeq(ctx, scope, sessionID)
-		if err != nil {
-			if errors.Is(err, eventlog.ErrNotFound) {
-				writeError(w, http.StatusNotFound, "session not found")
+	// Subscribe before the replay query, so no hint is missed in between
+	// (event-log.md §5.12 step 2 precedes step 3).
+	hint, unsubscribe := s.hub.Subscribe(sessionID)
+	defer unsubscribe()
+	deltaCh, unsubscribeDeltas := s.deltas.Subscribe(sessionID)
+	defer unsubscribeDeltas()
+
+	sw := &sseWriter{w: w, rc: http.NewResponseController(w), timeout: s.writeTimeout, deadlineCloses: s.metrics.WriteDeadlineCloses}
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	if !sw.frame("retry: 2000\n\n") {
+		return
+	}
+
+	lastSent, ok := s.sendEvents(ctx, sw, scope, sessionID, after)
+	if !ok {
+		return
+	}
+
+	ticker := time.NewTicker(s.pingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-hint:
+			// Deltas queued before this hint belong ahead of its durable frames.
+			if !sw.pendingDeltas(deltaCh) {
 				return
 			}
-			logger.Error("look up session", "error", err, "session_id", sessionID)
-			writeError(w, http.StatusInternalServerError, "could not open stream")
-			return
-		}
-		after := parseAfter(r, lastSeq)
-
-		// Subscribe before the replay query, so no hint is missed in between
-		// (event-log.md §5.12 step 2 precedes step 3).
-		hint, unsubscribe := hub.Subscribe(sessionID)
-		defer unsubscribe()
-		deltaCh, unsubscribeDeltas := deltas.Subscribe(sessionID)
-		defer unsubscribeDeltas()
-
-		rc := http.NewResponseController(w)
-		h := w.Header()
-		h.Set("Content-Type", "text/event-stream")
-		h.Set("Cache-Control", "no-cache")
-		h.Set("X-Accel-Buffering", "no")
-		w.WriteHeader(http.StatusOK)
-		if !writeFrame(w, rc, "retry: 2000\n\n") {
-			return
-		}
-
-		lastSent, ok := sendEvents(ctx, w, rc, repo, scope, sessionID, after)
-		if !ok {
-			return
-		}
-
-		ticker := time.NewTicker(pingInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
+			sent, ok := s.sendEvents(ctx, sw, scope, sessionID, lastSent)
+			if !ok {
 				return
-			case <-hint:
-				// Deltas queued before this hint belong ahead of its durable frames.
-				if !sendPendingDeltas(w, rc, deltaCh) {
-					return
-				}
-				sent, ok := sendEvents(ctx, w, rc, repo, scope, sessionID, lastSent)
-				if !ok {
-					return
-				}
-				lastSent = sent
-			case d := <-deltaCh:
-				if !sendDelta(w, rc, d) {
-					return
-				}
-			case <-ticker.C:
-				if !writeFrame(w, rc, ": ping\n\n") {
-					return
-				}
 			}
+			lastSent = sent
+		case d := <-deltaCh:
+			if !sw.delta(d) {
+				return
+			}
+		case <-ticker.C:
+			if !sw.frame(": ping\n\n") || !sw.pendingDeltas(deltaCh) {
+				return
+			}
+			// The re-query catches a hint that never arrived.
+			sent, ok := s.sendEvents(ctx, sw, scope, sessionID, lastSent)
+			if !ok {
+				return
+			}
+			lastSent = sent
 		}
 	}
 }
@@ -174,8 +203,8 @@ func handleSessionEvents(repo SessionRepo, hub *stream.Hub, deltas DeltaSubscrib
 // sendEvents writes every event with seq > after as a durable frame and
 // returns the new high-water seq. ok is false if the write failed and the
 // stream should close.
-func sendEvents(ctx context.Context, w http.ResponseWriter, rc *http.ResponseController, repo SessionRepo, scope eventlog.TenantScope, sessionID uuid.UUID, after int64) (int64, bool) {
-	evs, err := repo.ListEvents(ctx, scope, sessionID, after)
+func (s *sessionStreams) sendEvents(ctx context.Context, sw *sseWriter, scope eventlog.TenantScope, sessionID uuid.UUID, after int64) (int64, bool) {
+	evs, err := s.repo.ListEvents(ctx, scope, sessionID, after)
 	if err != nil {
 		return after, false
 	}
@@ -190,20 +219,28 @@ func sendEvents(ctx context.Context, w http.ResponseWriter, rc *http.ResponseCon
 		if err != nil {
 			continue
 		}
-		if !writeFrame(w, rc, "id: "+strconv.FormatInt(e.Seq, 10)+"\ndata: "+string(data)+"\n\n") {
+		if !sw.frame("id: " + strconv.FormatInt(e.Seq, 10) + "\ndata: " + string(data) + "\n\n") {
 			return lastSent, false
 		}
 	}
 	return lastSent, true
 }
 
-// sendPendingDeltas writes every delta already queued on deltaCh. It reports
+// sseWriter writes SSE frames, each within its write timeout.
+type sseWriter struct {
+	w              http.ResponseWriter
+	rc             *http.ResponseController
+	timeout        time.Duration
+	deadlineCloses prometheus.Counter
+}
+
+// pendingDeltas writes every delta already queued on deltaCh. It reports
 // false if a write failed and the stream should close.
-func sendPendingDeltas(w http.ResponseWriter, rc *http.ResponseController, deltaCh <-chan stream.Delta) bool {
+func (sw *sseWriter) pendingDeltas(deltaCh <-chan stream.Delta) bool {
 	for {
 		select {
 		case d := <-deltaCh:
-			if !sendDelta(w, rc, d) {
+			if !sw.delta(d) {
 				return false
 			}
 		default:
@@ -212,27 +249,31 @@ func sendPendingDeltas(w http.ResponseWriter, rc *http.ResponseController, delta
 	}
 }
 
-// sendDelta writes d as an id-less "delta" frame, so a reconnect resumes from
-// the last durable seq. It reports false if the write failed.
-func sendDelta(w http.ResponseWriter, rc *http.ResponseController, d stream.Delta) bool {
+// delta writes d as an id-less "delta" frame, so a reconnect resumes from the
+// last durable seq. It reports false if the write failed.
+func (sw *sseWriter) delta(d stream.Delta) bool {
 	d.SessionID = uuid.Nil
 	data, err := json.Marshal(d)
 	if err != nil {
 		return true
 	}
-	return writeFrame(w, rc, "event: delta\ndata: "+string(data)+"\n\n")
+	return sw.frame("event: delta\ndata: " + string(data) + "\n\n")
 }
 
-// writeFrame writes and flushes one SSE frame within writeTimeout. It reports
+// frame writes and flushes one SSE frame within the write timeout. It reports
 // false if that failed and the stream should close.
-func writeFrame(w http.ResponseWriter, rc *http.ResponseController, frame string) bool {
-	if err := rc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+func (sw *sseWriter) frame(frame string) bool {
+	if err := sw.rc.SetWriteDeadline(time.Now().Add(sw.timeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
 		return false
 	}
-	if _, err := io.WriteString(w, frame); err != nil {
-		return false
+	_, err := io.WriteString(sw.w, frame)
+	if err == nil {
+		err = sw.rc.Flush()
 	}
-	return rc.Flush() == nil
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		sw.deadlineCloses.Inc()
+	}
+	return err == nil
 }
 
 // parseAfter reads Last-Event-ID (winning over ?after), defaulting to a full

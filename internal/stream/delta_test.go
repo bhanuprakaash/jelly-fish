@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
@@ -78,7 +79,8 @@ func TestPGDeltaBusSplitsAndDelivers(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	var wg sync.WaitGroup
 	t.Cleanup(func() { cancel(); wg.Wait() })
-	wg.Go(func() { stream.Listen(ctx, pool, slog.New(slog.DiscardHandler), stream.NewHub(), bus) })
+	metrics := newMetrics(t)
+	wg.Go(func() { stream.Listen(ctx, pool, slog.New(slog.DiscardHandler), stream.NewHub(), bus, metrics) })
 
 	sid := uuid.New()
 	ch, unsubscribe := bus.Subscribe(sid)
@@ -142,7 +144,8 @@ func TestPGDeltaBusFreezesTurnOfSlowSubscriber(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	var wg sync.WaitGroup
 	t.Cleanup(func() { cancel(); wg.Wait() })
-	wg.Go(func() { stream.Listen(ctx, pool, slog.New(slog.DiscardHandler), stream.NewHub(), bus) })
+	metrics := newMetrics(t)
+	wg.Go(func() { stream.Listen(ctx, pool, slog.New(slog.DiscardHandler), stream.NewHub(), bus, metrics) })
 
 	sid := uuid.New()
 	ch, unsubscribe := bus.Subscribe(sid)
@@ -206,6 +209,9 @@ func TestPGDeltaBusFreezesTurnOfSlowSubscriber(t *testing.T) {
 	}
 	for len(ch) > 0 {
 		<-ch
+	}
+	if dropped := testutil.ToFloat64(metrics.DroppedDeltas); dropped < 100 {
+		t.Errorf("dropped deltas = %v, want the overflow of the 200 published", dropped)
 	}
 
 	publish("t1", "after the gap")

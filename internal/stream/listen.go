@@ -22,9 +22,10 @@ const (
 // receives notifications in commit order. On a dropped connection it
 // reconnects and re-LISTENs; deltas sent meanwhile are lost, which the stream
 // tolerates, and hub subscribers are hinted to catch up (event-log.md §5.7).
-func Listen(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hub *Hub, bus *PGDeltaBus) {
+// Deltas a subscriber misses are counted in metrics.
+func Listen(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hub *Hub, bus *PGDeltaBus, metrics *Metrics) {
 	for ctx.Err() == nil {
-		if err := listenOnce(ctx, pool, logger, hub, bus); err != nil && ctx.Err() == nil {
+		if err := listenOnce(ctx, pool, logger, hub, bus, metrics); err != nil && ctx.Err() == nil {
 			logger.Warn("listen dropped", "error", err)
 		}
 		select {
@@ -34,7 +35,7 @@ func Listen(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hub *H
 	}
 }
 
-func listenOnce(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hub *Hub, bus *PGDeltaBus) error {
+func listenOnce(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hub *Hub, bus *PGDeltaBus, metrics *Metrics) error {
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("acquire conn: %w", err)
@@ -59,9 +60,11 @@ func listenOnce(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hu
 				hub.Notify(sid)
 			}
 		case deltaChannel:
-			if err := bus.deliverPayload(notif.Payload); err != nil {
+			dropped, err := bus.deliverPayload(notif.Payload)
+			if err != nil {
 				logger.Warn("deliver delta", "error", err)
 			}
+			metrics.DroppedDeltas.Add(float64(dropped))
 		}
 	}
 }
