@@ -5,6 +5,7 @@ Single Go binary with roles `api`, `worker`, `migrate` (`cmd/jelly-fish`). Postg
 ## Commands
 
 - `make test`: run all tests
+- `make chaos`: kill/freeze real worker processes (build tag `chaos`, needs `TEST_DATABASE_URL`)
 - `make lint`: golangci-lint (formatters + linters)
 - `make fmt`: auto-fix formatting
 - `make infra` / `make db`: local k8s infra / port-forward postgres to `:5433`

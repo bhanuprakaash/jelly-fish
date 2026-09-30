@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ import (
 func startWorker(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	w := worker.New(pool, fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}, stream.NewPGDeltaBus(pool), slog.New(slog.DiscardHandler))
+	w := worker.New(pool, fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, slog.New(slog.DiscardHandler))
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
@@ -107,7 +108,7 @@ func TestParkAfterNewMessageIsStale(t *testing.T) {
 	if _, err := repo.CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatal(err)
 	}
-	c, ok, err := store.Claim(t.Context(), "w1")
+	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
 	if err != nil || !ok {
 		t.Fatalf("Claim: ok=%v err=%v", ok, err)
 	}
@@ -145,7 +146,7 @@ func TestFencedAppendFromOldEpochIsRejected(t *testing.T) {
 	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatal(err)
 	}
-	c, _, err := store.Claim(t.Context(), "w1")
+	c, _, err := store.Claim(t.Context(), "w1", 30*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +167,7 @@ func TestRescuedTurnIsRerun(t *testing.T) {
 	}
 
 	// A worker claims, starts a turn, and dies before the reply.
-	c, _, err := store.Claim(t.Context(), "dead")
+	c, _, err := store.Claim(t.Context(), "dead", 30*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,6 +184,53 @@ func TestRescuedTurnIsRerun(t *testing.T) {
 
 	startWorker(t, pool)
 	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 1)
+	assertFoldMatchesRow(t, pool, sid)
+}
+
+func TestCrashLoopFailsSessionWithoutDeciding(t *testing.T) {
+	pool := testdb.NewPool(t)
+	store := eventlog.NewStore(pool)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Five Workers claim and die before their first append.
+	for range 5 {
+		if _, ok, err := store.Claim(t.Context(), "dead", 30*time.Second); err != nil || !ok {
+			t.Fatalf("Claim: ok=%v err=%v", ok, err)
+		}
+		if _, err := pool.Exec(t.Context(), `UPDATE sessions SET lease_expires_at = now() - interval '1 second' WHERE id = $1`, sid); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	startWorker(t, pool)
+	waitStatus(t, pool, sid, eventlog.StatusFailed, 0)
+
+	evs, err := store.Load(t.Context(), sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// created, user.message, 5 claims, then the 6th claim and the failure.
+	var tail []string
+	for _, e := range evs[7:] {
+		tail = append(tail, e.Type)
+	}
+	want := []string{eventlog.TypeStatusChanged, eventlog.TypeSessionError, eventlog.TypeStatusChanged}
+	if !slices.Equal(tail, want) {
+		t.Fatalf("events after the 5th claim = %v, want %v", tail, want)
+	}
+	var p struct {
+		Code      string `json:"code"`
+		Retryable bool   `json:"retryable"`
+	}
+	if err := json.Unmarshal(evs[8].Payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Code != "crash_loop" || p.Retryable {
+		t.Fatalf("session.error = %+v, want crash_loop, not retryable", p)
+	}
 	assertFoldMatchesRow(t, pool, sid)
 }
 

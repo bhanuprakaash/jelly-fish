@@ -1,4 +1,4 @@
-.PHONY: infra db deploy serve test lint fmt
+.PHONY: infra db deploy serve test chaos lint fmt
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 IMAGE := localhost:5001/jelly-fish:latest
@@ -21,6 +21,9 @@ serve:
 
 test:
 	go test -race ./...
+
+chaos:
+	go test -tags chaos -count=1 -timeout 5m ./internal/chaos/...
 
 lint:
 	$(GOLANGCI_LINT) run

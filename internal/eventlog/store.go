@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -209,12 +210,16 @@ func project(ctx context.Context, tx pgx.Tx, sid uuid.UUID, seq int64, e NewEven
 type Claim struct {
 	SessionID uuid.UUID
 	Fence     Fence
+	// RecoveryAttempts counts claims since the session's last successful
+	// fenced append, this one included (event-log.md §5.6).
+	RecoveryAttempts int
 }
 
 // Claim leases the oldest runnable session (or one whose Lease expired) to
-// owner, or reports false if there is none (event-log.md §5.2). It bumps
-// lease_epoch and appends session.status_changed{running} in the same tx.
-func (s *Store) Claim(ctx context.Context, owner string) (Claim, bool, error) {
+// owner for ttl, or reports false if there is none (event-log.md §5.2). It
+// bumps lease_epoch and appends session.status_changed{running} in the same
+// tx.
+func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration) (Claim, bool, error) {
 	var c Claim
 	var found bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -228,12 +233,12 @@ func (s *Store) Claim(ctx context.Context, owner string) (Claim, bool, error) {
 			  ORDER BY ready_at NULLS LAST
 			  FOR UPDATE SKIP LOCKED LIMIT 1)
 			UPDATE sessions s SET status = 'running', lease_owner = $1, lease_epoch = s.lease_epoch + 1,
-			  lease_expires_at = now() + interval '30 seconds',
+			  lease_expires_at = now() + $2::interval,
 			  recovery_attempts = s.recovery_attempts + 1,
 			  last_seq = s.last_seq + 1, updated_at = now()
 			FROM c WHERE s.id = c.id
-			RETURNING s.id, s.lease_epoch, s.last_seq, s.workspace_id, s.user_id, c.status`,
-			owner).Scan(&c.SessionID, &c.Fence.Epoch, &last, &workspaceID, &userID, &from)
+			RETURNING s.id, s.lease_epoch, s.recovery_attempts, s.last_seq, s.workspace_id, s.user_id, c.status`,
+			owner, ttl).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &workspaceID, &userID, &from)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -252,13 +257,13 @@ func (s *Store) Claim(ctx context.Context, owner string) (Claim, bool, error) {
 	return c, found, err
 }
 
-// Heartbeat extends f's Lease, or returns ErrLeaseLost if it no longer holds
-// it (event-log.md §5.2).
-func (s *Store) Heartbeat(ctx context.Context, sid uuid.UUID, f Fence) error {
+// Heartbeat extends f's Lease to ttl from now, or returns ErrLeaseLost if it
+// no longer holds it (event-log.md §5.2).
+func (s *Store) Heartbeat(ctx context.Context, sid uuid.UUID, f Fence, ttl time.Duration) error {
 	tag, err := s.pool.Exec(ctx, `
-		UPDATE sessions SET lease_expires_at = now() + interval '30 seconds'
+		UPDATE sessions SET lease_expires_at = now() + $4::interval
 		WHERE id = $1 AND lease_owner = $2 AND lease_epoch = $3 AND lease_expires_at > now()`,
-		sid, f.Owner, f.Epoch)
+		sid, f.Owner, f.Epoch, ttl)
 	if err != nil {
 		return fmt.Errorf("heartbeat: %w", err)
 	}

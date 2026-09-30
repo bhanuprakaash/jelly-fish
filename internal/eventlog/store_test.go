@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -82,7 +83,7 @@ func TestAppendFenced_NoOpStillChecksLease(t *testing.T) {
 	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
-	c, _, err := store.Claim(t.Context(), "w1")
+	c, _, err := store.Claim(t.Context(), "w1", 30*time.Second)
 	if err != nil {
 		t.Fatalf("Claim: %v", err)
 	}

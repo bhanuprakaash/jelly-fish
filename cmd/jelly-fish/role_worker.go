@@ -29,7 +29,7 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
 	g.Go(func() error {
-		worker.New(pool, newProvider(), stream.NewPGDeltaBus(pool), logger).Run(gctx)
+		worker.New(pool, newProvider(), stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, logger).Run(gctx)
 		return nil
 	})
 	return g.Wait()

@@ -20,10 +20,12 @@ import (
 )
 
 const (
-	maxSessions       = 50
-	pollInterval      = 3 * time.Second
-	heartbeatInterval = 10 * time.Second
-	runnableChannel   = "jf_runnable"
+	maxSessions     = 50
+	pollInterval    = 3 * time.Second
+	runnableChannel = "jf_runnable"
+	// maxRecoveryAttempts is how many claims in a row may make no fenced
+	// append before the session is failed (event-log.md §5.6).
+	maxRecoveryAttempts = 5
 )
 
 // emptyToolsHash is the sha256 of the empty tool list, the only one this
@@ -38,20 +40,29 @@ type DeltaPublisher interface {
 
 var _ DeltaPublisher = (*stream.PGDeltaBus)(nil)
 
+// Lease sets how long a claimed session stays leased without a heartbeat,
+// and how often the Worker renews it.
+type Lease struct {
+	TTL       time.Duration
+	Heartbeat time.Duration
+}
+
 // Worker drives sessions to completion.
 type Worker struct {
 	pool     *pgxpool.Pool
 	store    *eventlog.Store
 	provider provider.Provider
 	deltas   DeltaPublisher
+	lease    Lease
 	id       string
 	logger   *slog.Logger
 	slots    chan struct{}
 }
 
-// New builds a Worker that streams reply text to deltas. A nil prov leaves it
-// idle: without a Provider it cannot run a turn, so it claims nothing.
-func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, logger *slog.Logger) *Worker {
+// New builds a Worker that streams reply text to deltas and leases sessions
+// as lease says. A nil prov leaves it idle: without a Provider it cannot run
+// a turn, so it claims nothing.
+func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, lease Lease, logger *slog.Logger) *Worker {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
@@ -61,6 +72,7 @@ func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, logg
 		store:    eventlog.NewStore(pool),
 		provider: prov,
 		deltas:   deltas,
+		lease:    lease,
 		id:       fmt.Sprintf("%s:%d", host, os.Getpid()),
 		logger:   logger,
 		slots:    make(chan struct{}, maxSessions),
@@ -102,7 +114,7 @@ func (w *Worker) claimAll(ctx context.Context, wg *sync.WaitGroup) {
 		default:
 			return
 		}
-		c, ok, err := w.store.Claim(ctx, w.id)
+		c, ok, err := w.store.Claim(ctx, w.id, w.lease.TTL)
 		if err != nil || !ok {
 			<-w.slots
 			if err != nil && ctx.Err() == nil {
@@ -160,6 +172,10 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 	hb.Go(func() { w.heartbeat(ctx, cancel, c) })
 
 	logger := w.logger.With("session_id", c.SessionID)
+	if c.RecoveryAttempts > maxRecoveryAttempts {
+		w.fail(ctx, logger, c, errCrashLoop)
+		return
+	}
 	for {
 		evs, err := w.store.Load(ctx, c.SessionID)
 		if err != nil {
@@ -191,37 +207,50 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 	}
 }
 
-// stop ends a drive on err: lease loss and shutdown are silent, anything else
-// fails the session.
+// stop ends a drive on err: lease loss and shutdown write nothing more,
+// anything else fails the session.
 func (w *Worker) stop(ctx context.Context, logger *slog.Logger, c eventlog.Claim, err error) {
-	if errors.Is(err, eventlog.ErrLeaseLost) || ctx.Err() != nil {
+	if errors.Is(err, eventlog.ErrLeaseLost) {
+		logger.Warn("lease lost, dropping session")
+		return
+	}
+	if ctx.Err() != nil {
 		return
 	}
 	w.fail(ctx, logger, c, err)
 }
 
+// errCrashLoop fails a session whose last claims all died before making
+// progress.
+var errCrashLoop = errors.New("worker kept dying on this session")
+
 func (w *Worker) fail(ctx context.Context, logger *slog.Logger, c eventlog.Claim, cause error) {
-	logger.Error("session failed", "error", cause)
+	code := "error"
+	if errors.Is(cause, errCrashLoop) {
+		code = "crash_loop"
+	}
+	logger.Error("session failed", "code", code, "error", cause)
 	_, err := w.store.AppendFenced(ctx, c.SessionID, c.Fence, []eventlog.NewEvent{{
 		Type:    eventlog.TypeSessionError,
 		Actor:   w.actor(),
-		Payload: map[string]any{"code": "error", "message": cause.Error(), "retryable": false},
-	}}, &eventlog.StatusChange{To: eventlog.StatusFailed, Reason: "error"})
+		Payload: map[string]any{"code": code, "message": cause.Error(), "retryable": false},
+	}}, &eventlog.StatusChange{To: eventlog.StatusFailed, Reason: code})
 	if err != nil && !errors.Is(err, eventlog.ErrLeaseLost) && ctx.Err() == nil {
 		logger.Error("record session error", "error", err)
 	}
 }
 
 func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelFunc, c eventlog.Claim) {
-	t := time.NewTicker(heartbeatInterval)
+	t := time.NewTicker(w.lease.Heartbeat)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			err := w.store.Heartbeat(ctx, c.SessionID, c.Fence)
+			err := w.store.Heartbeat(ctx, c.SessionID, c.Fence, w.lease.TTL)
 			if errors.Is(err, eventlog.ErrLeaseLost) {
+				w.logger.Warn("lease lost, cancelling session", "session_id", c.SessionID)
 				cancel()
 				return
 			}
