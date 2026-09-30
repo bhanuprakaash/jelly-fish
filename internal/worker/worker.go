@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
@@ -54,15 +55,18 @@ type Worker struct {
 	provider provider.Provider
 	deltas   DeltaPublisher
 	lease    Lease
+	upcast   eventlog.Upcasters
+	released released
 	id       string
 	logger   *slog.Logger
 	slots    chan struct{}
 }
 
 // New builds a Worker that streams reply text to deltas and leases sessions
-// as lease says. A nil prov leaves it idle: without a Provider it cannot run
-// a turn, so it claims nothing.
-func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, lease Lease, logger *slog.Logger) *Worker {
+// as lease says. It reads stored events through upcast, and releases any
+// session holding an event it cannot read. A nil prov leaves it idle: without
+// a Provider it cannot run a turn, so it claims nothing.
+func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, lease Lease, upcast eventlog.Upcasters, logger *slog.Logger) *Worker {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
@@ -73,6 +77,7 @@ func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, leas
 		provider: prov,
 		deltas:   deltas,
 		lease:    lease,
+		upcast:   upcast,
 		id:       fmt.Sprintf("%s:%d", host, os.Getpid()),
 		logger:   logger,
 		slots:    make(chan struct{}, maxSessions),
@@ -114,7 +119,7 @@ func (w *Worker) claimAll(ctx context.Context, wg *sync.WaitGroup) {
 		default:
 			return
 		}
-		c, ok, err := w.store.Claim(ctx, w.id, w.lease.TTL)
+		c, ok, err := w.store.Claim(ctx, w.id, w.lease.TTL, w.released.ids()...)
 		if err != nil || !ok {
 			<-w.slots
 			if err != nil && ctx.Err() == nil {
@@ -182,8 +187,12 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 			w.stop(ctx, logger, c, err)
 			return
 		}
-		st, err := Fold(evs)
-		if err != nil {
+		st, err := w.fold(evs)
+		switch {
+		case isUnreadable(err):
+			w.release(ctx, logger, c, err)
+			return
+		case err != nil:
 			w.fail(ctx, logger, c, err)
 			return
 		}
@@ -204,6 +213,31 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 			logger.Info("session parked", "status", eventlog.StatusAwaitingUser)
 			return
 		}
+	}
+}
+
+func (w *Worker) fold(evs []eventlog.Event) (State, error) {
+	evs, err := w.upcast.Events(evs)
+	if err != nil {
+		return State{}, err
+	}
+	return Fold(evs)
+}
+
+// isUnreadable reports whether err means a newer binary wrote something this
+// one cannot read, which is not the session's fault (event-log.md §5.19).
+func isUnreadable(err error) bool {
+	return errors.Is(err, eventlog.ErrSchemaTooNew) || errors.Is(err, msg.ErrUnsupported)
+}
+
+// release gives the Lease back without deciding or writing an event, so a
+// compatible Worker can claim the session.
+func (w *Worker) release(ctx context.Context, logger *slog.Logger, c eventlog.Claim, cause error) {
+	logger.Warn("session needs a newer worker, releasing lease", "error", cause)
+	w.released.add(c.SessionID)
+	err := w.store.Release(ctx, c.SessionID, c.Fence)
+	if err != nil && !errors.Is(err, eventlog.ErrLeaseLost) && ctx.Err() == nil {
+		logger.Error("release lease", "error", err)
 	}
 }
 

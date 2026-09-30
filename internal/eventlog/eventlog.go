@@ -54,6 +54,7 @@ var ErrLeaseLost = errors.New("lease lost")
 type Event struct {
 	Seq           int64
 	Type          string
+	SchemaVersion int
 	Actor         string
 	CorrelationID string
 	Payload       []byte // jsonb, as stored

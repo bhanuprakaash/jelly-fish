@@ -74,6 +74,9 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
+		if err := p.Message.Validate(); err != nil {
+			return err
+		}
 		st.Messages = append(st.Messages, p.Message)
 		*userSeqs = append(*userSeqs, e.Seq)
 	case eventlog.TypeStatusChanged:
@@ -98,6 +101,9 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			Message msg.Message `json:"message"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		if err := p.Message.Validate(); err != nil {
 			return err
 		}
 		if st.OpenTurn != nil {

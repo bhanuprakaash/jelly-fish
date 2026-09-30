@@ -2,7 +2,15 @@
 // from at the edge (ADR 0002). This slice only ever produces a text Part.
 package msg
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
+// ErrUnsupported is returned for a Message this binary cannot read: a msg_v
+// newer than CurrentVersion, or a Part kind it doesn't know (ADR 0002).
+var ErrUnsupported = errors.New("unsupported message format")
 
 // CurrentVersion is the msg_v written into every Message.
 const CurrentVersion = 1
@@ -37,6 +45,20 @@ func UserText(text string) Message {
 // AssistantText builds a single-part text Message from the assistant.
 func AssistantText(text string) Message {
 	return Message{MsgV: CurrentVersion, Role: RoleAssistant, Parts: []Part{{Type: PartText, Text: text}}}
+}
+
+// Validate returns ErrUnsupported if m was written by a newer binary than
+// this one.
+func (m Message) Validate() error {
+	if m.MsgV > CurrentVersion {
+		return fmt.Errorf("msg_v %d: %w", m.MsgV, ErrUnsupported)
+	}
+	for _, p := range m.Parts {
+		if p.Type != PartText {
+			return fmt.Errorf("part type %q: %w", p.Type, ErrUnsupported)
+		}
+	}
+	return nil
 }
 
 // Text joins the text of m's text Parts.

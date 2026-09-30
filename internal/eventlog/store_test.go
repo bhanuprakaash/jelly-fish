@@ -99,3 +99,72 @@ func TestAppendFenced_NoOpStillChecksLease(t *testing.T) {
 		t.Fatalf("err = %v, want ErrLeaseLost", err)
 	}
 }
+
+func TestRelease(t *testing.T) {
+	pool := testdb.NewPool(t)
+	store := eventlog.NewStore(pool)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	row := func() (status string, last int64, attempts int) {
+		t.Helper()
+		err := pool.QueryRow(t.Context(), `SELECT status, last_seq, recovery_attempts FROM sessions WHERE id = $1`, sid).Scan(&status, &last, &attempts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return status, last, attempts
+	}
+
+	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("Claim: ok=%v err=%v", ok, err)
+	}
+	_, claimedLast, _ := row()
+
+	if err := store.Release(t.Context(), sid, c.Fence); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	status, last, attempts := row()
+	if status != eventlog.StatusRunning || last != claimedLast || attempts != 0 {
+		t.Fatalf("row after release = {%s %d %d}, want {running %d 0}: no event, attempt undone", status, last, attempts, claimedLast)
+	}
+	if err := store.Release(t.Context(), sid, c.Fence); !errors.Is(err, eventlog.ErrLeaseLost) {
+		t.Fatalf("second Release err = %v, want ErrLeaseLost", err)
+	}
+
+	if _, ok, err := store.Claim(t.Context(), "w1", 30*time.Second, sid); err != nil || ok {
+		t.Fatalf("Claim skipping the released session: ok=%v err=%v, want none", ok, err)
+	}
+	c2, ok, err := store.Claim(t.Context(), "w2", 30*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("Claim by another Worker: ok=%v err=%v", ok, err)
+	}
+	if c2.Fence.Epoch != c.Fence.Epoch+1 {
+		t.Fatalf("epoch = %d, want %d", c2.Fence.Epoch, c.Fence.Epoch+1)
+	}
+	if err := store.Release(t.Context(), sid, c.Fence); !errors.Is(err, eventlog.ErrLeaseLost) {
+		t.Fatalf("Release with the old fence err = %v, want ErrLeaseLost", err)
+	}
+}
+
+func TestReleaseNeverCountsTowardCrashLoop(t *testing.T) {
+	pool := testdb.NewPool(t)
+	store := eventlog.NewStore(pool)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	for range 10 {
+		c, ok, err := store.Claim(t.Context(), "stale", 30*time.Second)
+		if err != nil || !ok {
+			t.Fatalf("Claim: ok=%v err=%v", ok, err)
+		}
+		if c.RecoveryAttempts != 1 {
+			t.Fatalf("RecoveryAttempts = %d, want 1: releases must not accumulate", c.RecoveryAttempts)
+		}
+		if err := store.Release(t.Context(), sid, c.Fence); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+	}
+}

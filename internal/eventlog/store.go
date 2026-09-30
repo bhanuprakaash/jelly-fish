@@ -218,8 +218,12 @@ type Claim struct {
 // Claim leases the oldest runnable session (or one whose Lease expired) to
 // owner for ttl, or reports false if there is none (event-log.md §5.2). It
 // bumps lease_epoch and appends session.status_changed{running} in the same
-// tx.
-func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration) (Claim, bool, error) {
+// tx. Sessions in skip are passed over, so a Worker that released one doesn't
+// take it straight back.
+func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip ...uuid.UUID) (Claim, bool, error) {
+	if skip == nil {
+		skip = []uuid.UUID{}
+	}
 	var c Claim
 	var found bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -229,7 +233,8 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration) (Cla
 		err := tx.QueryRow(ctx, `
 			WITH c AS (
 			  SELECT id, status FROM sessions
-			  WHERE status = 'runnable' OR (status = 'running' AND lease_expires_at < now())
+			  WHERE (status = 'runnable' OR (status = 'running' AND lease_expires_at < now()))
+			    AND id <> ALL($3)
 			  ORDER BY ready_at NULLS LAST
 			  FOR UPDATE SKIP LOCKED LIMIT 1)
 			UPDATE sessions s SET status = 'running', lease_owner = $1, lease_epoch = s.lease_epoch + 1,
@@ -238,7 +243,7 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration) (Cla
 			  last_seq = s.last_seq + 1, updated_at = now()
 			FROM c WHERE s.id = c.id
 			RETURNING s.id, s.lease_epoch, s.recovery_attempts, s.last_seq, s.workspace_id, s.user_id, c.status`,
-			owner, ttl).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &workspaceID, &userID, &from)
+			owner, ttl, skip).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &workspaceID, &userID, &from)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -273,10 +278,33 @@ func (s *Store) Heartbeat(ctx context.Context, sid uuid.UUID, f Fence, ttl time.
 	return nil
 }
 
-// Load returns all of sid's events in order, for the Worker's fold.
+// Release hands f's Lease back without writing an event: the session stays
+// running with an expired Lease, which the next Claim rescues. This claim's
+// recovery attempt is undone so releasing never counts toward the crash-loop
+// limit. It returns ErrLeaseLost if f no longer holds the Lease.
+func (s *Store) Release(ctx context.Context, sid uuid.UUID, f Fence) error {
+	var notified string
+	err := s.pool.QueryRow(ctx, `
+		WITH r AS (
+		  UPDATE sessions SET lease_expires_at = now(), recovery_attempts = greatest(recovery_attempts - 1, 0)
+		  WHERE id = $1 AND lease_owner = $2 AND lease_epoch = $3 AND lease_expires_at > now()
+		  RETURNING id)
+		SELECT pg_notify('jf_runnable', id::text)::text FROM r`,
+		sid, f.Owner, f.Epoch).Scan(&notified)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrLeaseLost
+	}
+	if err != nil {
+		return fmt.Errorf("release: %w", err)
+	}
+	return nil
+}
+
+// Load returns all of sid's events in order, for the Worker's fold. Payloads
+// are as stored; run them through Upcasters.Events before folding.
 func (s *Store) Load(ctx context.Context, sid uuid.UUID) ([]Event, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT seq, type, actor, coalesce(correlation_id, ''), payload, created_at
+		SELECT seq, type, schema_version, actor, coalesce(correlation_id, ''), payload, created_at
 		FROM events WHERE session_id = $1 ORDER BY seq`, sid)
 	if err != nil {
 		return nil, fmt.Errorf("query events: %w", err)
@@ -286,7 +314,7 @@ func (s *Store) Load(ctx context.Context, sid uuid.UUID) ([]Event, error) {
 	var evs []Event
 	for rows.Next() {
 		var e Event
-		if err := rows.Scan(&e.Seq, &e.Type, &e.Actor, &e.CorrelationID, &e.Payload, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.Seq, &e.Type, &e.SchemaVersion, &e.Actor, &e.CorrelationID, &e.Payload, &e.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
 		evs = append(evs, e)

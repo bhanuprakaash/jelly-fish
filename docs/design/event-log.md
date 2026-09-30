@@ -556,6 +556,7 @@ Two MCP elicitation shapes:
 ### 5.19 Rolling deploys
 
 - A Worker that claims a session and sees an event's `schema_version` higher than it knows (a newer Worker already wrote that type's newer shape) releases the Lease immediately without running `Decide`, so a compatible Worker picks it up on the next claim.
+- Release writes no event: the session stays `running` with its Lease expired, so the next claim rescues it, and the release returns the claim's `recovery_attempts` increment so it never counts toward the crash-loop limit (§5.6). The releasing Worker skips that session for a minute so it doesn't re-claim it in a loop, appending a claim event each time; other Workers claim it at once.
 - This is on top of, not instead of, upcasters (§5.4): upcasters handle a Worker reading an *older* payload; this handles a Worker that cannot yet read a *newer* one.
 
 ### 5.20 Retryable session errors
