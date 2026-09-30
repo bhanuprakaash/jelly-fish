@@ -16,6 +16,7 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
+	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
 
 const (
@@ -29,19 +30,28 @@ const (
 // slice has.
 const emptyToolsHash = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 
+// DeltaPublisher sends a turn's ephemeral text deltas to the Session streams
+// watching it.
+type DeltaPublisher interface {
+	Publish(ctx context.Context, d stream.Delta) error
+}
+
+var _ DeltaPublisher = (*stream.PGDeltaBus)(nil)
+
 // Worker drives sessions to completion.
 type Worker struct {
 	pool     *pgxpool.Pool
 	store    *eventlog.Store
 	provider provider.Provider
+	deltas   DeltaPublisher
 	id       string
 	logger   *slog.Logger
 	slots    chan struct{}
 }
 
-// New builds a Worker. A nil prov leaves it idle: without a Provider it
-// cannot run a turn, so it claims nothing.
-func New(pool *pgxpool.Pool, prov provider.Provider, logger *slog.Logger) *Worker {
+// New builds a Worker that streams reply text to deltas. A nil prov leaves it
+// idle: without a Provider it cannot run a turn, so it claims nothing.
+func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, logger *slog.Logger) *Worker {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
@@ -50,6 +60,7 @@ func New(pool *pgxpool.Pool, prov provider.Provider, logger *slog.Logger) *Worke
 		pool:     pool,
 		store:    eventlog.NewStore(pool),
 		provider: prov,
+		deltas:   deltas,
 		id:       fmt.Sprintf("%s:%d", host, os.Getpid()),
 		logger:   logger,
 		slots:    make(chan struct{}, maxSessions),
@@ -264,8 +275,11 @@ func (w *Worker) startTurn(ctx context.Context, sid uuid.UUID, f eventlog.Fence,
 		return err
 	}
 
-	// The full reply lands with llm.response; deltas are discarded.
-	resp, err := w.provider.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages}, func(string) {})
+	// The full reply lands with llm.response; deltas only preview it.
+	batch := stream.NewBatcher(w.deltas.Publish, sid, turnID, stream.CoalesceInterval, w.logger)
+	stopBatch := batch.Start(ctx)
+	resp, err := w.provider.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages}, batch.Add)
+	stopBatch()
 	if err != nil {
 		return fmt.Errorf("call provider: %w", err)
 	}

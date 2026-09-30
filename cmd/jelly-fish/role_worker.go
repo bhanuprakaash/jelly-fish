@@ -10,6 +10,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/config"
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
+	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/worker"
 )
 
@@ -27,6 +28,9 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
-	g.Go(func() error { worker.New(pool, newProvider(), logger).Run(gctx); return nil })
+	g.Go(func() error {
+		worker.New(pool, newProvider(), stream.NewPGDeltaBus(pool), logger).Run(gctx)
+		return nil
+	})
 	return g.Wait()
 }

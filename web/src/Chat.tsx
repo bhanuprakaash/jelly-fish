@@ -17,7 +17,7 @@ function bubbleText(payload: unknown): string {
 
 export function Chat({ sessionId, isNew }: Props) {
   const [started, setStarted] = useState(!isNew)
-  const { events, connected, failed } = useSessionStream(sessionId, started)
+  const { events, partials, connected, failed } = useSessionStream(sessionId, started)
   // A brand-new chat has a session once its first message creates one; a
   // reopened chat has one once the stream confirms it (streaming's onopen
   // only succeeds once the session exists).
@@ -77,6 +77,14 @@ export function Chat({ sessionId, isNew }: Props) {
             }`}
           >
             {bubbleText(e.payload)}
+          </div>
+        ))}
+        {Object.entries(partials).map(([turnId, text]) => (
+          <div
+            key={turnId}
+            className="mr-auto max-w-md rounded-2xl bg-neutral-900 px-4 py-2 whitespace-pre-wrap"
+          >
+            {text}
           </div>
         ))}
       </main>

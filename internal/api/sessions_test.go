@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
 
 type fakeRepo struct {
@@ -152,6 +156,7 @@ func TestSessionEventsHandler(t *testing.T) {
 				{Seq: 2, Type: eventlog.TypeUserMessage, CreatedAt: time.Now(), Payload: []byte(`{"b":2}`)},
 				// No serializer for this type, so it must never reach the wire.
 				{Seq: 3, Type: "internal.no_serializer", CreatedAt: time.Now(), Payload: []byte(`{"secret":3}`)},
+				{Seq: 4, Type: eventlog.TypeTurnInterrupted, CreatedAt: time.Now(), Payload: []byte(`{"turn_id":"t1"}`)},
 			},
 		}
 		srv := newTestServer(repo)
@@ -185,10 +190,176 @@ func TestSessionEventsHandler(t *testing.T) {
 		if !strings.Contains(body, "id: 2\n") {
 			t.Errorf("body missing seq 2 frame: %q", body)
 		}
+		if !strings.Contains(body, "id: 4\n") {
+			t.Errorf("body missing turn.interrupted frame: %q", body)
+		}
 		if strings.Contains(body, "id: 3\n") || strings.Contains(body, "secret") {
 			t.Errorf("event with no serializer was sent: %q", body)
 		}
 	})
+}
+
+// streamWriter is an http.ResponseWriter for SSE tests: safe to read while
+// the handler writes, and it fails any write not preceded by SetWriteDeadline.
+type streamWriter struct {
+	mu        sync.Mutex
+	header    http.Header
+	buf       strings.Builder
+	armed     bool
+	unarmed   int
+	deadlines []time.Duration
+	flushed   chan struct{}
+}
+
+func newStreamWriter() *streamWriter {
+	return &streamWriter{header: http.Header{}, flushed: make(chan struct{}, 1)}
+}
+
+func (w *streamWriter) Header() http.Header { return w.header }
+
+func (w *streamWriter) WriteHeader(int) {}
+
+func (w *streamWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.armed {
+		w.unarmed++
+	}
+	w.armed = false
+	return w.buf.Write(p)
+}
+
+func (w *streamWriter) Flush() {
+	select {
+	case w.flushed <- struct{}{}:
+	default:
+	}
+}
+
+func (w *streamWriter) SetWriteDeadline(t time.Time) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.armed = true
+	w.deadlines = append(w.deadlines, time.Until(t))
+	return nil
+}
+
+func (w *streamWriter) body() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
+}
+
+// waitFor blocks until the body contains want.
+func (w *streamWriter) waitFor(t *testing.T, want string) {
+	t.Helper()
+	timeout := time.After(5 * time.Second)
+	for !strings.Contains(w.body(), want) {
+		select {
+		case <-w.flushed:
+		case <-timeout:
+			t.Fatalf("timed out waiting for %q in %q", want, w.body())
+		}
+	}
+}
+
+// serve runs h against a streamWriter until the returned stop is called.
+func serve(t *testing.T, h http.HandlerFunc, sid uuid.UUID) (w *streamWriter, stop func()) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+sid.String()+"/events", nil).WithContext(ctx)
+	req.SetPathValue("id", sid.String())
+	w = newStreamWriter()
+	done := make(chan struct{})
+	go func() {
+		h(w, req)
+		close(done)
+	}()
+	return w, func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("handler did not exit after client disconnect")
+		}
+	}
+}
+
+func TestSessionEventsStreamsDeltasWithoutID(t *testing.T) {
+	bus := &fakeDeltaBus{ch: make(chan stream.Delta, 1)}
+	h := handleSessionEvents(&fakeRepo{}, stream.NewHub(), bus, slog.New(slog.DiscardHandler))
+	w, stop := serve(t, h, uuid.New())
+	defer stop()
+
+	bus.ch <- stream.Delta{SessionID: uuid.New(), TurnID: "t1", Kind: stream.KindText, Text: "Hello wor"}
+	want := "event: delta\ndata: {\"turn_id\":\"t1\",\"idx\":0,\"kind\":\"text\",\"text\":\"Hello wor\"}\n\n"
+	w.waitFor(t, want)
+	if strings.Contains(w.body(), "id:") {
+		t.Errorf("delta frame carries an id: %q", w.body())
+	}
+}
+
+func TestSessionEventsArmsWriteDeadlineBeforeEveryWrite(t *testing.T) {
+	bus := &fakeDeltaBus{ch: make(chan stream.Delta, 2)}
+	repo := &fakeRepo{lastSeq: 1, events: []eventlog.Event{{Seq: 1, Type: eventlog.TypeUserMessage, Payload: []byte(`{}`)}}}
+	h := handleSessionEvents(repo, stream.NewHub(), bus, slog.New(slog.DiscardHandler))
+	w, stop := serve(t, h, uuid.New())
+
+	bus.ch <- stream.Delta{TurnID: "t1", Kind: stream.KindText, Text: "a"}
+	bus.ch <- stream.Delta{TurnID: "t1", Kind: stream.KindText, Text: "b"}
+	w.waitFor(t, `"text":"b"`)
+	stop()
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	// retry frame, replayed event, two deltas.
+	if len(w.deadlines) != 4 || w.unarmed != 0 {
+		t.Fatalf("deadlines set = %d, writes without one = %d; want 4 and 0", len(w.deadlines), w.unarmed)
+	}
+	for _, d := range w.deadlines {
+		if d <= 0 || d > writeTimeout {
+			t.Errorf("deadline in %v, want within (0, %v]", d, writeTimeout)
+		}
+	}
+}
+
+// stagedRepo serves no events to the replay, then one llm.response.
+type stagedRepo struct {
+	fakeRepo
+	calls atomic.Int32
+}
+
+func (r *stagedRepo) ListEvents(context.Context, eventlog.TenantScope, uuid.UUID, int64) ([]eventlog.Event, error) {
+	if r.calls.Add(1) == 1 {
+		return nil, nil
+	}
+	return []eventlog.Event{{Seq: 1, Type: eventlog.TypeLLMResponse, Payload: []byte(`{"turn_id":"t1"}`)}}, nil
+}
+
+func TestSessionEventsSendsQueuedDeltasBeforeDurableFrames(t *testing.T) {
+	// select picks among ready cases at random, so repeat to make an
+	// unordered handler fail.
+	for range 20 {
+		hub := stream.NewHub()
+		sid := uuid.New()
+		bus := &fakeDeltaBus{ch: make(chan stream.Delta, 1)}
+		// The hub is subscribed by now: the hint and the delta are both
+		// pending when the handler first selects.
+		bus.onSubscribe = func() {
+			bus.ch <- stream.Delta{TurnID: "t1", Kind: stream.KindText, Text: "last words"}
+			hub.Notify(sid)
+		}
+		h := handleSessionEvents(&stagedRepo{}, hub, bus, slog.New(slog.DiscardHandler))
+		w, stop := serve(t, h, sid)
+
+		w.waitFor(t, "id: 1\n")
+		stop()
+
+		body := w.body()
+		if strings.Index(body, "event: delta") > strings.Index(body, "id: 1\n") || !strings.Contains(body, "event: delta") {
+			t.Fatalf("delta did not precede the llm.response frame: %q", body)
+		}
+	}
 }
 
 func TestParseAfter(t *testing.T) {

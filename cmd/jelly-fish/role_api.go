@@ -30,12 +30,13 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	repo := eventlog.NewRepo(pool)
 	hub := stream.NewHub()
+	deltas := stream.NewPGDeltaBus(pool)
 
 	healthSrv := health.NewServer(cfg.HealthAddr, pg.NewReadinessChecker(pool), logger)
-	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub)
+	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas)
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { hub.Listen(gctx, pool, logger); return nil })
+	g.Go(func() error { stream.Listen(gctx, pool, logger, hub, deltas); return nil })
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
 	g.Go(func() error { return runHTTPServer(gctx, apiSrv, logger) })
 	return g.Wait()

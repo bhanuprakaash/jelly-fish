@@ -20,7 +20,7 @@ type UIEvent struct {
 // serializer and must not be sent (streaming.md §4.3 allowlist).
 func ToUI(e eventlog.Event) (UIEvent, bool) {
 	switch e.Type {
-	case eventlog.TypeSessionCreated, eventlog.TypeUserMessage, eventlog.TypeStatusChanged, eventlog.TypeLLMResponse:
+	case eventlog.TypeSessionCreated, eventlog.TypeUserMessage, eventlog.TypeStatusChanged, eventlog.TypeLLMResponse, eventlog.TypeTurnInterrupted:
 		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: e.Payload}, true
 	default:
 		return UIEvent{}, false

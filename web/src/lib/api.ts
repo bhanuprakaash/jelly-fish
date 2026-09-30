@@ -41,3 +41,11 @@ export function postMessage(sessionId: string, clientMsgId: string, message: str
     message,
   })
 }
+
+// Delta is an ephemeral fragment of a streaming reply (streaming.md §4.1).
+export type Delta = {
+  turn_id: string
+  idx: number
+  kind: string
+  text: string
+}

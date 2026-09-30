@@ -8,6 +8,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/google/uuid"
+
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
 
@@ -19,7 +21,21 @@ func testWebFS() fstest.MapFS {
 }
 
 func newTestServer(repo SessionRepo) *http.Server {
-	return NewServer(":0", slog.New(slog.DiscardHandler), testWebFS(), repo, stream.NewHub())
+	return NewServer(":0", slog.New(slog.DiscardHandler), testWebFS(), repo, stream.NewHub(), &fakeDeltaBus{})
+}
+
+// fakeDeltaBus hands its subscribers whatever is sent on ch. onSubscribe, if
+// set, runs as each subscription starts.
+type fakeDeltaBus struct {
+	ch          chan stream.Delta
+	onSubscribe func()
+}
+
+func (f *fakeDeltaBus) Subscribe(uuid.UUID) (<-chan stream.Delta, func()) {
+	if f.onSubscribe != nil {
+		f.onSubscribe()
+	}
+	return f.ch, func() {}
 }
 
 func TestHello(t *testing.T) {

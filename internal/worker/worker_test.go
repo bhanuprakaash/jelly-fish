@@ -2,8 +2,10 @@ package worker_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,7 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/fake"
+	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
 	"github.com/bhanuprakaash/jelly-fish/internal/worker"
 )
@@ -19,7 +23,7 @@ import (
 func startWorker(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	w := worker.New(pool, fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}, slog.New(slog.DiscardHandler))
+	w := worker.New(pool, fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}, stream.NewPGDeltaBus(pool), slog.New(slog.DiscardHandler))
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
@@ -180,4 +184,65 @@ func TestRescuedTurnIsRerun(t *testing.T) {
 	startWorker(t, pool)
 	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 1)
 	assertFoldMatchesRow(t, pool, sid)
+}
+
+func TestStreamedTurnPublishesDeltasNotEvents(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hello world"); err != nil {
+		t.Fatal(err)
+	}
+
+	listener, err := pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Release()
+	if _, err := listener.Exec(t.Context(), "LISTEN jf_stream"); err != nil {
+		t.Fatal(err)
+	}
+
+	startWorker(t, pool)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 1)
+
+	var streamed strings.Builder
+	for {
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		n, err := listener.Conn().WaitForNotification(ctx)
+		cancel()
+		if err != nil {
+			break
+		}
+		if len(n.Payload) >= 8000 {
+			t.Fatalf("payload is %d bytes, want < 8000", len(n.Payload))
+		}
+		var d stream.Delta
+		if err := json.Unmarshal([]byte(n.Payload), &d); err != nil {
+			t.Fatal(err)
+		}
+		streamed.WriteString(d.Text)
+	}
+
+	evs, err := eventlog.NewStore(pool).Load(t.Context(), sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replies int
+	var reply string
+	for _, e := range evs {
+		if e.Type == eventlog.TypeLLMResponse {
+			replies++
+			var p struct{ Message msg.Message }
+			if err := json.Unmarshal(e.Payload, &p); err != nil {
+				t.Fatal(err)
+			}
+			reply = p.Message.Text()
+		}
+	}
+	if replies != 1 {
+		t.Fatalf("llm.response events = %d, want 1", replies)
+	}
+	if streamed.String() != reply {
+		t.Fatalf("streamed %q, want the final reply %q", streamed.String(), reply)
+	}
 }

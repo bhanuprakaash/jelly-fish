@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -19,6 +20,18 @@ import (
 // pingInterval keeps intermediaries and EventSource clients from timing out
 // an idle Session stream (streaming.md §4.1).
 const pingInterval = 15 * time.Second
+
+// writeTimeout bounds every Session stream write, so a stalled client closes
+// its own connection instead of holding the handler (streaming.md §5.2).
+const writeTimeout = 10 * time.Second
+
+// DeltaSubscriber feeds a Session stream the live text of in-flight turns.
+type DeltaSubscriber interface {
+	// Subscribe returns deltas for sid until unsubscribe is called.
+	Subscribe(sid uuid.UUID) (deltas <-chan stream.Delta, unsubscribe func())
+}
+
+var _ DeltaSubscriber = (*stream.PGDeltaBus)(nil)
 
 type createSessionRequest struct {
 	SessionID   uuid.UUID `json:"session_id"`
@@ -84,8 +97,9 @@ func handlePostMessage(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
 }
 
 // handleSessionEvents serves the Session stream: a replay of events with
-// seq > after, then live via Hub hints (event-log.md §5.12, streaming.md §5.1).
-func handleSessionEvents(repo SessionRepo, hub *stream.Hub, logger *slog.Logger) http.HandlerFunc {
+// seq > after, then live via Hub hints, interleaved with text deltas
+// (event-log.md §5.12, streaming.md §5.1).
+func handleSessionEvents(repo SessionRepo, hub *stream.Hub, deltas DeltaSubscriber, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID, ok := pathUUID(w, r)
 		if !ok {
@@ -110,6 +124,8 @@ func handleSessionEvents(repo SessionRepo, hub *stream.Hub, logger *slog.Logger)
 		// (event-log.md §5.12 step 2 precedes step 3).
 		hint, unsubscribe := hub.Subscribe(sessionID)
 		defer unsubscribe()
+		deltaCh, unsubscribeDeltas := deltas.Subscribe(sessionID)
+		defer unsubscribeDeltas()
 
 		rc := http.NewResponseController(w)
 		h := w.Header()
@@ -117,10 +133,9 @@ func handleSessionEvents(repo SessionRepo, hub *stream.Hub, logger *slog.Logger)
 		h.Set("Cache-Control", "no-cache")
 		h.Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("retry: 2000\n\n")); err != nil {
+		if !writeFrame(w, rc, "retry: 2000\n\n") {
 			return
 		}
-		_ = rc.Flush()
 
 		lastSent, ok := sendEvents(ctx, w, rc, repo, scope, sessionID, after)
 		if !ok {
@@ -134,16 +149,21 @@ func handleSessionEvents(repo SessionRepo, hub *stream.Hub, logger *slog.Logger)
 			case <-ctx.Done():
 				return
 			case <-hint:
+				// Deltas queued before this hint belong ahead of its durable frames.
+				if !sendPendingDeltas(w, rc, deltaCh) {
+					return
+				}
 				sent, ok := sendEvents(ctx, w, rc, repo, scope, sessionID, lastSent)
 				if !ok {
 					return
 				}
 				lastSent = sent
-			case <-ticker.C:
-				if _, err := w.Write([]byte(": ping\n\n")); err != nil {
+			case d := <-deltaCh:
+				if !sendDelta(w, rc, d) {
 					return
 				}
-				if err := rc.Flush(); err != nil {
+			case <-ticker.C:
+				if !writeFrame(w, rc, ": ping\n\n") {
 					return
 				}
 			}
@@ -170,16 +190,49 @@ func sendEvents(ctx context.Context, w http.ResponseWriter, rc *http.ResponseCon
 		if err != nil {
 			continue
 		}
-		if _, err := w.Write([]byte("id: " + strconv.FormatInt(e.Seq, 10) + "\ndata: " + string(data) + "\n\n")); err != nil {
-			return lastSent, false
-		}
-	}
-	if len(evs) > 0 {
-		if err := rc.Flush(); err != nil {
+		if !writeFrame(w, rc, "id: "+strconv.FormatInt(e.Seq, 10)+"\ndata: "+string(data)+"\n\n") {
 			return lastSent, false
 		}
 	}
 	return lastSent, true
+}
+
+// sendPendingDeltas writes every delta already queued on deltaCh. It reports
+// false if a write failed and the stream should close.
+func sendPendingDeltas(w http.ResponseWriter, rc *http.ResponseController, deltaCh <-chan stream.Delta) bool {
+	for {
+		select {
+		case d := <-deltaCh:
+			if !sendDelta(w, rc, d) {
+				return false
+			}
+		default:
+			return true
+		}
+	}
+}
+
+// sendDelta writes d as an id-less "delta" frame, so a reconnect resumes from
+// the last durable seq. It reports false if the write failed.
+func sendDelta(w http.ResponseWriter, rc *http.ResponseController, d stream.Delta) bool {
+	d.SessionID = uuid.Nil
+	data, err := json.Marshal(d)
+	if err != nil {
+		return true
+	}
+	return writeFrame(w, rc, "event: delta\ndata: "+string(data)+"\n\n")
+}
+
+// writeFrame writes and flushes one SSE frame within writeTimeout. It reports
+// false if that failed and the stream should close.
+func writeFrame(w http.ResponseWriter, rc *http.ResponseController, frame string) bool {
+	if err := rc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return false
+	}
+	if _, err := io.WriteString(w, frame); err != nil {
+		return false
+	}
+	return rc.Flush() == nil
 }
 
 // parseAfter reads Last-Event-ID (winning over ?after), defaulting to a full
