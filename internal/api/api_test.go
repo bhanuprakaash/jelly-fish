@@ -9,6 +9,7 @@ import (
 	"testing/fstest"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
@@ -20,8 +21,18 @@ func testWebFS() fstest.MapFS {
 	}
 }
 
-func newTestServer(repo SessionRepo) *http.Server {
-	return NewServer(":0", slog.New(slog.DiscardHandler), testWebFS(), repo, stream.NewHub(), &fakeDeltaBus{})
+func newTestMetrics(t *testing.T) *stream.Metrics {
+	t.Helper()
+	m, err := stream.NewMetrics(prometheus.NewRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func newTestServer(t *testing.T, repo SessionRepo) *http.Server {
+	t.Helper()
+	return NewServer(":0", slog.New(slog.DiscardHandler), testWebFS(), repo, stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t))
 }
 
 // fakeDeltaBus hands its subscribers whatever is sent on ch. onSubscribe, if
@@ -39,7 +50,7 @@ func (f *fakeDeltaBus) Subscribe(uuid.UUID) (<-chan stream.Delta, func()) {
 }
 
 func TestHello(t *testing.T) {
-	srv := newTestServer(&fakeRepo{})
+	srv := newTestServer(t, &fakeRepo{})
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/hello", nil)
@@ -73,7 +84,7 @@ func TestSPA(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := newTestServer(&fakeRepo{})
+			srv := newTestServer(t, &fakeRepo{})
 
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)

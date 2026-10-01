@@ -14,13 +14,19 @@ import (
 // NewServer builds the api HTTP server listening on addr. webFS is served at
 // "/" with SPA fallback: unknown paths return the root's index.html so
 // client-side routing works. repo backs the session endpoints; hub and
-// deltas feed their SSE stream.
-func NewServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, hub *stream.Hub, deltas DeltaSubscriber) *http.Server {
+// deltas feed their SSE stream, which reports to metrics.
+func NewServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, hub *stream.Hub, deltas DeltaSubscriber, metrics *stream.Metrics) *http.Server {
+	streams := &sessionStreams{
+		repo: repo, hub: hub, deltas: deltas, metrics: metrics, logger: logger,
+		limiter:      newStreamLimiter(maxStreamsPerUser),
+		writeTimeout: writeTimeout,
+		pingInterval: pingInterval,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/hello", handleHello)
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(repo, logger))
 	mux.HandleFunc("POST /api/sessions/{id}/messages", handlePostMessage(repo, logger))
-	mux.HandleFunc("GET /api/sessions/{id}/events", handleSessionEvents(repo, hub, deltas, logger))
+	mux.HandleFunc("GET /api/sessions/{id}/events", streams.handle)
 	mux.Handle("/", spaHandler(webFS))
 	return &http.Server{Addr: addr, Handler: mux}
 }

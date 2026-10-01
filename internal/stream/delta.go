@@ -136,26 +136,29 @@ func (b *PGDeltaBus) Subscribe(sid uuid.UUID) (deltas <-chan Delta, unsubscribe 
 	}
 }
 
-// deliverPayload routes a jf_stream notification to its session's subscribers.
-func (b *PGDeltaBus) deliverPayload(payload string) error {
+// deliverPayload routes a jf_stream notification to its session's subscribers
+// and returns how many subscribers missed it.
+func (b *PGDeltaBus) deliverPayload(payload string) (dropped int, err error) {
 	var d Delta
 	if err := json.Unmarshal([]byte(payload), &d); err != nil {
-		return fmt.Errorf("unmarshal delta: %w", err)
+		return 0, fmt.Errorf("unmarshal delta: %w", err)
 	}
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for sub := range b.subs[d.SessionID] {
 		if _, ok := sub.gapped[d.TurnID]; ok {
+			dropped++
 			continue
 		}
 		select {
 		case sub.ch <- d:
 		default:
 			sub.gapped[d.TurnID] = struct{}{}
+			dropped++
 		}
 	}
-	return nil
+	return dropped, nil
 }
 
 // Batcher coalesces a turn's text deltas so the bus sees one publish per

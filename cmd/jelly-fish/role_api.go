@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/api"
@@ -32,11 +33,21 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	hub := stream.NewHub()
 	deltas := stream.NewPGDeltaBus(pool)
 
+	reg := prometheus.NewRegistry()
+	metrics, err := stream.NewMetrics(reg)
+	if err != nil {
+		return err
+	}
+	if err := stream.RegisterQueueUsage(ctx, reg, pool); err != nil {
+		return err
+	}
+
 	healthSrv := health.NewServer(cfg.HealthAddr, pg.NewReadinessChecker(pool), logger)
-	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas)
+	mountMetrics(healthSrv, reg)
+	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics)
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { stream.Listen(gctx, pool, logger, hub, deltas); return nil })
+	g.Go(func() error { stream.Listen(gctx, pool, logger, hub, deltas, metrics); return nil })
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
 	g.Go(func() error { return runHTTPServer(gctx, apiSrv, logger) })
 	return g.Wait()
