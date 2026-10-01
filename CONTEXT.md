@@ -18,6 +18,14 @@ _Avoid_: Org, team, tenant
 A folder of related sessions that share instructions, project files, connectors, agents, skills, project memory, and approval rules. Every user gets a default "Personal" project.
 _Avoid_: Space, folder, repo
 
+**Admin**:
+A User who can invite people, disable or enable Users, make other Users admins, and set Quotas. The first one comes from the deployment's config.
+_Avoid_: Owner, superuser, operator
+
+**Invite**:
+An Admin's permission for one email address to sign in for the first time. It expires after 7 days unless re-sent, and can be revoked. Using it creates the User and their "Personal" Project. There is no other way to sign up.
+_Avoid_: Invitation code, signup, allowlist
+
 **Login Session**:
 One signed-in browser or device of a user, stored server-side and revocable ("log out everywhere" deletes them all). Never a chat.
 _Avoid_: Session, web session, auth session
