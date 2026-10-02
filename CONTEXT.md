@@ -69,7 +69,7 @@ A user message sent while a session is running. It is injected at the next tool-
 _Avoid_: Interjection, follow-up
 
 **Interrupt**:
-A user action that cancels the in-flight LLM or tool call right away.
+A user action that cancels the in-flight LLM or tool call right away, or a session's pending retry ("Stop retrying").
 _Avoid_: Cancel, abort, kill
 
 **Interrupted Tool Call**:

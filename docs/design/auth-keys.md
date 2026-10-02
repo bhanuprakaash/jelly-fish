@@ -106,6 +106,8 @@ CREATE TABLE provider_keys (
   ciphertext bytea NOT NULL,               -- nonce || AES-256-GCM(key), AAD = user_id|provider
   key_id     text NOT NULL,                -- which master key sealed it (mcp-client.md D24)
   last4      text NOT NULL,                -- for "sk-…7f3a"
+  models     jsonb NOT NULL,               -- live models list from the save-time call (provider-gateway.md D13)
+  models_fetched_at timestamptz NOT NULL,  -- refreshed daily by the Worker
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, provider)
@@ -243,16 +245,16 @@ PUT /api/provider-keys/anthropic {key}
 1. call the Provider's free models-list with the plaintext (provider-gateway.md D14)
 2. 401/403 → 422 "Key rejected"
 3. ct, keyID = Keyring.Seal(key, aad = user_id|provider)
-4. upsert provider_keys{ct, keyID, last4}
+4. upsert provider_keys{ct, keyID, last4, models, models_fetched_at}  -- models from step 1
 5. drop the plaintext; never log it; never return it
 ```
 
-The API process only calls `Seal`. `Open` is called only from Worker code paths (a test asserts no `Open` call outside the worker packages).
+The API process only calls `Seal`. `Open` is called only from Worker code paths (a test asserts no `Open` call outside the worker packages). `keys rotate` is a worker-package function; the command only calls it (amended 2026-10-02).
 
 ### 5.9 Master-key rotation (D10)
 
 1. Generate a new key, prepend it: `JF_MASTER_KEY=m2:…,m1:…`; deploy. New writes use `m2`.
-2. Run `jf keys rotate`: for every `provider_keys` / `connector_credentials` row with `key_id != primary`, `Open` with its key, `Seal` with the primary, update in place (one row per tx).
+2. Run `jelly-fish keys rotate` (a subcommand of the one binary): for every `provider_keys` / `connector_credentials` row with `key_id != primary`, `Open` with its key, `Seal` with the primary, update in place (one row per tx).
 3. When no row has `key_id = m1`, remove `m1` from the env.
 
 ### 5.10 Platform secrets

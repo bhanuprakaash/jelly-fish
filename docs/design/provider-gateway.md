@@ -16,7 +16,7 @@ Status: spec, 2026-09-27. Terms follow [`CONTEXT.md`](../../CONTEXT.md). Backgro
 **In the base version**
 - `internal/msg` types, `Part.Kind`, `msg_v` and its upcasters.
 - Three adapters: Anthropic, OpenAI (Responses), Gemini.
-- `internal/llm/catalog/models.json` (embedded) + live per-key model merge + `GET /models`.
+- `internal/provider/catalog/models.json` (embedded) + live per-key model merge + `GET /models`.
 - Neutral error classes and their mapping from each Provider's codes.
 - Stream `Delta` kinds (thinking, tool_start, tool_args), idle watchdog.
 - Normalized `Usage` and `usage.recorded` emission.
@@ -30,12 +30,12 @@ Status: spec, 2026-09-27. Terms follow [`CONTEXT.md`](../../CONTEXT.md). Backgro
 - A Chat Completions adapter (OpenAI itself, or OpenAI-compatible third parties like Ollama/GLM).
 - Provider server tools other than web search/fetch (code execution, …). Search and fetch are in (Decision 6a).
 - Automatic model fallback (agent-loop.md Decision 8; not revisited here).
-- Any thinking/effort request parameter (each model's default is used).
+- Any effort request parameter (each model's default is used); thinking only as Decision 17.
 - Batch/priority pricing tiers.
 
 ## 3. Data model
 
-No new Postgres tables; this doc defines the `internal/msg` and `internal/llm` Go types whose values are already stored in `events.payload` (event-log.md §3) and `usage` (event-log.md §3).
+No new Postgres tables except one column pair on `provider_keys` (§5.5); this doc defines the `internal/msg` and `internal/provider` Go types whose values are already stored in `events.payload` (event-log.md §3) and `usage` (event-log.md §3).
 
 ### 3.1 Neutral message types
 
@@ -45,12 +45,13 @@ package msg
 type Role string // "user" | "assistant" — system lives in Request.System, not a message (context.md §5.2)
 
 type Message struct {
+    MsgV  int    `json:"msg_v"`
     Role  Role   `json:"role"`
     Parts []Part `json:"parts"`
 }
 
-type Kind uint8 // text | image | file | tool_use | tool_result | thinking | native
-               // additive: a new Kind never bumps msg_v (Decision 1)
+type Kind string // "text" | "image" | "file" | "tool_use" | "tool_result" | "thinking" | "native"
+                // additive: a new Kind never bumps msg_v (Decision 1)
 
 type Part struct {
     Kind       Kind        `json:"k"`
@@ -102,16 +103,16 @@ type Native struct { // LangChain-style escape hatch; replayed only to the same 
 | `tr` | `Part.ToolResult` | `{CallID, Parts, IsError}` |
 | `th` | `Part.Thinking` | `{Text, Provider, Model, Opaque}` |
 | `nat` | `Part.Native` | `{Provider, Type, Raw}` |
-| `msg_v` | payload version | top level of every payload that embeds a `msg.Message` |
+| `msg_v` | message version | inside every stored `msg.Message` (Decision 1) |
 
 ### 3.2 `msg_v`
 
-Every event payload that embeds a `msg.Message` (`llm.response`, `user.message`, `tool.call.completed`) carries a top-level integer `msg_v`. Upcasters live in `internal/msg` and run on read, the same pattern as `schema_version` (event-log.md §5.4). Adding a `Part.Kind` is additive and never bumps `msg_v`; a shape change to an existing `Kind` bumps it.
+Every stored `msg.Message` (in `llm.response`, `user.message`, `tool.call.completed`) carries an integer `msg_v` inside the message object. Upcasters live in `internal/msg` and run on read, the same pattern as `schema_version` (event-log.md §5.4). Adding a `Part.Kind` is additive and never bumps `msg_v`; a shape change to an existing `Kind` bumps it.
 
-### 3.3 `llm` package types
+### 3.3 `provider` package types
 
 ```go
-package llm
+package provider
 
 type Request struct {
     System         []TextPart
@@ -147,7 +148,7 @@ type Error struct {
 
 *(Matching fields are in agent-loop.md §4.1 and event-log.md §5.11.)*
 
-### 3.4 Catalog entry (`internal/llm/catalog/models.json`, go:embed)
+### 3.4 Catalog entry (`internal/provider/catalog/models.json`, go:embed)
 
 Per model id: context window, max output, capability flags (vision, PDF input, structured outputs, forced `tool_choice` allowed, thinking mode: `adaptive_only` | `always_on` | `none`), prices (input, cache read, cache write 5m/1h, output, per-server-tool fees). No `source_url` field. Reviewed like code.
 
@@ -160,15 +161,15 @@ type Provider interface {
     Stream(ctx context.Context, req Request, onDelta func(Delta)) (*Response, error)
     CountTokens(ctx context.Context, req Request) (int, error)
     Models() []ModelInfo                              // static catalog view — loop/Compaction thresholds
-    ListModels(ctx context.Context) ([]ModelInfo, error) // live, per-key; run in the Worker (only place the key is decrypted)
+    ListModels(ctx context.Context) ([]ModelInfo, error) // live, per-key; API at key save (plaintext in hand), Worker for the daily refresh
 }
 ```
 
-`Models()` never changes shape or takes a key; `ListModels` is the only call that needs the decrypted key and a context, used by settings and `/model` (Decision 14+19).
+`Models()` never changes shape or takes a key; `ListModels` is the only call that needs a key and a context. The API calls it once on key save, with the plaintext it already holds; the Worker calls it on the daily refresh (Decision 13, amended 2026-10-02).
 
 ### 4.2 `GET /models`
 
-One endpoint. For each Provider the user has saved a key for, calls that Provider's `ListModels`, merges the result with the static catalog, and returns one list. Providers with no saved key: their models show greyed out with "Add `<Provider>` key" and cannot be selected.
+One endpoint, served by the API from the DB only: for each Provider the user has saved a key for, reads the stored live model list (`provider_keys.models`, §5.5), merges it with the static catalog, and returns one list. It never calls a Provider and never decrypts a key. Providers with no saved key: their models show greyed out with "Add `<Provider>` key" and cannot be selected.
 
 ### 4.3 `read_upload` tool
 
@@ -259,9 +260,9 @@ Per-Provider event shapes map onto `Delta`:
 
 ### 5.5 Key validation and model catalog merge
 
-1. **On saving a Provider Key**: call that Provider's free models-list endpoint only (no paid probe). Failure (401/403) rejects the key immediately in settings. Success also seeds the `/model` picker.
+1. **On saving a Provider Key**: call that Provider's free models-list endpoint only (no paid probe). Failure (401/403) rejects the key immediately in settings. Success stores the returned list in `provider_keys.models jsonb` + `models_fetched_at`, which seeds the `/model` picker.
 2. Billing problems (no credit, spend cap) are not caught here — they only surface on the first real turn, as a `billing` error (§9).
-3. **At Worker start and daily**: merge live limits (Anthropic, Gemini list endpoints) into the static catalog. On a conflict, prefer the live value; log the diff. OpenAI's list endpoint returns no limits/capabilities, so OpenAI stays fully hardcoded.
+3. **At Worker start and daily**: refresh each saved key's `provider_keys.models`, and merge live limits (Anthropic, Gemini list endpoints) into the static catalog. On a conflict, prefer the live value; log the diff. OpenAI's list endpoint returns no limits/capabilities, so OpenAI stays fully hardcoded.
 4. **Unknown model id** (not in the catalog): allowed, with conservative default limits and "price unknown" shown in the UI; no dollar amount is computed for it.
 
 ### 5.6 Error classification
@@ -276,14 +277,14 @@ Each adapter maps its own HTTP status / error code / stream error onto the one s
 - Because uploads are never sent through a Files API, hard delete needs no Provider-side cleanup for them (event-log.md §5.13 already assumes this).
 - The Upload projection swap is a pure function of (attach turn, current user-message count, latest Compaction); it is never persisted as its own event and never happens mid tool loop.
 - `cost_micros` is fixed at `usage.recorded` time from the catalog then in effect; a later catalog price edit never rewrites past `usage` rows.
-- `Models()` stays the static, keyless catalog view used by the loop and Compaction thresholds; only `ListModels(ctx)` touches a decrypted key, and only from the Worker.
+- `Models()` stays the static, keyless catalog view used by the loop and Compaction thresholds; only `ListModels(ctx)` touches a key: from the API with the plaintext being saved, otherwise only from the Worker. The API never decrypts a stored key.
 - The only Provider server tools used are web search and web fetch (Decision 6a); no code execution or others.
 - OpenAI always uses the Responses API with `store:false`; the full projected prompt is resent every turn; `previous_response_id` is never used.
 - `tool_choice` `required`/`one` on a model whose catalog entry has `forced_tool_choice=false` is rejected by the adapter before sending, not by the Provider.
 - The stream idle watchdog resets on every event (including Anthropic `ping`); firing is always classified `provider_down`, never a different class.
 - A Worker that reads an unknown `msg_v` or an unknown `Part.Kind` releases the Lease immediately without running `Decide` (event-log.md §5.19's rule, applied here).
 - The "Show thinking" preference is pure UI: the request sent to the Provider never changes because of it; cache and replay are unaffected and it adds no cost.
-- No thinking/effort request parameter is ever sent; each model's own default is used.
+- No effort parameter is ever sent. The only thinking parameter is `thinking:{type:"adaptive", display:"summarized"}` on catalog `adaptive_only` models (Decision 17, amended 2026-10-02).
 
 ## 7. Events
 
@@ -311,7 +312,7 @@ This spec does not add new event types; it fixes what already-catalogued events 
 All decided 2026-09-27.
 
 0. **Official SDKs behind our own adapters** (`anthropic-sdk-go`, `openai-go`, `go-genai`), a richer neutral format (file part, citations, multi-part tool results, `NativePart` escape hatch replayed only to the same Provider, `msg_v`), and an embedded model/price catalog. LiteLLM, OpenRouter and Go multi-provider libraries are rejected: none is compatible with ADR 0002 and decrypted Provider Keys never leaving the Worker (research §11).
-1. **`msg_v`**: an integer inside every payload that embeds a message (`llm.response`, `user.message`, `tool.call.completed`); upcasters live in `internal/msg`. A new `Part.Kind` is additive and never bumps `msg_v`; a shape change to an existing `Kind` does. A Worker seeing an unknown `msg_v` or `Kind` releases the Lease (event-log.md §5.19's rule). ADR 0002 states the same.
+1. **`msg_v`**: an integer inside every stored message (amended 2026-10-02: inside `message`, not at payload top level; `Kind` is a short string, so v1's `{"type":…}` parts upcast to v2's `{"k":…}`) (`llm.response`, `user.message`, `tool.call.completed`); upcasters live in `internal/msg`. A new `Part.Kind` is additive and never bumps `msg_v`; a shape change to an existing `Kind` does. A Worker seeing an unknown `msg_v` or `Kind` releases the Lease (event-log.md §5.19's rule). ADR 0002 states the same.
 2. **JSON keys stay short**, per §3.1's legend: `k`, `text`, `cit`, `blob`, `tu`, `tr`, `th`, `nat`.
 3. **Tool results are a list of parts.** `ToolResultPart{CallID, Parts []Part, IsError}`; `tool.Result` content is `[]msg.Part`. A structured JSON result is a text part; the Gemini adapter wraps it as `{"output": …}` / `{"error": …}`.
 4. **Strict tool schemas**: off for Connector (MCP) tools, opt-in-on for built-in tools written in the intersection dialect. Args are always validated in Go regardless. The schema-narrowing pass is cached per `tools_hash`. Gemini uses `parametersJsonSchema`.
@@ -344,11 +345,11 @@ All decided 2026-09-27.
 10. **Anthropic `model_context_window_exceeded` is a stop reason**, not an error: mapped to `StopReason=context_exceeded`, and the loop handles it exactly like the window case (Compaction Tier 2, retry once). OpenAI's `context_length_exceeded` 400 still routes the same way (existing agent-loop.md behavior). Unknown finish-reason enum values (e.g. a Gemini value not in go-genai's enum) → `other` + log.
 11. **Uploads: always inline** (base64 from our blob), no Provider Files API. Projection rule: an Upload stays inline for the next N=3 user messages after it was attached; after that, at the first user-message boundary (or at Compaction if earlier), the projection swaps it for a stub note (§5.4 for the exact wording). Never swap mid tool loop. The Event Log never changes; the swap is a deterministic, replay-exact projection rule. Accepted cost: one cache break at the swap point. New built-in tool `read_upload(id, pages?)` returns text for text files and the image/PDF itself for others; page ranges for large PDFs. N is tunable later with evals. The neutral part always carries our `BlobRef`, never a Provider file id. Because no Files API is used, hard delete needs no Provider-side cleanup. (Amended 2026-09-27, [uploads-artifacts.md](uploads-artifacts.md): inline budget cap of 24 MB total base64 size across inline Uploads, oldest stubbed early when over budget; `read_upload` results count toward the same budget and are stubbed after 3 user messages, oldest first; full detail in that spec.)
 12. **One normalized `Usage` struct per adapter response** (`Input` normalized to uncached, non-written input, `CacheRead`, `CacheWrite5m`, `CacheWrite1h`, `Output`, `Reasoning`, `ServerTools`). `exec` writes one `usage.recorded` event per non-zero token class, in the same tx as `llm.response` (fits `UNIQUE(session_id, seq)`, one row per event). Thinking/reasoning tokens are a detail inside output, not billed twice. `cost_micros` comes from the catalog at record time and is never recalculated.
-13. **`Models()` stays the static catalog view** (loop limits, Compaction thresholds). New adapter method `ListModels(ctx) ([]ModelInfo, error)`, with the key bound, runs in the Worker (the only place the key is decrypted). One endpoint `GET /models`: for each Provider key the user saved, asks that Provider what the key can use, merges with the catalog, returns one list. Models of Providers with no key show greyed out with "Add `<Provider>` key"; they can't be selected.
+13. **`Models()` stays the static catalog view** (loop limits, Compaction thresholds). New adapter method `ListModels(ctx) ([]ModelInfo, error)`, with the key bound. *Amended 2026-10-02:* the API calls it on key save with the plaintext it already holds and stores the result in `provider_keys.models`; the Worker refreshes it daily. The API never decrypts a stored key. One endpoint `GET /models`: for each Provider key the user saved, reads the stored list, merges with the catalog, returns one list. Models of Providers with no key show greyed out with "Add `<Provider>` key"; they can't be selected.
 14. **Key validation on save: a free models-list call only** (catches typos/wrong keys immediately in settings; also fills the picker). No paid probe. Credit problems surface on the first real turn as a `billing` error.
-15. **Catalog is a JSON file in the repo** (`internal/llm/catalog/models.json`, `go:embed`), reviewed like code; per model: limits, capability flags (incl. forced `tool_choice` allowed, thinking mode), prices. No `source_url` field. Live limits (Anthropic, Gemini) are merged at Worker start and daily; prefer live limits, log the diff. The UI shows tokens as the main number; dollars only as approximate "≈ $". An unknown model id is allowed, with conservative default limits and "price unknown".
+15. **Catalog is a JSON file in the repo** (`internal/provider/catalog/models.json`, `go:embed`), reviewed like code; per model: limits, capability flags (incl. forced `tool_choice` allowed, thinking mode), prices. No `source_url` field. Live limits (Anthropic, Gemini) are merged at Worker start and daily; prefer live limits, log the diff. The UI shows tokens as the main number; dollars only as approximate "≈ $". An unknown model id is allowed, with conservative default limits and "price unknown".
 16. **Budget keeps its dollar limit**, labelled "≈"; for a model with unknown price, only the token limit applies.
-17. **Thinking: stored and replayed per existing rules** (unchanged). Displayed only behind a per-user "Show thinking" preference: a switch in the chat header, default off, remembered across chats; when on, thinking streams live in a collapsed grey block above the answer, and old messages show their stored thinking. Pure UI: we always request readable/summarized thinking from the Provider; the switch never changes the request (cache/replay unaffected, no extra cost). What users see differs by Provider (OpenAI and some Anthropic models give summaries only; non-thinking models show nothing). No thinking/effort setting is ever sent; each model's default is used.
+17. **Thinking: stored and replayed per existing rules** (unchanged). Displayed only behind a per-user "Show thinking" preference: a switch in the chat header, default off, remembered across chats; when on, thinking streams live in a collapsed grey block above the answer, and old messages show their stored thinking. Pure UI: we always request readable/summarized thinking from the Provider; the switch never changes the request (cache/replay unaffected, no extra cost). What users see differs by Provider (OpenAI and some Anthropic models give summaries only; non-thinking models show nothing). No effort setting is ever sent. *Amended 2026-10-02:* newer Anthropic models default `display` to `"omitted"` (empty thinking text), so the Anthropic adapter sends `thinking:{type:"adaptive", display:"summarized"}` on catalog `adaptive_only` models (same as the default apart from display; byte-stable, so no cache break) and nothing on extended-only models such as Haiku 4.5, which then don't think.
 18. **Internal fixed-shape answers** (Tidy memory, Approver LLM check): a neutral `Request.ResponseSchema json.RawMessage`, mapped per adapter to the Provider's structured-output option; no forced tool use. Always validated in Go; invalid → retry once (treated as `malformed_call`). Internal schemas are authored in the intersection dialect.
 19. **Build order**: (1) `msg` types + `msg_v` + upcaster skeleton, (2) Anthropic adapter, (3) OpenAI Responses, (4) Gemini, (5) catalog + price JSON, (6) `read_upload` + the swap rule.
 20. **Unconfirmed Provider error codes**: no pre-launch live testing. Adapters classify by status code + basic message-pattern (regex) matching; a wrong guess just fails the chat with the fallback class. Accepted.

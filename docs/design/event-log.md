@@ -681,7 +681,9 @@ Accepted 2026-09-27 ([notifications.md](notifications.md)):
 - **Budget approval allowed repeatedly**: each `allow` adds one more original-limit increment (50k → 100k → 150k, …); hitting the new ceiling asks again.
 - **Budget approval denied**: session stays `awaiting_user`, not `runnable`.
 - **Session goes to background and back**: `/background` starts the wall-clock Budget at 0 (running time only); the user's next message ends it and returns the session to foreground; a second `/background` restarts it at 0.
-- **Interrupt while `awaiting_approval` or `sleeping`**: no-op.
+- **Interrupt while `awaiting_approval`**: no-op.
+- **Interrupt while `sleeping`** ("Stop retrying", amended 2026-10-02): API, in one tx, appends `user.interrupt` and moves the session `sleeping` → `awaiting_user` (reason `interrupted`), clearing `wake_at`, guarded by `WHERE status = 'sleeping'`. If a Worker claimed it first, the guard matches nothing and the normal signal path (§5.8) runs instead.
+- **Retry now while `sleeping` or after a stop-class `session.error`**: same as Retry after `failed`, `session.status_changed{to: runnable, reason: user_retry}`.
 - **Interrupt while `awaiting_children`**: all children are stopped and the parent moves to `awaiting_user`.
 - **Legacy elicitation timeout**: after 5 min blocked in the Worker, the tool call ends `tool.call.completed{is_error: true, "needs user input; timed out"}`.
 - **Non-blocking child completes while the parent is `running` or `awaiting_user`**: `child.completed` lands in the parent's log with no status change or wake; the parent's next `Fold` picks it up.

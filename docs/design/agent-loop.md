@@ -192,6 +192,8 @@ Errors are classified into neutral classes (adapter's job, [provider-gateway.md]
 
 Unknown codes: 5xx → `provider_down`; anything else → `bug`. Every "stop" action maps to `session.error{retryable:false}` → `awaiting_user`, as today.
 
+While sleeping, the user can "Stop retrying" (an Interrupt; event-log.md §10) → `awaiting_user`, or "Retry now" → `runnable`. A new user message also wakes it. The backoff step comes from counting `session.error{retryable:true}` since the last `user.message`, so it survives a Worker crash (amended 2026-10-02).
+
 Anthropic's `model_context_window_exceeded` is a `StopReason` (`context_exceeded`) on a successful response, not an error — it never appears in this table. OpenAI's `context_length_exceeded` 400 still routes to Compaction Tier 2 ([context.md](context.md) §5.3), then retry once.
 
 **Layering** (Decision 7, today): if all 4 quick attempts fail, append `session.error{retryable:true}`; the session sleeps and retries at 1 min, 5 min, 15 min; if that also fails, `session.error{retryable:false}` → `failed`, and notify the user on their Channels. Each failed attempt that reported usage still appends `usage.recorded`.
