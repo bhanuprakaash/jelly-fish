@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
 
+	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/migrate"
 )
 
@@ -35,14 +36,17 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("connect admin pool: %v", err)
 	}
-	defer admin.Close()
+	// Cleanups run last-in first-out, so this closes admin after the drop below.
+	t.Cleanup(admin.Close)
 
 	dbName := "test_" + uuidHex()
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{dbName}.Sanitize()); err != nil {
 		t.Fatalf("create test database: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.Exec(context.Background(), "DROP DATABASE "+pgx.Identifier{dbName}.Sanitize()+" WITH (FORCE)")
+		if _, err := admin.Exec(context.Background(), "DROP DATABASE "+pgx.Identifier{dbName}.Sanitize()+" WITH (FORCE)"); err != nil {
+			t.Logf("drop test database %s: %v", dbName, err)
+		}
 	})
 
 	dbURL, err := withDatabase(base, dbName)
@@ -68,6 +72,22 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	return pool
+}
+
+// NewUser creates a real workspace, User and "Personal" Project in pool and
+// returns the User. Each call makes a separate tenant.
+func NewUser(t *testing.T, pool *pgxpool.Pool) auth.User {
+	t.Helper()
+	var u auth.User
+	err := pgx.BeginFunc(t.Context(), pool, func(tx pgx.Tx) error {
+		var err error
+		u, err = auth.CreateUser(t.Context(), tx, uuid.NewString()+"@example.test", false)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("create test user: %v", err)
+	}
+	return u
 }
 
 func withDatabase(rawURL, dbName string) (string, error) {

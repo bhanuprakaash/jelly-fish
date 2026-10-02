@@ -8,7 +8,7 @@ import (
 
 func sessionCreatedPayload() map[string]any {
 	return map[string]any{
-		"agent_id": devAgent(),
+		"agent_id": generalAgent(),
 		"agent":    map[string]string{"name": "General", "model": "fake"},
 	}
 }

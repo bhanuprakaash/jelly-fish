@@ -16,7 +16,7 @@ func TestStoreAppend_StatusChangeIsProjectedInSameTx(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	store := eventlog.NewStore(pool)
-	scope := eventlog.DevScope()
+	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
 	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello"); err != nil {
@@ -80,7 +80,7 @@ func TestAppendFenced_NoOpStillChecksLease(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	c, _, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -104,7 +104,7 @@ func TestRelease(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	row := func() (status string, last int64, attempts int) {
@@ -152,7 +152,7 @@ func TestReleaseNeverCountsTowardCrashLoop(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), eventlog.DevScope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	for range 10 {

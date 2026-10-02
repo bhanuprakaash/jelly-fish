@@ -1,16 +1,20 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"sync"
 	"testing"
 	"testing/fstest"
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
 
@@ -32,7 +36,53 @@ func newTestMetrics(t *testing.T) *stream.Metrics {
 
 func newTestServer(t *testing.T, repo SessionRepo) *http.Server {
 	t.Helper()
-	return NewServer(":0", slog.New(slog.DiscardHandler), testWebFS(), repo, stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t))
+	return NewServer(":0", slog.New(slog.DiscardHandler), testWebFS(), repo, stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
+		AuthConfig{Authenticator: fakeAuthenticator{}, Mailer: &fakeMailer{}})
+}
+
+const testToken = "test-token"
+
+// fakeAuthenticator signs in the one holder of testToken.
+type fakeAuthenticator struct{}
+
+func (fakeAuthenticator) RequestCode(context.Context, string) (string, error) { return "", nil }
+
+func (fakeAuthenticator) VerifyCode(context.Context, string, string, string) (string, error) {
+	return "", auth.ErrInvalidCode
+}
+
+func (fakeAuthenticator) Authenticate(_ context.Context, token string) (auth.User, error) {
+	if token != testToken {
+		return auth.User{}, auth.ErrUnauthenticated
+	}
+	return auth.User{ID: uuid.New(), WorkspaceID: uuid.New(), Email: "me@example.test"}, nil
+}
+
+// signIn adds the Login Session cookie fakeAuthenticator accepts.
+func signIn(req *http.Request) *http.Request {
+	req.AddCookie(&http.Cookie{Name: loginCookie, Value: testToken})
+	return req
+}
+
+// fakeMailer records the emails sent to it.
+type fakeMailer struct {
+	mu   sync.Mutex
+	sent []sentMail
+}
+
+type sentMail struct{ to, subject, text string }
+
+func (m *fakeMailer) Send(_ context.Context, to, subject, text string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sent = append(m.sent, sentMail{to, subject, text})
+	return nil
+}
+
+func (m *fakeMailer) sentMails() []sentMail {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.sent)
 }
 
 // fakeDeltaBus hands its subscribers whatever is sent on ch. onSubscribe, if
@@ -53,7 +103,7 @@ func TestHello(t *testing.T) {
 	srv := newTestServer(t, &fakeRepo{})
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/hello", nil)
+	req := signIn(httptest.NewRequest(http.MethodGet, "/api/hello", nil))
 	srv.Handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {

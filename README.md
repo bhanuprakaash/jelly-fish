@@ -10,9 +10,10 @@
 ```
 cp deploy/k8s/.env.postgres.example deploy/k8s/.env.postgres
 cp deploy/k8s/.env.minio.example deploy/k8s/.env.minio
+cp deploy/k8s/.env.app.example deploy/k8s/.env.app   # set JF_ADMIN_EMAIL
 make infra deploy serve
 ```
 
-`make serve` port-forwards `svc/api` and `svc/postgres`, then serves the API over HTTPS on the tailnet via `tailscale serve`.
+`make serve` port-forwards `svc/api`, `svc/postgres` and Mailpit's web API (`:8025`, where login codes show up), then serves the API over HTTPS on the tailnet via `tailscale serve`.
 
 On your phone, open `https://<mac>.<tailnet>.ts.net` and install to the home screen.

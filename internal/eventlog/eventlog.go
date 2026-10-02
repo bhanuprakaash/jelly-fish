@@ -103,6 +103,9 @@ type Fence struct {
 	ExpectSeq *int64
 }
 
+// PersonalProject is the name of the Project every User starts with.
+const PersonalProject = "Personal"
+
 // TenantScope narrows every Repo call to one workspace and user
 // (event-log.md §5.15). A session outside it is reported as ErrNotFound.
 type TenantScope struct {

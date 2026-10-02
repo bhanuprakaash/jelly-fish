@@ -120,28 +120,28 @@ CREATE TABLE provider_keys (
 
 | Method, path | Body | Result |
 |---|---|---|
-| `POST /auth/code` | `{email}` | `202` always, same message: "If you're invited, a code is on its way." |
-| `POST /auth/code/verify` | `{email, code}` | `204` + cookie, or `401` |
-| `GET /auth/link?t=…` | — | PWA page with a "Sign in" button; consumes nothing |
-| `POST /auth/link` | `{t}` | `204` + cookie, or `401` |
-| `GET /auth/google/start` | — | redirect to Google (state, nonce, PKCE) |
-| `GET /auth/google/callback` | — | cookie + redirect to `/`, or "Not invited" page |
-| `POST /auth/logout` | — | deletes this Login Session |
-| `POST /auth/logout-all` | — | deletes all of this User's Login Sessions |
-| `GET /me` | — | `{id, email, name, is_admin}` |
-| `GET /me/login-sessions` | — | device list (user_agent, created, last seen, "this device") |
-| `DELETE /me/login-sessions/{id}` | — | log out that device |
-| `GET /provider-keys` | — | `[{provider, last4, updated_at}]` |
-| `PUT /provider-keys/{provider}` | `{key}` | validate, seal, upsert; `422 "Key rejected"` on 401/403 |
-| `DELETE /provider-keys/{provider}` | — | delete the row |
-| `POST /admin/invites` | `{email}` | create + email; `409` if already a User |
-| `POST /admin/invites/{id}/resend` | — | new email, `expires_at` reset |
-| `DELETE /admin/invites/{id}` | — | revoke |
-| `GET /admin/users` | — | Users + open invites |
-| `POST /admin/users/{id}/disable` / `enable` | — | §5.7 |
-| `POST /admin/users/{id}/make-admin` | — | sets `is_admin` |
+| `POST /api/auth/code` | `{email}` | `202` always, same message: "If you're invited, a code is on its way." |
+| `POST /api/auth/code/verify` | `{email, code}` | `204` + cookie, or `401` |
+| `GET /auth/link?t=…` | — | PWA page (client route, not under `/api`) with a "Sign in" button; consumes nothing |
+| `POST /api/auth/link` | `{t}` | `204` + cookie, or `401` |
+| `GET /api/auth/google/start` | — | redirect to Google (state, nonce, PKCE) |
+| `GET /api/auth/google/callback` | — | cookie + redirect to `/`, or "Not invited" page |
+| `POST /api/auth/logout` | — | deletes this Login Session |
+| `POST /api/auth/logout-all` | — | deletes all of this User's Login Sessions |
+| `GET /api/me` | — | `{id, email, name, is_admin}` |
+| `GET /api/me/login-sessions` | — | device list (user_agent, created, last seen, "this device") |
+| `DELETE /api/me/login-sessions/{id}` | — | log out that device |
+| `GET /api/provider-keys` | — | `[{provider, last4, updated_at}]` |
+| `PUT /api/provider-keys/{provider}` | `{key}` | validate, seal, upsert; `422 "Key rejected"` on 401/403 |
+| `DELETE /api/provider-keys/{provider}` | — | delete the row |
+| `POST /api/admin/invites` | `{email}` | create + email; `409` if already a User |
+| `POST /api/admin/invites/{id}/resend` | — | new email, `expires_at` reset |
+| `DELETE /api/admin/invites/{id}` | — | revoke |
+| `GET /api/admin/users` | — | Users + open invites |
+| `POST /api/admin/users/{id}/disable` / `enable` | — | §5.7 |
+| `POST /api/admin/users/{id}/make-admin` | — | sets `is_admin` |
 
-`/admin/*` returns `404` to non-admins.
+`/api/admin/*` returns `404` to non-admins.
 
 ### 4.2 Cookie
 
@@ -154,7 +154,7 @@ Local http dev (`JF_DEV_INSECURE_COOKIE=1`): name `jf_login`, no `Secure`. Never
 ### 4.3 Middleware
 
 ```go
-// Every route except /auth/*: cookie → Login Session → User → TenantScope.
+// Every /api route except /api/auth/*: cookie → Login Session → User → TenantScope.
 func Authn(next http.Handler) http.Handler  // 401 if missing, expired, or User disabled
 func TenantScopeFrom(ctx context.Context) TenantScope  // {WorkspaceID, UserID}, event-log.md §5.15
 ```
@@ -180,7 +180,7 @@ type Keyring interface {
 ### 5.1 Email code (D5)
 
 ```
-POST /auth/code {email}
+POST /api/auth/code {email}
 1. normalize email; always answer 202
 2. allowed = enabled User with that email OR open, unexpired invite
 3. if !allowed → stop (no email)
@@ -188,13 +188,13 @@ POST /auth/code {email}
 5. insert login_codes{code_hash, link_hash, expires_at: now+10m}
 6. email via the shared `Mailer` (notifications.md §4.1): code "482913" + link https://app/auth/link?t=<token>
 
-POST /auth/code/verify {email, code}
+POST /api/auth/code/verify {email, code}
 1. row = newest unused, unexpired login_codes for email, FOR UPDATE
 2. if none or attempts ≥ 5 → 401
 3. if sha256(code) != code_hash → attempts++ → 401
 4. used_at = now → Login (§5.3)
 
-POST /auth/link {t}: row by sha256(t), unused, unexpired → used_at = now → Login (§5.3)
+POST /api/auth/link {t}: row by sha256(t), unused, unexpired → used_at = now → Login (§5.3)
 ```
 
 The `GET` link page never consumes the token, so mail scanners that open links don't use it up. The link logs in the browser it opens in; the code works in any browser, including an installed iOS PWA (whose cookies are separate from Safari's).
@@ -224,7 +224,7 @@ One tx:
 
 ### 5.5 SSE streams (D4, streaming.md)
 
-- Both `GET /sessions/{id}/events` and `GET /activity` pass through `Authn`.
+- Both `GET /api/sessions/{id}/events` and `GET /api/activity` pass through `Authn`.
 - Reject `Sec-Fetch-Site: cross-site` with `403`. No CORS headers are ever sent.
 - On every 15 s ping, re-check the Login Session (by id, cached in the handler) and the User's `disabled_at`; if either fails, close. The browser's reconnect then gets `401` and stops; the PWA shows the login screen.
 
@@ -239,7 +239,7 @@ One tx: `disabled_at = now`, delete all their `login_sessions`, and append `user
 ### 5.8 Provider Key save (D10, D12)
 
 ```
-PUT /provider-keys/anthropic {key}
+PUT /api/provider-keys/anthropic {key}
 1. call the Provider's free models-list with the plaintext (provider-gateway.md D14)
 2. 401/403 → 422 "Key rejected"
 3. ct, keyID = Keyring.Seal(key, aad = user_id|provider)
@@ -263,7 +263,7 @@ One value per deployment, env var or secret file, never logged, never in event p
 
 - No passwords anywhere.
 - Plaintext cookie tokens, login codes and link tokens are never stored; only sha256.
-- `POST /auth/code` answers the same whether or not the email is invited.
+- `POST /api/auth/code` answers the same whether or not the email is invited.
 - No public signup: a User is created only by an invite being used or by `JF_ADMIN_EMAIL`.
 - State never changes on a GET.
 - Provider Keys: sealed on save, decrypted only in the Worker, never logged, never sent to the frontend, never in the Event Log.
@@ -326,7 +326,7 @@ Accepted 2026-09-27 (open-gap round, Q14–Q16):
 
 ## 11. Acceptance criteria
 
-- `POST /auth/code` for an uninvited email returns the same `202` body as for an invited one and sends no email.
+- `POST /api/auth/code` for an uninvited email returns the same `202` body as for an invited one and sends no email.
 - A 4th code request within 15 min sends nothing; the 6th wrong code guess on one code returns `401` even with the right code.
 - A code older than 10 min, or already used, fails; using the link consumes the code too, and vice versa.
 - `GET /auth/link?t=…` leaves `used_at` NULL.
@@ -338,7 +338,7 @@ Accepted 2026-09-27 (open-gap round, Q14–Q16):
 - A stream request with `Sec-Fetch-Site: cross-site` gets `403`.
 - Startup with `JF_ADMIN_EMAIL` creates the admin once; a second startup changes nothing.
 - A disabled User can't log in by code or Google, their open streams close within 15 s, and each of their `running` sessions gets `user.interrupt{reason: user_disabled}` and ends `awaiting_user`.
-- `PUT /provider-keys/openai` with a key the models-list call rejects returns `422` and writes nothing.
+- `PUT /api/provider-keys/openai` with a key the models-list call rejects returns `422` and writes nothing.
 - A `provider_keys` row copied to another `user_id` fails `Open` (AAD mismatch).
 - After `jf keys rotate`, no row has the old `key_id`, and every key still decrypts.
 - No log line, API response or event payload contains a saved Provider Key (test with a canary key).

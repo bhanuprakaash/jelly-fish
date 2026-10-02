@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Chat } from './Chat'
+import { Login } from './Login'
+import { getMe, UnauthorizedError } from './lib/api'
 
 const sessionPath = /^\/s\/([0-9a-f-]{36})$/i
 
+type SignIn = 'checking' | 'signed-in' | 'signed-out' | 'error'
+
 function App() {
+  const [signIn, setSignIn] = useState<SignIn>('checking')
   const [path, setPath] = useState(window.location.pathname)
   const [justCreated, setJustCreated] = useState(false)
+
+  useEffect(() => {
+    getMe().then(
+      () => setSignIn('signed-in'),
+      (err) => setSignIn(err instanceof UnauthorizedError ? 'signed-out' : 'error'),
+    )
+  }, [])
 
   useEffect(() => {
     const onPopState = () => {
@@ -16,9 +28,28 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
+  if (signIn === 'checking') return null
+  if (signIn === 'error') {
+    return (
+      <main className="flex min-h-svh items-center justify-center bg-neutral-950 text-red-400">
+        Could not reach the server.
+      </main>
+    )
+  }
+  if (signIn === 'signed-out') {
+    return <Login onSignedIn={() => setSignIn('signed-in')} />
+  }
+
   const match = sessionPath.exec(path)
   if (match) {
-    return <Chat key={match[1]} sessionId={match[1]} isNew={justCreated} />
+    return (
+      <Chat
+        key={match[1]}
+        sessionId={match[1]}
+        isNew={justCreated}
+        onUnauthorized={() => setSignIn('signed-out')}
+      />
+    )
   }
 
   const startChat = () => {

@@ -12,16 +12,66 @@ export type UIEvent = {
   payload: unknown
 }
 
+// UnauthorizedError means the server answered 401: there is no valid Login
+// Session, so the app shows the login screen.
+export class UnauthorizedError extends Error {
+  constructor(path: string) {
+    super(`${path}: status 401`)
+  }
+}
+
+async function request(path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(path, init)
+  if (res.status === 401) {
+    throw new UnauthorizedError(path)
+  }
+  if (!res.ok) {
+    throw new Error(`${path}: status ${res.status}`)
+  }
+  return res
+}
+
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await request(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    throw new Error(`${path}: status ${res.status}`)
-  }
   return res.json() as Promise<T>
+}
+
+export type Me = { id: string; email: string; name: string; is_admin: boolean }
+
+// getMe returns the signed-in User, or throws UnauthorizedError.
+export async function getMe(): Promise<Me> {
+  const res = await request('/api/me')
+  return res.json() as Promise<Me>
+}
+
+// requestCode emails a sign-in code. It succeeds the same for any email, so
+// it cannot be used to tell who has an account.
+export async function requestCode(email: string): Promise<void> {
+  await request('/api/auth/code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+}
+
+// verifyCode signs in with the emailed code and resolves true, or false when
+// the code is wrong or expired.
+export async function verifyCode(email: string, code: string): Promise<boolean> {
+  try {
+    await request('/api/auth/code/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    })
+    return true
+  } catch (err) {
+    if (err instanceof UnauthorizedError) return false
+    throw err
+  }
 }
 
 // createSession starts a session; repeating the same sessionId returns the
