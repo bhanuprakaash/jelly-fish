@@ -5,12 +5,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/mail"
+	netmail "net/mail"
 	"sync"
 	"time"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
-	jfmail "github.com/bhanuprakaash/jelly-fish/internal/mail"
+	"github.com/bhanuprakaash/jelly-fish/internal/mail"
 )
 
 const (
@@ -34,10 +34,18 @@ type Authenticator interface {
 
 var _ Authenticator = (*auth.Store)(nil)
 
+// Mailer sends one email (notifications.md §4.1); html may be empty.
+// internal/mail.SMTP satisfies it.
+type Mailer interface {
+	Send(ctx context.Context, to, subject, text, html string) error
+}
+
+var _ Mailer = (*mail.SMTP)(nil)
+
 // AuthConfig wires login into the server.
 type AuthConfig struct {
 	Authenticator Authenticator
-	Mailer        jfmail.Mailer
+	Mailer        Mailer
 	// InsecureCookie sends the cookie without Secure under the name jf_login,
 	// for local http only.
 	InsecureCookie bool
@@ -69,16 +77,14 @@ func (a *authHandlers) handleRequestCode(w http.ResponseWriter, r *http.Request)
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if _, err := mail.ParseAddress(req.Email); err != nil {
-		writeError(w, http.StatusBadRequest, "a valid email is required")
-		return
-	}
-
-	code, err := a.cfg.Authenticator.RequestCode(r.Context(), req.Email)
-	if err != nil {
-		a.logger.Error("request login code", "error", err)
-	} else if code != "" {
-		a.sendCode(context.WithoutCancel(r.Context()), auth.NormalizeEmail(req.Email), code)
+	// An address that can't be parsed gets the same answer, and no email.
+	if addr, err := netmail.ParseAddress(req.Email); err == nil {
+		code, err := a.cfg.Authenticator.RequestCode(r.Context(), addr.Address)
+		if err != nil {
+			a.logger.Error("request login code", "error", err)
+		} else if code != "" {
+			a.sendCode(context.WithoutCancel(r.Context()), auth.NormalizeEmail(addr.Address), code)
+		}
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"message": codeAcceptedMsg})
 }
@@ -108,6 +114,7 @@ func (a *authHandlers) handleVerifyCode(w http.ResponseWriter, r *http.Request) 
 	}
 	token, err := a.cfg.Authenticator.VerifyCode(r.Context(), req.Email, req.Code, r.UserAgent())
 	if errors.Is(err, auth.ErrInvalidCode) {
+		a.logger.Info("login failed", "email", auth.NormalizeEmail(req.Email), "method", "code")
 		writeError(w, http.StatusUnauthorized, "invalid or expired code")
 		return
 	}
@@ -116,6 +123,7 @@ func (a *authHandlers) handleVerifyCode(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "could not sign in")
 		return
 	}
+	a.logger.Info("login succeeded", "email", auth.NormalizeEmail(req.Email), "method", "code")
 	http.SetCookie(w, &http.Cookie{
 		Name:     a.cookieName(),
 		Value:    token,

@@ -249,11 +249,10 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 		u.Name = *name
 	}
 	if stale {
-		if _, err := s.pool.Exec(ctx, `
+		// Best effort: a failed extension must not reject a valid session.
+		_, _ = s.pool.Exec(ctx, `
 			UPDATE login_sessions SET last_seen_at = now(), expires_at = now() + interval '30 days'
-			WHERE id = $1 AND last_seen_at < now() - interval '1 hour'`, loginID); err != nil {
-			return User{}, fmt.Errorf("extend login session: %w", err)
-		}
+			WHERE id = $1 AND last_seen_at < now() - interval '1 hour'`, loginID)
 	}
 	return u, nil
 }

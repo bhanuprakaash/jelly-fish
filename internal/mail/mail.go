@@ -12,11 +12,6 @@ import (
 	"strings"
 )
 
-// Mailer sends one email (notifications.md §4.1). html may be empty.
-type Mailer interface {
-	Send(ctx context.Context, to, subject, text, html string) error
-}
-
 // SMTP is a Mailer that speaks SMTP to one server.
 type SMTP struct {
 	host string
@@ -24,8 +19,6 @@ type SMTP struct {
 	from string
 	auth smtp.Auth
 }
-
-var _ Mailer = (*SMTP)(nil)
 
 // NewSMTP builds an SMTP Mailer from a URL like smtp://user:pass@host:587.
 // Credentials are optional; STARTTLS is used when the server offers it.

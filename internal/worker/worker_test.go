@@ -109,8 +109,9 @@ func TestParkAfterNewMessageIsStale(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
 	store := eventlog.NewStore(pool)
+	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
 		t.Fatal(err)
 	}
 	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -120,7 +121,7 @@ func TestParkAfterNewMessageIsStale(t *testing.T) {
 	folded := int64(3) // created, user.message, claimed
 
 	// A message lands between fold and park.
-	if _, err := repo.PostMessage(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "more"); err != nil {
+	if _, err := repo.PostMessage(t.Context(), scope, sid, uuid.New(), "more"); err != nil {
 		t.Fatal(err)
 	}
 

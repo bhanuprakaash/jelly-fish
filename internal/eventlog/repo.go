@@ -25,9 +25,9 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 
 var errNoPersonalProject = errors.New("user has no Personal project")
 
-// CreateSession creates a session in the User's "Personal" Project with a session.created + user.message pair
-// (session.created snapshotting the hard-coded "General" agent) and returns
-// its last_seq. Repeating the same sessionID returns the existing session's
+// CreateSession creates a session in the User's "Personal" Project with a
+// session.created + user.message pair (session.created snapshotting the
+// hard-coded "General" agent) and returns its last_seq. Repeating the same sessionID returns the existing session's
 // last_seq instead of creating a second one.
 func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text string) (int64, error) {
 	var last int64

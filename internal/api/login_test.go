@@ -101,6 +101,17 @@ func TestRequestCodeAnswersAlikeForUnknownEmail(t *testing.T) {
 	}
 }
 
+func TestRequestCodeWithMalformedEmailIsStill202(t *testing.T) {
+	e := newLoginEnv(t)
+	rr := e.do(http.MethodPost, "/api/auth/code", map[string]string{"email": "not an email"}, nil)
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202", rr.Code)
+	}
+	if mails := e.waitMail(t); len(mails) != 0 {
+		t.Errorf("sent = %+v, want none", mails)
+	}
+}
+
 func TestVerifyCodeSetsCookie(t *testing.T) {
 	e := newLoginEnv(t)
 	u := testdb.NewUser(t, e.pool)
