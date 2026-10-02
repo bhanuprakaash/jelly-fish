@@ -100,6 +100,15 @@ export function Settings({ onSignedOut }: Props) {
           ))}
         </section>
 
+        {me?.is_admin && (
+          <a
+            href="/admin/users"
+            className="block rounded-xl bg-neutral-900 px-6 py-3 text-center text-neutral-200"
+          >
+            Admin: Users
+          </a>
+        )}
+
         <button
           onClick={logOutEverywhere}
           className="w-full rounded-xl bg-neutral-100 px-6 py-3 font-medium text-neutral-900"

@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -12,6 +13,10 @@ import (
 )
 
 const bootEmail = "Admin@Example.test"
+
+func newStore(pool *pgxpool.Pool) *auth.Store {
+	return auth.NewStore(pool, slog.New(slog.DiscardHandler))
+}
 
 func countRows(t *testing.T, pool *pgxpool.Pool, query string, args ...any) int {
 	t.Helper()
@@ -72,7 +77,7 @@ func TestBootstrapAdminIsCreateOnce(t *testing.T) {
 
 func TestRequestCode(t *testing.T) {
 	pool := testdb.NewPool(t)
-	s := auth.NewStore(pool)
+	s := newStore(pool)
 	u := testdb.NewUser(t, pool)
 
 	t.Run("unknown email gets no code", func(t *testing.T) {
@@ -104,7 +109,7 @@ func TestRequestCode(t *testing.T) {
 
 func TestVerifyCode(t *testing.T) {
 	pool := testdb.NewPool(t)
-	s := auth.NewStore(pool)
+	s := newStore(pool)
 
 	t.Run("right code signs in once", func(t *testing.T) {
 		u := testdb.NewUser(t, pool)
@@ -164,7 +169,7 @@ func TestVerifyCode(t *testing.T) {
 
 func TestVerifyLink(t *testing.T) {
 	pool := testdb.NewPool(t)
-	s := auth.NewStore(pool)
+	s := newStore(pool)
 
 	t.Run("link signs in once and consumes the code", func(t *testing.T) {
 		u := testdb.NewUser(t, pool)
@@ -223,7 +228,7 @@ func TestVerifyLink(t *testing.T) {
 
 func TestOnlyNewestCodeVerifies(t *testing.T) {
 	pool := testdb.NewPool(t)
-	s := auth.NewStore(pool)
+	s := newStore(pool)
 	u := testdb.NewUser(t, pool)
 
 	older := requestCode(t, s, u.Email)
@@ -241,7 +246,7 @@ func TestOnlyNewestCodeVerifies(t *testing.T) {
 
 func TestNoPlaintextCredentialsStored(t *testing.T) {
 	pool := testdb.NewPool(t)
-	s := auth.NewStore(pool)
+	s := newStore(pool)
 	u := testdb.NewUser(t, pool)
 
 	code, link := requestLogin(t, s, u.Email)
@@ -263,7 +268,7 @@ func TestNoPlaintextCredentialsStored(t *testing.T) {
 
 func TestAuthenticate(t *testing.T) {
 	pool := testdb.NewPool(t)
-	s := auth.NewStore(pool)
+	s := newStore(pool)
 	u := testdb.NewUser(t, pool)
 	token, err := s.VerifyCode(t.Context(), u.Email, requestCode(t, s, u.Email), "ua")
 	if err != nil {
@@ -332,7 +337,7 @@ func signIn(t *testing.T, s *auth.Store, u auth.User, userAgent string) string {
 
 func TestLoginSessionLifecycle(t *testing.T) {
 	pool := testdb.NewPool(t)
-	s := auth.NewStore(pool)
+	s := newStore(pool)
 	alice, bob := testdb.NewUser(t, pool), testdb.NewUser(t, pool)
 	phone, laptop := signIn(t, s, alice, "phone"), signIn(t, s, alice, "laptop")
 	bobToken := signIn(t, s, bob, "bob-laptop")
@@ -405,7 +410,7 @@ func TestLoginSessionLifecycle(t *testing.T) {
 
 func TestLoginActive(t *testing.T) {
 	pool := testdb.NewPool(t)
-	s := auth.NewStore(pool)
+	s := newStore(pool)
 	u := testdb.NewUser(t, pool)
 	au, err := s.Authenticate(t.Context(), signIn(t, s, u, "ua"))
 	if err != nil {

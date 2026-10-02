@@ -45,6 +45,7 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	repo := eventlog.NewRepo(pool)
+	authStore := auth.NewStore(pool, logger)
 	hub := stream.NewHub()
 	deltas := stream.NewPGDeltaBus(pool)
 
@@ -60,7 +61,8 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	healthSrv := health.NewServer(cfg.HealthAddr, pg.NewReadinessChecker(pool), logger)
 	mountMetrics(healthSrv, reg)
 	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics, api.AuthConfig{
-		Authenticator:  auth.NewStore(pool),
+		Authenticator:  authStore,
+		Admin:          authStore,
 		Mailer:         mailer,
 		PublicURL:      cfg.PublicURL,
 		InsecureCookie: cfg.DevInsecureCookie,

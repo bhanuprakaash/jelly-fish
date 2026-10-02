@@ -39,6 +39,17 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.HandleFunc("POST /api/auth/logout-all", authH.handleLogoutAll)
 	protected.HandleFunc("GET /api/me/login-sessions", authH.handleListLoginSessions)
 	protected.HandleFunc("DELETE /api/me/login-sessions/{id}", authH.handleDeleteLoginSession)
+
+	admin := http.NewServeMux()
+	admin.HandleFunc("POST /api/admin/invites", authH.handleCreateInvite)
+	admin.HandleFunc("POST /api/admin/invites/{id}/resend", authH.handleResendInvite)
+	admin.HandleFunc("DELETE /api/admin/invites/{id}", authH.handleRevokeInvite)
+	admin.HandleFunc("GET /api/admin/users", authH.handleListUsers)
+	admin.HandleFunc("POST /api/admin/users/{id}/disable", authH.handleDisableUser)
+	admin.HandleFunc("POST /api/admin/users/{id}/enable", authH.handleEnableUser)
+	admin.HandleFunc("POST /api/admin/users/{id}/make-admin", authH.handleMakeAdmin)
+
+	protected.Handle("/api/admin/", authH.adminOnly(admin))
 	protected.HandleFunc("POST /api/sessions", handleCreateSession(repo, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/messages", handlePostMessage(repo, logger))
 	protected.HandleFunc("GET /api/sessions/{id}/events", streams.handle)

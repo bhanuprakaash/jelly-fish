@@ -78,10 +78,21 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 // returns the User. Each call makes a separate tenant.
 func NewUser(t *testing.T, pool *pgxpool.Pool) auth.User {
 	t.Helper()
+	return newUser(t, pool, false)
+}
+
+// NewAdmin is NewUser for an Admin.
+func NewAdmin(t *testing.T, pool *pgxpool.Pool) auth.User {
+	t.Helper()
+	return newUser(t, pool, true)
+}
+
+func newUser(t *testing.T, pool *pgxpool.Pool, isAdmin bool) auth.User {
+	t.Helper()
 	var u auth.User
 	err := pgx.BeginFunc(t.Context(), pool, func(tx pgx.Tx) error {
 		var err error
-		u, err = auth.CreateUser(t.Context(), tx, uuid.NewString()+"@example.test", false)
+		u, err = auth.CreateUser(t.Context(), tx, uuid.NewString()+"@example.test", isAdmin)
 		return err
 	})
 	if err != nil {

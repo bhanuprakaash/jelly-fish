@@ -94,6 +94,8 @@ func signIn(req *http.Request) *http.Request {
 type fakeMailer struct {
 	mu   sync.Mutex
 	sent []sentMail
+	// err, if set, is returned by Send.
+	err error
 }
 
 type sentMail struct{ to, subject, text string }
@@ -101,6 +103,9 @@ type sentMail struct{ to, subject, text string }
 func (m *fakeMailer) Send(_ context.Context, to, subject, text string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.err != nil {
+		return m.err
+	}
 	m.sent = append(m.sent, sentMail{to, subject, text})
 	return nil
 }

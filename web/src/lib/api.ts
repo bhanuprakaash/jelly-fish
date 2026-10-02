@@ -20,13 +20,24 @@ export class UnauthorizedError extends Error {
   }
 }
 
+// HttpError is any other non-2xx answer, with its status for callers that
+// word it differently.
+export class HttpError extends Error {
+  status: number
+
+  constructor(path: string, status: number) {
+    super(`${path}: status ${status}`)
+    this.status = status
+  }
+}
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(path, init)
   if (res.status === 401) {
     throw new UnauthorizedError(path)
   }
   if (!res.ok) {
-    throw new Error(`${path}: status ${res.status}`)
+    throw new HttpError(path, res.status)
   }
   return res
 }
@@ -117,6 +128,54 @@ export async function logout(): Promise<void> {
 // logoutAll ends every Login Session of the current User, this one included.
 export async function logoutAll(): Promise<void> {
   await request('/api/auth/logout-all', { method: 'POST' })
+}
+
+export type AdminUser = {
+  id: string
+  email: string
+  name: string
+  is_admin: boolean
+  disabled_at: string | null
+  created_at: string
+}
+
+export type AdminInvite = {
+  id: string
+  email: string
+  expires_at: string
+  created_at: string
+}
+
+// getAdminUsers lists every User and open Invite. Non-admins get a 404.
+export async function getAdminUsers(): Promise<{ users: AdminUser[]; invites: AdminInvite[] }> {
+  const res = await request('/api/admin/users')
+  return res.json() as Promise<{ users: AdminUser[]; invites: AdminInvite[] }>
+}
+
+// createInvite emails an Invite to email; inviting an open Invite's email again
+// re-sends it.
+export async function createInvite(email: string): Promise<void> {
+  await postJSON('/api/admin/invites', { email })
+}
+
+// resendInvite emails an Invite again and resets its expiry.
+export async function resendInvite(id: string): Promise<void> {
+  await request(`/api/admin/invites/${id}/resend`, { method: 'POST' })
+}
+
+// revokeInvite deletes an open Invite.
+export async function revokeInvite(id: string): Promise<void> {
+  await request(`/api/admin/invites/${id}`, { method: 'DELETE' })
+}
+
+// setUserDisabled disables or enables a User; disabling ends their Login Sessions.
+export async function setUserDisabled(id: string, disabled: boolean): Promise<void> {
+  await request(`/api/admin/users/${id}/${disabled ? 'disable' : 'enable'}`, { method: 'POST' })
+}
+
+// makeAdmin promotes a User to Admin.
+export async function makeAdmin(id: string): Promise<void> {
+  await request(`/api/admin/users/${id}/make-admin`, { method: 'POST' })
 }
 
 // createSession starts a session; repeating the same sessionId returns the

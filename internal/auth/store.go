@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strings"
 	"time"
@@ -39,8 +40,8 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 // code, so callers cannot tell the cases apart.
 var ErrInvalidCode = errors.New("invalid code")
 
-// ErrNotFound is returned when a Login Session does not exist or belongs to
-// another User.
+// ErrNotFound is returned when a Login Session, Invite or User does not exist
+// or, for a Login Session, belongs to another User.
 var ErrNotFound = errors.New("not found")
 
 // LoginSession is one signed-in device, as listed to its User.
@@ -53,23 +54,26 @@ type LoginSession struct {
 
 // Store keeps login codes and Login Sessions in Postgres.
 type Store struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger *slog.Logger
 }
 
 // NewStore builds a Store backed by pool.
-func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool}
+func NewStore(pool *pgxpool.Pool, logger *slog.Logger) *Store {
+	return &Store{pool: pool, logger: logger}
 }
 
 // RequestCode records a login code for email and returns it with its link
 // token for sending. Both are "" when nothing should be sent: the email is not
-// an enabled User, or three codes went out in the last 15 minutes
+// an enabled User or holder of an open Invite, or three codes went out in the last 15 minutes
 // (auth-keys.md §5.1).
 func (s *Store) RequestCode(ctx context.Context, email string) (code, link string, err error) {
 	email = NormalizeEmail(email)
 	var allowed bool
-	err = s.pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM users WHERE email = $1 AND disabled_at IS NULL)`, email).Scan(&allowed)
+	err = s.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM users WHERE email = $1 AND disabled_at IS NULL)
+		    OR EXISTS (SELECT 1 FROM invites WHERE email = $1 AND accepted_at IS NULL AND expires_at > now())`,
+		email).Scan(&allowed)
 	if err != nil {
 		return "", "", fmt.Errorf("look up user: %w", err)
 	}
@@ -140,7 +144,7 @@ func (s *Store) VerifyCode(ctx context.Context, email, code, userAgent string) (
 		if _, err := tx.Exec(ctx, `UPDATE login_codes SET used_at = now() WHERE id = $1`, id); err != nil {
 			return fmt.Errorf("use login code: %w", err)
 		}
-		token, wrong, err = login(ctx, tx, email, userAgent)
+		token, wrong, err = s.login(ctx, tx, email, userAgent)
 		return err
 	})
 	if err != nil {
@@ -175,7 +179,7 @@ func (s *Store) VerifyLink(ctx context.Context, link, userAgent string) (string,
 		if _, err := tx.Exec(ctx, `UPDATE login_codes SET used_at = now() WHERE id = $1`, id); err != nil {
 			return fmt.Errorf("use login code: %w", err)
 		}
-		token, wrong, err = login(ctx, tx, email, userAgent)
+		token, wrong, err = s.login(ctx, tx, email, userAgent)
 		return err
 	})
 	if err != nil {
@@ -187,16 +191,32 @@ func (s *Store) VerifyLink(ctx context.Context, link, userAgent string) (string,
 	return token, nil
 }
 
-// login starts a Login Session for the enabled User with email. wrong is true
-// when there is none (auth-keys.md §5.3).
-func login(ctx context.Context, tx pgx.Tx, email, userAgent string) (token string, wrong bool, err error) {
-	var userID uuid.UUID
-	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1 AND disabled_at IS NULL`, email).Scan(&userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", true, nil
+// login starts a Login Session for the enabled User with email, first
+// creating the User when an open Invite for it exists. wrong is true when
+// there is neither (auth-keys.md §5.3).
+func (s *Store) login(ctx context.Context, tx pgx.Tx, email, userAgent string) (token string, wrong bool, err error) {
+	// Serializes logins for one email so a code and a link used together
+	// cannot both try to accept the same Invite.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, email); err != nil {
+		return "", false, fmt.Errorf("lock login: %w", err)
 	}
-	if err != nil {
+	var userID uuid.UUID
+	var disabled bool
+	// FOR SHARE makes a concurrent DisableUser wait until this session row is
+	// written, so its delete of the User's Login Sessions cannot miss it.
+	err = tx.QueryRow(ctx, `SELECT id, disabled_at IS NOT NULL FROM users WHERE email = $1 FOR SHARE`, email).Scan(&userID, &disabled)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		u, ok, err := acceptInvite(ctx, tx, email)
+		if err != nil || !ok {
+			return "", !ok, err
+		}
+		userID = u.ID
+		s.logger.Info("invite accepted", "user_id", u.ID, "email", u.Email)
+	case err != nil:
 		return "", false, fmt.Errorf("look up user: %w", err)
+	case disabled:
+		return "", true, nil
 	}
 	token, err = randomToken()
 	if err != nil {
@@ -318,4 +338,22 @@ func randomToken() (string, error) {
 		return "", fmt.Errorf("generate token: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// acceptInvite creates the User for the open Invite on email and marks the
+// Invite accepted. ok is false when there is no open, unexpired Invite.
+func acceptInvite(ctx context.Context, tx pgx.Tx, email string) (u User, ok bool, err error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE invites SET accepted_at = now() WHERE email = $1 AND accepted_at IS NULL AND expires_at > now()`, email)
+	if err != nil {
+		return User{}, false, fmt.Errorf("accept invite: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return User{}, false, nil
+	}
+	u, err = CreateUser(ctx, tx, email, false)
+	if err != nil {
+		return User{}, false, err
+	}
+	return u, true, nil
 }

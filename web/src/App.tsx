@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { AdminUsers } from './AdminUsers'
 import { Chat } from './Chat'
 import { LinkSignIn } from './LinkSignIn'
 import { Login } from './Login'
@@ -64,6 +65,7 @@ function App() {
   }
 
   if (path === '/settings') return <Settings onSignedOut={signedOut} />
+  if (path === '/admin/users') return <AdminUsers onSignedOut={signedOut} />
 
   const match = sessionPath.exec(path)
   if (match) {

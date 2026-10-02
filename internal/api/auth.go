@@ -52,7 +52,9 @@ var _ Mailer = (*mail.SMTP)(nil)
 // AuthConfig wires login into the server.
 type AuthConfig struct {
 	Authenticator Authenticator
-	Mailer        Mailer
+	// Admin backs /api/admin/*.
+	Admin  UserAdmin
+	Mailer Mailer
 	// PublicURL is the app's external origin, used for links in email. It is
 	// config because the request Host is attacker-controlled.
 	PublicURL string
