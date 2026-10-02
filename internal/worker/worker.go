@@ -19,6 +19,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/tracing"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
 
@@ -375,7 +376,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	turnID := uuid.NewString()
 	// The full reply lands with llm.response; deltas only preview its text.
 	batch := stream.NewBatcher(w.deltas.Publish, sid, turnID, stream.CoalesceInterval, w.logger)
-	prov, err := w.gateway.forTurn(ctx, c.UserID, st.Model, func() { batch.Reset(ctx) })
+	prov, err := w.gateway.forTurn(ctx, c.UserID, st.Model, tracing.IDs{SessionID: sid.String(), TurnID: turnID}, func() { batch.Reset(ctx) })
 	var pe *provider.Error
 	switch {
 	case errors.As(err, &pe):

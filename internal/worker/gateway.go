@@ -12,11 +12,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/keyring"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/anthropic"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/retry"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/tracing"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 )
 
@@ -38,6 +40,8 @@ type Gateway struct {
 	Anthropic anthropic.Client
 	// Fake serves the model named Fake.Name(); nil outside dev builds.
 	Fake provider.Provider
+	// Tracer records one span per call attempt; nil records none.
+	Tracer trace.TracerProvider
 	// Sleep waits between quick retries; nil sleeps on a real timer.
 	Sleep func(ctx context.Context, d time.Duration) error
 }
@@ -46,16 +50,19 @@ type Gateway struct {
 var errNoKey = errors.New("no provider key saved")
 
 // forTurn returns the Provider for one turn of userID's session on model,
-// retrying quick failures; onRetry runs before each retry. The key is opened
-// here, per turn, and lives only in the returned value. A missing key is a
-// key_invalid provider.Error.
-func (g Gateway) forTurn(ctx context.Context, userID uuid.UUID, model string, onRetry func()) (provider.Provider, error) {
+// retrying quick failures; onRetry runs before each retry. Each attempt gets
+// a span tagged with ids. The key is opened here, per turn, and lives only in
+// the returned value. A missing key is a key_invalid provider.Error.
+func (g Gateway) forTurn(ctx context.Context, userID uuid.UUID, model string, ids tracing.IDs, onRetry func()) (provider.Provider, error) {
 	p, err := g.pick(ctx, userID, model)
 	if errors.Is(err, errNoKey) {
 		return nil, &provider.Error{Kind: provider.KindKeyInvalid, Err: err}
 	}
 	if err != nil {
 		return nil, err
+	}
+	if g.Tracer != nil {
+		p = tracing.Wrap(p, g.Tracer, ids)
 	}
 	sleep := g.Sleep
 	if sleep == nil {
