@@ -1,6 +1,7 @@
 package eventlog
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -28,9 +29,10 @@ var errNoPersonalProject = errors.New("user has no Personal project")
 
 // CreateSession creates a session in the User's "Personal" Project with a
 // session.created + user.message pair (session.created snapshotting the
-// hard-coded "General" agent) and returns its last_seq. Repeating the same sessionID returns the existing session's
+// hard-coded "General" agent on model, or the default model if it is empty)
+// and returns its last_seq. Repeating the same sessionID returns the existing session's
 // last_seq instead of creating a second one.
-func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text string) (int64, error) {
+func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text, model string) (int64, error) {
 	var last int64
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		found, err := scanLastSeq(ctx, tx, scope, sessionID, &last)
@@ -74,7 +76,7 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 
 		actor := "user:" + scope.UserID.String()
 		if err := insertEvent(ctx, tx, sessionID, scope.WorkspaceID, 1, nil, NewEvent{
-			Type: TypeSessionCreated, Actor: actor, Payload: sessionCreatedPayload(r.defaultModel),
+			Type: TypeSessionCreated, Actor: actor, Payload: sessionCreatedPayload(cmp.Or(model, r.defaultModel)),
 		}); err != nil {
 			return err
 		}
@@ -170,6 +172,51 @@ func (r *Repo) Retry(ctx context.Context, scope TenantScope, sessionID uuid.UUID
 	})
 }
 
+// ChangeModel appends the User's session.config_changed{model}; the next
+// turn runs on model. A session awaiting the user after an error another
+// model can fix (model_unavailable, billing) becomes runnable too, so that
+// turn re-runs on the new model.
+func (r *Repo) ChangeModel(ctx context.Context, scope TenantScope, sessionID uuid.UUID, model string) error {
+	changed := NewEvent{Type: TypeConfigChanged, Actor: "user:" + scope.UserID.String(), Payload: map[string]string{"model": model}}
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		status, err := lockStatus(ctx, tx, scope, sessionID)
+		if err != nil {
+			return err
+		}
+		var resume *StatusChange
+		if status == StatusAwaitingUser {
+			fixable, err := endsInModelError(ctx, tx, sessionID)
+			if err != nil {
+				return err
+			}
+			if fixable {
+				resume = &StatusChange{To: StatusRunnable, Reason: "model_changed"}
+			}
+		}
+		_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{changed}, resume)
+		return err
+	})
+}
+
+// SessionModel returns the model the session's next turn runs on: the
+// latest session.config_changed model, else session.created's.
+func (r *Repo) SessionModel(ctx context.Context, scope TenantScope, sessionID uuid.UUID) (string, error) {
+	var model string
+	err := r.pool.QueryRow(ctx, `
+		SELECT coalesce(
+			(SELECT payload->>'model' FROM events WHERE session_id = s.id AND type = $4 AND payload ? 'model' ORDER BY seq DESC LIMIT 1),
+			(SELECT payload->'agent'->>'model' FROM events WHERE session_id = s.id AND type = $5))
+		FROM sessions s WHERE s.id = $1 AND s.workspace_id = $2 AND s.user_id = $3`,
+		sessionID, scope.WorkspaceID, scope.UserID, TypeConfigChanged, TypeSessionCreated).Scan(&model)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("look up session model: %w", err)
+	}
+	return model, nil
+}
+
 func lockStatus(ctx context.Context, tx pgx.Tx, scope TenantScope, sessionID uuid.UUID) (string, error) {
 	var status string
 	err := tx.QueryRow(ctx,
@@ -194,6 +241,20 @@ func endsInStopError(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID) (bool,
 		return false, fmt.Errorf("look up last event: %w", err)
 	}
 	return stop, nil
+}
+
+// endsInModelError reports whether the newest event other than a status
+// change is a session.error that switching model can fix.
+func endsInModelError(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID) (bool, error) {
+	var fixable bool
+	err := tx.QueryRow(ctx, `
+		SELECT type = $2 AND payload->>'code' IN ('model_unavailable', 'billing') FROM events
+		WHERE session_id = $1 AND type <> $3
+		ORDER BY seq DESC LIMIT 1`, sessionID, TypeSessionError, TypeStatusChanged).Scan(&fixable)
+	if err != nil {
+		return false, fmt.Errorf("look up last event: %w", err)
+	}
+	return fixable, nil
 }
 
 func (r *Repo) existingMessageSeq(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID) (int64, error) {

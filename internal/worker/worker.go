@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"slices"
 	"sync"
@@ -416,7 +417,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 		return fmt.Errorf("call provider: %w", err)
 	}
 
-	classes := usageClasses(resp.Usage)
+	classes := usageClasses(resp.Usage, w.gateway.price(st.Model))
 	usage := map[string]int64{}
 	for _, u := range classes {
 		usage[u.unit] = u.n
@@ -440,21 +441,28 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 type usageClass struct {
 	unit string
 	n    int64
+	// price is USD per million tokens, so n × price is micro-dollars.
+	price float64
 }
 
-// usageClasses lists u's billing classes. Reasoning is part of output_tokens,
-// so it gets none of its own.
-func usageClasses(u provider.Usage) []usageClass {
+// usageClasses lists u's billing classes, priced by p; a nil p prices
+// them at 0. Reasoning is part of output_tokens, so it gets none of its own.
+func usageClasses(u provider.Usage, p *provider.Prices) []usageClass {
+	if p == nil {
+		p = &provider.Prices{}
+	}
 	return []usageClass{
-		{"input_tokens", u.Input},
-		{"cache_read_tokens", u.CacheRead},
-		{"cache_write_5m_tokens", u.CacheWrite5m},
-		{"cache_write_1h_tokens", u.CacheWrite1h},
-		{"output_tokens", u.Output},
+		{"input_tokens", u.Input, p.Input},
+		{"cache_read_tokens", u.CacheRead, p.CacheRead},
+		{"cache_write_5m_tokens", u.CacheWrite5m, p.CacheWrite5m},
+		{"cache_write_1h_tokens", u.CacheWrite1h, p.CacheWrite1h},
+		{"output_tokens", u.Output, p.Output},
 	}
 }
 
-// usageEvents is one usage.recorded per non-zero class.
+// usageEvents is one usage.recorded per non-zero class. cost_micros is
+// fixed at record time
+// from the catalog (provider-gateway.md D12).
 func (w *Worker) usageEvents(classes []usageClass, turnID, providerName, model string) []eventlog.NewEvent {
 	var evs []eventlog.NewEvent
 	for _, u := range classes {
@@ -467,7 +475,7 @@ func (w *Worker) usageEvents(classes []usageClass, turnID, providerName, model s
 			CorrelationID: turnID,
 			Payload: eventlog.UsageRecorded{
 				Kind: eventlog.KindLLM, Provider: providerName, Model: model,
-				Quantity: u.n, Unit: u.unit,
+				Quantity: u.n, Unit: u.unit, CostMicros: int64(math.Round(float64(u.n) * u.price)),
 			},
 		})
 	}
@@ -512,7 +520,7 @@ func errorMessage(kind provider.ErrorKind) string {
 // (agent-loop.md §5.3). It returns errParked on success. lastSeq is the log head the call began from, so a
 // message that arrived meanwhile makes the park stale instead of stranding it.
 func (w *Worker) parkOnProviderError(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State, turnID, providerName string, lastSeq int64, pe *provider.Error) error {
-	usage := w.usageEvents(usageClasses(pe.Usage), turnID, providerName, st.Model)
+	usage := w.usageEvents(usageClasses(pe.Usage, w.gateway.price(st.Model)), turnID, providerName, st.Model)
 	evs := slices.Clone(usage)
 	sessionError := func(retryable bool) eventlog.NewEvent {
 		payload := map[string]any{

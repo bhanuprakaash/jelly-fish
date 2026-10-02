@@ -40,8 +40,16 @@ func (f *fakeRepo) Retry(_ context.Context, _ eventlog.TenantScope, sid uuid.UUI
 	return f.retryErr
 }
 
-func (f *fakeRepo) CreateSession(context.Context, eventlog.TenantScope, uuid.UUID, uuid.UUID, string) (int64, error) {
+func (f *fakeRepo) CreateSession(context.Context, eventlog.TenantScope, uuid.UUID, uuid.UUID, string, string) (int64, error) {
 	return f.createSeq, f.createErr
+}
+
+func (f *fakeRepo) ChangeModel(context.Context, eventlog.TenantScope, uuid.UUID, string) error {
+	return nil
+}
+
+func (f *fakeRepo) SessionModel(context.Context, eventlog.TenantScope, uuid.UUID) (string, error) {
+	return "", nil
 }
 
 func (f *fakeRepo) PostMessage(context.Context, eventlog.TenantScope, uuid.UUID, uuid.UUID, string) (int64, error) {

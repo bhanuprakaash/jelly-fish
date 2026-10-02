@@ -81,7 +81,7 @@ func newFakeSession(t *testing.T, pool *pgxpool.Pool) (uuid.UUID, eventlog.Tenan
 	t.Helper()
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, fake.Name).CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, fake.Name).CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	return sid, scope

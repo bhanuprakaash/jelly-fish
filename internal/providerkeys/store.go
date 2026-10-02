@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 )
 
 // ErrNotFound is returned when the User has no key for the Provider.
@@ -97,6 +99,26 @@ func (s *Store) List(ctx context.Context, userID uuid.UUID) ([]Info, error) {
 		infos = append(infos, i)
 	}
 	return infos, rows.Err()
+}
+
+// Models returns the stored live models list of each of userID's saved
+// keys, by provider.
+func (s *Store) Models(ctx context.Context, userID uuid.UUID) (map[string][]provider.Model, error) {
+	rows, err := s.pool.Query(ctx, `SELECT provider, models FROM provider_keys WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list provider models: %w", err)
+	}
+	defer rows.Close()
+	out := map[string][]provider.Model{}
+	for rows.Next() {
+		var p string
+		var ms []provider.Model
+		if err := rows.Scan(&p, &ms); err != nil {
+			return nil, fmt.Errorf("scan provider models: %w", err)
+		}
+		out[p] = ms
+	}
+	return out, rows.Err()
 }
 
 // Delete removes userID's key for provider, or returns ErrNotFound.

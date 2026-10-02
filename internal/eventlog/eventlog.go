@@ -25,6 +25,7 @@ const (
 	TypeUserInterrupt    = "user.interrupt"
 	TypeTimerSet         = "timer.set"
 	TypeTimerFired       = "timer.fired"
+	TypeConfigChanged    = "session.config_changed"
 )
 
 // Session statuses this slice uses (event-log.md §3).

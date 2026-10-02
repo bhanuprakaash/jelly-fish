@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
@@ -24,7 +25,7 @@ func TestCreateSession(t *testing.T) {
 	sessionID := uuid.New()
 	clientMsgID := uuid.New()
 
-	last, err := repo.CreateSession(t.Context(), scope, sessionID, clientMsgID, "hello")
+	last, err := repo.CreateSession(t.Context(), scope, sessionID, clientMsgID, "hello", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -68,11 +69,11 @@ func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
 	sessionID := uuid.New()
 	clientMsgID := uuid.New()
 
-	first, err := repo.CreateSession(t.Context(), scope, sessionID, clientMsgID, "hello")
+	first, err := repo.CreateSession(t.Context(), scope, sessionID, clientMsgID, "hello", "")
 	if err != nil {
 		t.Fatalf("first CreateSession: %v", err)
 	}
-	second, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello again")
+	second, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello again", "")
 	if err != nil {
 		t.Fatalf("second CreateSession: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			lasts[i], errs[i] = repo.CreateSession(context.Background(), scope, sessionID, uuid.New(), "hello")
+			lasts[i], errs[i] = repo.CreateSession(context.Background(), scope, sessionID, uuid.New(), "hello", "")
 		}(i)
 	}
 	wg.Wait()
@@ -134,7 +135,7 @@ func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
-	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", ""); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
@@ -166,7 +167,7 @@ func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
-	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", ""); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
@@ -229,7 +230,7 @@ func TestTenancy_WrongScopeIsNotFound(t *testing.T) {
 	other := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
-	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", ""); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
@@ -358,7 +359,7 @@ func TestInterruptIgnoresOtherStatusesAndTenants(t *testing.T) {
 	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Interrupt(t.Context(), scope, sid); err != nil {
@@ -374,10 +375,16 @@ func TestInterruptIgnoresOtherStatusesAndTenants(t *testing.T) {
 
 func parkedWith(t *testing.T, pool *pgxpool.Pool, retryable bool, to string) (uuid.UUID, eventlog.TenantScope) {
 	t.Helper()
+	return parkedOn(t, pool, "key_invalid", retryable, to)
+}
+
+// parkedOn is parkedWith for a session.error of code.
+func parkedOn(t *testing.T, pool *pgxpool.Pool, code string, retryable bool, to string) (uuid.UUID, eventlog.TenantScope) {
+	t.Helper()
 	store := eventlog.NewStore(pool)
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -386,7 +393,7 @@ func parkedWith(t *testing.T, pool *pgxpool.Pool, retryable bool, to string) (uu
 	}
 	if _, err := store.AppendFenced(t.Context(), sid, c.Fence, []eventlog.NewEvent{{
 		Type: eventlog.TypeSessionError, Actor: "worker:w1",
-		Payload: map[string]any{"code": "key_invalid", "message": "m", "retryable": retryable},
+		Payload: map[string]any{"code": code, "message": "m", "retryable": retryable},
 	}}, &eventlog.StatusChange{To: to, Reason: "error"}); err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +458,7 @@ func TestRetryIsANoOpElsewhere(t *testing.T) {
 
 	// A runnable session is already going.
 	runnable := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, runnable, uuid.New(), "hi"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, runnable, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Retry(t.Context(), scope, runnable); err != nil {
@@ -476,5 +483,96 @@ func TestPostMessageWakesASleepingSession(t *testing.T) {
 	}
 	if r := readRow(t, pool, sid); r.status != eventlog.StatusRunnable || r.wake != nil {
 		t.Fatalf("row = %+v, want runnable with wake_at cleared", r)
+	}
+}
+
+func TestCreateSessionOnAChosenModel(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	scope := testdb.NewUser(t, pool).Scope()
+	chosen, dflt := uuid.New(), uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, chosen, uuid.New(), "hi", "claude-opus-5-5"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateSession(t.Context(), scope, dflt, uuid.New(), "hi", ""); err != nil {
+		t.Fatal(err)
+	}
+	for sid, want := range map[uuid.UUID]string{chosen: "claude-opus-5-5", dflt: "fake"} {
+		if got, err := repo.SessionModel(t.Context(), scope, sid); err != nil || got != want {
+			t.Errorf("SessionModel = %q, %v; want %q", got, err, want)
+		}
+	}
+}
+
+func TestChangeModelAfterAModelErrorResumes(t *testing.T) {
+	for _, code := range []string{"model_unavailable", "billing"} {
+		t.Run(code, func(t *testing.T) { changeModelResumes(t, code) })
+	}
+}
+
+func changeModelResumes(t *testing.T, code string) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	stopped, scope := parkedOn(t, pool, code, false, eventlog.StatusAwaitingUser)
+	last, _ := repo.SessionLastSeq(t.Context(), scope, stopped)
+	if err := repo.ChangeModel(t.Context(), scope, stopped, "claude-opus-5-5"); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventTypes(t, repo, scope, stopped, last); !slices.Equal(got, []string{eventlog.TypeConfigChanged, eventlog.TypeStatusChanged}) {
+		t.Fatalf("events = %v", got)
+	}
+	evs, _ := repo.ListEvents(t.Context(), scope, stopped, last)
+	var changed map[string]string
+	var status struct{ To, Reason string }
+	if err := json.Unmarshal(evs[0].Payload, &changed); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(evs[1].Payload, &status); err != nil {
+		t.Fatal(err)
+	}
+	if len(changed) != 1 || changed["model"] != "claude-opus-5-5" || status.To != "runnable" || status.Reason != "model_changed" {
+		t.Fatalf("payloads = %s, %s", evs[0].Payload, evs[1].Payload)
+	}
+	if r := readRow(t, pool, stopped); r.status != eventlog.StatusRunnable {
+		t.Fatalf("status = %s, want runnable", r.status)
+	}
+	if got, _ := repo.SessionModel(t.Context(), scope, stopped); got != "claude-opus-5-5" {
+		t.Fatalf("SessionModel = %q", got)
+	}
+}
+
+// A session that ended normally, or stopped on an error a new model doesn't
+// fix, only records the change for its next turn.
+func TestChangeModelElsewhereOnlyRecordsIt(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		retryable bool
+		code      string
+	}{{"after a reply", true, "provider_down"}, {"after key_invalid", false, "key_invalid"}, {"after bug", false, "bug"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := testdb.NewPool(t)
+			repo := eventlog.NewRepo(pool, "fake")
+			sid, scope := parkedOn(t, pool, tc.code, tc.retryable, eventlog.StatusAwaitingUser)
+			last, _ := repo.SessionLastSeq(t.Context(), scope, sid)
+			if err := repo.ChangeModel(t.Context(), scope, sid, "claude-opus-5-5"); err != nil {
+				t.Fatal(err)
+			}
+			if got := eventTypes(t, repo, scope, sid, last); !slices.Equal(got, []string{eventlog.TypeConfigChanged}) {
+				t.Fatalf("events = %v", got)
+			}
+		})
+	}
+}
+
+func TestChangeModelChecksTenancy(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	ended, _ := parkedWith(t, pool, true, eventlog.StatusAwaitingUser)
+
+	if err := repo.ChangeModel(t.Context(), testdb.NewUser(t, pool).Scope(), ended, "x"); !errors.Is(err, eventlog.ErrNotFound) {
+		t.Fatalf("other tenant: err = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.SessionModel(t.Context(), testdb.NewUser(t, pool).Scope(), ended); !errors.Is(err, eventlog.ErrNotFound) {
+		t.Fatalf("other tenant SessionModel: err = %v, want ErrNotFound", err)
 	}
 }

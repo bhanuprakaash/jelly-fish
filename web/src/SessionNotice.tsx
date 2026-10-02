@@ -7,6 +7,8 @@ const BILLING_URL = 'https://console.anthropic.com/settings/billing'
 type Props = {
   sessionId: string
   notice: Notice
+  // picker is the model picker "Switch model" opens.
+  picker?: React.ReactNode
   onUnauthorized: () => void
 }
 
@@ -35,8 +37,9 @@ const retryable = (code: string, failed: boolean) =>
 
 const linkClass = 'rounded-lg bg-neutral-800 px-3 py-1 text-sm hover:bg-neutral-700'
 
-export function SessionNotice({ sessionId, notice, onUnauthorized }: Props) {
+export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Props) {
   const [busy, setBusy] = useState(false)
+  const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const act = async (call: (sessionId: string) => Promise<void>) => {
@@ -86,6 +89,11 @@ export function SessionNotice({ sessionId, notice, onUnauthorized }: Props) {
             Open provider billing
           </a>
         )}
+        {(notice.code === 'model_unavailable' || notice.code === 'billing') && !notice.failed && picker && (
+          <button type="button" onClick={() => setPicking(true)} className={linkClass}>
+            Switch model
+          </button>
+        )}
         {retryable(notice.code, notice.failed) && button('Retry now', retrySession)}
       </>
     )
@@ -95,6 +103,7 @@ export function SessionNotice({ sessionId, notice, onUnauthorized }: Props) {
     <div role="alert" className="mx-auto max-w-md rounded-2xl border border-neutral-800 bg-neutral-900 px-4 py-3">
       <p className="text-sm text-neutral-200">{text}</p>
       <div className="mt-2 flex flex-wrap gap-2">{actions}</div>
+      {picking && notice.kind === 'error' && <div className="mt-2">{picker}</div>}
       {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
     </div>
   )

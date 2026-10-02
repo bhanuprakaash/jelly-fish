@@ -1,6 +1,10 @@
 // Package catalog is the Model Catalog: limits and capabilities of known
 // models, embedded from models.json and reviewed like code
 // (provider-gateway.md §3.4).
+//
+// Prices are the standard tier below any long-context step; those steps
+// are an open gap (provider-gateway.md §12). OpenAI has one cache-write price,
+// kept as cache_write_5m; Gemini bills cache storage, not writes.
 package catalog
 
 import (
@@ -8,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 )
@@ -18,6 +23,7 @@ var modelsJSON []byte
 // Catalog looks up models by id.
 type Catalog struct {
 	byID map[string]provider.ModelInfo
+	all  []provider.ModelInfo
 }
 
 // Load parses the embedded catalog and rejects an incomplete entry, so a bad
@@ -29,7 +35,7 @@ func Load() (Catalog, error) {
 	if err := json.Unmarshal(modelsJSON, &f); err != nil {
 		return Catalog{}, fmt.Errorf("parse models.json: %w", err)
 	}
-	c := Catalog{byID: make(map[string]provider.ModelInfo, len(f.Models))}
+	c := Catalog{byID: make(map[string]provider.ModelInfo, len(f.Models)), all: f.Models}
 	for _, m := range f.Models {
 		if err := check(m); err != nil {
 			return Catalog{}, fmt.Errorf("models.json %q: %w", m.ID, err)
@@ -48,6 +54,8 @@ func check(m provider.ModelInfo) error {
 		return fmt.Errorf("unknown provider %q", m.Provider)
 	case m.ContextWindow <= 0 || m.MaxOutput <= 0:
 		return errors.New("context_window and max_output must be positive")
+	case m.Price == nil || m.Price.Input <= 0 || m.Price.Output <= 0:
+		return errors.New("price input and output must be positive")
 	case m.Thinking != provider.ThinkingAdaptiveOnly && m.Thinking != provider.ThinkingAlwaysOn && m.Thinking != provider.ThinkingNone:
 		return fmt.Errorf("unknown thinking mode %q", m.Thinking)
 	}
@@ -58,4 +66,9 @@ func check(m provider.ModelInfo) error {
 func (c Catalog) Lookup(id string) (provider.ModelInfo, bool) {
 	m, ok := c.byID[id]
 	return m, ok
+}
+
+// All returns every entry, in models.json order.
+func (c Catalog) All() []provider.ModelInfo {
+	return slices.Clone(c.all)
 }

@@ -42,6 +42,8 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.HandleFunc("GET /api/me/login-sessions", authH.handleListLoginSessions)
 	protected.HandleFunc("DELETE /api/me/login-sessions/{id}", authH.handleDeleteLoginSession)
 
+	models := &modelHandlers{cfg: authCfg.Models, logger: logger}
+	protected.HandleFunc("GET /api/models", models.handleList)
 	protected.HandleFunc("GET /api/provider-keys", keys.handleListKeys)
 	protected.HandleFunc("PUT /api/provider-keys/{p}", keys.handlePutKey)
 	protected.HandleFunc("DELETE /api/provider-keys/{p}", keys.handleDeleteKey)
@@ -56,7 +58,8 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	admin.HandleFunc("POST /api/admin/users/{id}/make-admin", authH.handleMakeAdmin)
 
 	protected.Handle("/api/admin/", authH.adminOnly(admin))
-	protected.HandleFunc("POST /api/sessions", handleCreateSession(repo, logger))
+	protected.HandleFunc("POST /api/sessions", handleCreateSession(repo, authCfg.Models, logger))
+	protected.HandleFunc("PUT /api/sessions/{id}/model", models.handleChangeModel(repo))
 	protected.HandleFunc("POST /api/sessions/{id}/messages", handlePostMessage(repo, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/interrupt", handleSessionAction(repo.Interrupt, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/retry", handleSessionAction(repo.Retry, logger))

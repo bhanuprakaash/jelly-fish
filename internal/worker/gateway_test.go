@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
@@ -40,6 +42,12 @@ func newFakeAnthropic(t *testing.T, modelsStatus int) *fakeAnthropic {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return newFakeAnthropicSSE(t, modelsStatus, sse)
+}
+
+// newFakeAnthropicSSE is newFakeAnthropic replying with sse to every turn.
+func newFakeAnthropicSSE(t *testing.T, modelsStatus int, sse []byte) *fakeAnthropic {
+	t.Helper()
 	f := &fakeAnthropic{}
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -107,7 +115,7 @@ func TestTurnRunsOnTheUsersAnthropicKey(t *testing.T) {
 	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
 
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "find cats"); err != nil {
+	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "find cats", ""); err != nil {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, gw)
@@ -161,12 +169,186 @@ func TestTurnRunsOnTheUsersAnthropicKey(t *testing.T) {
 	}
 }
 
+// usageSSE is a Haiku text reply with Usage{Input:100, CacheRead:20, Output:50}.
+const usageSSE = `event: message_start
+data: {"type":"message_start","message":{"id":"msg_u","type":"message","role":"assistant","model":"claude-haiku-4-5-20251001","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":20,"output_tokens":1}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":50}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
+
+func TestUsageIsOneRowPerClassPricedFromTheCatalog(t *testing.T) {
+	pool := testdb.NewPool(t)
+	api := newFakeAnthropicSSE(t, http.StatusOK, []byte(usageSSE))
+	gw := testGateway(t, pool, api.srv.URL)
+	user := testdb.NewUser(t, pool)
+	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+		t.Fatal(err)
+	}
+	runWorker(t, pool, gw)
+	waitFor(t, pool, sid, eventlog.StatusAwaitingUser)
+
+	// Haiku 4.5 is $1 input, $0.10 cache read, $5 output per million tokens.
+	type row struct {
+		unit            string
+		quantity, micro int64
+	}
+	want := []row{{"input_tokens", 100, 100}, {"cache_read_tokens", 20, 2}, {"output_tokens", 50, 250}}
+
+	rows, err := pool.Query(t.Context(), `
+		SELECT e.payload->>'unit', (e.payload->>'quantity')::bigint, (e.payload->>'cost_micros')::bigint
+		FROM events e JOIN usage u ON u.session_id = e.session_id AND u.seq = e.seq
+		WHERE e.session_id = $1 AND e.type = $2 AND e.payload->>'provider' = 'anthropic' AND e.payload->>'model' = $3
+		  AND u.provider = 'anthropic' AND u.model = $3 AND u.cost_micros = (e.payload->>'cost_micros')::bigint
+		ORDER BY e.seq`, sid, eventlog.TypeUsageRecorded, haiku)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.unit, &r.quantity, &r.micro); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("usage = %v, want %v", got, want)
+	}
+
+	// Rows written in one transaction share its xmin.
+	var txs int
+	if err := pool.QueryRow(t.Context(), `SELECT count(DISTINCT xmin::text) FROM events WHERE session_id = $1 AND type IN ($2, $3)`,
+		sid, eventlog.TypeLLMResponse, eventlog.TypeUsageRecorded).Scan(&txs); err != nil {
+		t.Fatal(err)
+	}
+	if txs != 1 {
+		t.Fatalf("llm.response and usage.recorded span %d transactions, want 1", txs)
+	}
+	var cost int64
+	if err := pool.QueryRow(t.Context(), `SELECT cost_micros FROM sessions WHERE id = $1`, sid).Scan(&cost); err != nil {
+		t.Fatal(err)
+	}
+	if cost != 352 {
+		t.Fatalf("session cost_micros = %d, want 352", cost)
+	}
+}
+
+func TestModelOnlyInTheLiveListRunsUnpriced(t *testing.T) {
+	pool := testdb.NewPool(t)
+	api := newFakeAnthropicSSE(t, http.StatusOK, []byte(usageSSE))
+	gw := testGateway(t, pool, api.srv.URL)
+	user := testdb.NewUser(t, pool)
+	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
+	const preview = "claude-next-preview"
+	if _, err := pool.Exec(t.Context(), `UPDATE provider_keys SET models = $2 WHERE user_id = $1`,
+		user.ID, `[{"id":"`+preview+`","display_name":"Claude Next"}]`); err != nil {
+		t.Fatal(err)
+	}
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, preview).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+		t.Fatal(err)
+	}
+	runWorker(t, pool, gw)
+	waitFor(t, pool, sid, eventlog.StatusAwaitingUser)
+
+	var n, cost int64
+	if err := pool.QueryRow(t.Context(), `SELECT count(*), coalesce(sum(cost_micros), -1) FROM usage WHERE session_id = $1 AND provider = 'anthropic' AND model = $2`,
+		sid, preview).Scan(&n, &cost); err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 || cost != 0 {
+		t.Fatalf("usage rows = %d costing %d, want 3 costing 0", n, cost)
+	}
+}
+
+func TestNextTurnRunsOnTheChangedModel(t *testing.T) {
+	pool := testdb.NewPool(t)
+	api := newFakeAnthropicSSE(t, http.StatusOK, []byte(usageSSE))
+	gw := testGateway(t, pool, api.srv.URL)
+	user := testdb.NewUser(t, pool)
+	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
+	repo := eventlog.NewRepo(pool, haiku)
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+		t.Fatal(err)
+	}
+	runWorker(t, pool, gw)
+	waitFor(t, pool, sid, eventlog.StatusAwaitingUser)
+
+	const sonnet = "claude-sonnet-5-5"
+	if err := repo.ChangeModel(t.Context(), user.Scope(), sid, sonnet); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.PostMessage(t.Context(), user.Scope(), sid, uuid.New(), "again"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	var models []string
+	for time.Now().Before(deadline) && len(models) < 2 {
+		rows, err := pool.Query(t.Context(), `SELECT payload->>'model' FROM events WHERE session_id = $1 AND type = $2 ORDER BY seq`, sid, eventlog.TypeTurnStarted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		models, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !slices.Equal(models, []string{haiku, sonnet}) {
+		t.Fatalf("turn.started models = %v, want %v", models, []string{haiku, sonnet})
+	}
+}
+
+func TestModelNowhereKnownIsModelUnavailable(t *testing.T) {
+	pool := testdb.NewPool(t)
+	api := newFakeAnthropic(t, http.StatusOK)
+	gw := testGateway(t, pool, api.srv.URL)
+	user := testdb.NewUser(t, pool)
+	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "claude-no-such-model").CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+		t.Fatal(err)
+	}
+	runWorker(t, pool, gw)
+	waitFor(t, pool, sid, eventlog.StatusAwaitingUser)
+	if keys := api.seenKeys(); len(keys) != 0 {
+		t.Fatalf("Anthropic was called %d times", len(keys))
+	}
+	var code string
+	if err := pool.QueryRow(t.Context(), `SELECT payload->>'code' FROM events WHERE session_id = $1 AND type = $2`, sid, eventlog.TypeSessionError).Scan(&code); err != nil {
+		t.Fatal(err)
+	}
+	if code != "model_unavailable" {
+		t.Fatalf("session.error code = %s, want model_unavailable", code)
+	}
+}
+
 func TestTurnWithoutAKeyIsKeyInvalid(t *testing.T) {
 	pool := testdb.NewPool(t)
 	api := newFakeAnthropic(t, http.StatusOK)
 	user := testdb.NewUser(t, pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, testGateway(t, pool, api.srv.URL))

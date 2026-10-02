@@ -28,6 +28,9 @@ func ToUI(e eventlog.Event) (UIEvent, bool) {
 	case eventlog.TypeSessionError:
 		payload, ok := onlyKeys(e.Payload, "code", "retryable", "request_id", "turn_id")
 		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok
+	case eventlog.TypeConfigChanged:
+		payload, ok := onlyKeys(e.Payload, "model")
+		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok
 	case eventlog.TypeTimerSet:
 		payload, ok := onlyKeys(e.Payload, "wake_at", "reason")
 		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok

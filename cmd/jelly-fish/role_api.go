@@ -74,6 +74,10 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	healthSrv := health.NewServer(cfg.HealthAddr, pg.NewReadinessChecker(pool), logger)
 	mountMetrics(healthSrv, reg)
+	fakeModel := ""
+	if fake := devFake(); fake != nil {
+		fakeModel = fake.Name()
+	}
 	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics, api.AuthConfig{
 		Authenticator:  authStore,
 		Admin:          authStore,
@@ -85,6 +89,7 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Sealer: kr,
 			Models: api.AnthropicLister{},
 		},
+		Models: api.ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: model, Fake: fakeModel},
 	})
 
 	g, gctx := errgroup.WithContext(ctx)

@@ -57,6 +57,8 @@ type AuthConfig struct {
 	Mailer Mailer
 	// ProviderKeys backs /api/provider-keys.
 	ProviderKeys ProviderKeyConfig
+	// Models backs /api/models and the model a session runs on.
+	Models ModelConfig
 	// PublicURL is the app's external origin, used for links in email. It is
 	// config because the request Host is attacker-controlled.
 	PublicURL string

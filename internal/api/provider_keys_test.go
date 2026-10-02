@@ -17,6 +17,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/keyring"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
@@ -63,11 +64,16 @@ func newKeysEnv(t *testing.T) *keysEnv {
 	logs := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	lister := &fakeLister{}
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	store := auth.NewStore(pool, logger)
 	srv, authH := newServer(":0", logger, testWebFS(), eventlog.NewRepo(pool, "fake"), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
 		AuthConfig{
 			Authenticator: store, Admin: store, Mailer: &fakeMailer{}, PublicURL: testPublicURL,
 			ProviderKeys: ProviderKeyConfig{Store: providerkeys.NewStore(pool), Sealer: kr, Models: lister},
+			Models:       ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: "fake", Fake: "fake"},
 		})
 	e := &keysEnv{loginEnv: &loginEnv{pool: pool, srv: srv, auth: authH, mailer: authH.cfg.Mailer.(*fakeMailer)}, lister: lister, logs: logs, kr: kr}
 	e.user = testdb.NewUser(t, pool)

@@ -20,7 +20,7 @@ func TestStoreAppend_StatusChangeIsProjectedInSameTx(t *testing.T) {
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
-	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", ""); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
@@ -81,7 +81,7 @@ func TestAppendFenced_NoOpStillChecksLease(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	c, _, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -105,7 +105,7 @@ func TestRelease(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	row := func() (status string, last int64, attempts int) {
@@ -153,7 +153,7 @@ func TestReleaseNeverCountsTowardCrashLoop(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	for range 10 {
@@ -175,7 +175,7 @@ func sleepingSession(t *testing.T, pool *pgxpool.Pool, wake time.Duration) (uuid
 	store := eventlog.NewStore(pool)
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -267,7 +267,7 @@ func TestHeartbeatReportsCancelRequested(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	c, _, err := store.Claim(t.Context(), "w1", 30*time.Second)

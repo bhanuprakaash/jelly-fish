@@ -12,11 +12,13 @@ import (
 // (internal/eventlog.Repo satisfies it); defined here since this is where
 // it's consumed.
 type SessionRepo interface {
-	CreateSession(ctx context.Context, scope eventlog.TenantScope, sessionID, clientMsgID uuid.UUID, text string) (int64, error)
+	CreateSession(ctx context.Context, scope eventlog.TenantScope, sessionID, clientMsgID uuid.UUID, text, model string) (int64, error)
 	PostMessage(ctx context.Context, scope eventlog.TenantScope, sessionID, clientMsgID uuid.UUID, text string) (int64, error)
 	SessionLastSeq(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) (int64, error)
 	Interrupt(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) error
 	Retry(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) error
+	ChangeModel(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, model string) error
+	SessionModel(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) (string, error)
 	ListEvents(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, after int64) ([]eventlog.Event, error)
 }
 

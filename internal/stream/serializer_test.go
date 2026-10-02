@@ -33,6 +33,12 @@ func TestToUI(t *testing.T) {
 			wantPayload: `{"code":"bug","request_id":"req_1","retryable":false,"turn_id":"t1"}`,
 		},
 		{
+			name:        "session.config_changed keeps only the model",
+			event:       eventlog.Event{Seq: 5, Type: eventlog.TypeConfigChanged, Payload: []byte(`{"model":"claude-opus-5-5","snapshot":{"x":1}}`)},
+			wantSent:    true,
+			wantPayload: `{"model":"claude-opus-5-5"}`,
+		},
+		{
 			name:        "session.error without a request id",
 			event:       eventlog.Event{Seq: 9, Type: eventlog.TypeSessionError, Payload: []byte(`{"code":"crash_loop","message":"x","retryable":false}`)},
 			wantSent:    true,

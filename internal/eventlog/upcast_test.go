@@ -102,7 +102,7 @@ func TestLoadUpcastsWithoutRewritingStoredRows(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Append(t.Context(), sid, nil, []eventlog.NewEvent{{Type: testType, Actor: "test", Payload: map[string]int{"a": 1}}}, nil); err != nil {

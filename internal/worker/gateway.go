@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -67,22 +68,51 @@ func (g Gateway) pick(ctx context.Context, userID uuid.UUID, model string) (prov
 	if g.Fake != nil && model == g.Fake.Name() {
 		return g.Fake, nil
 	}
-	info, ok := g.Catalog.Lookup(model)
-	if !ok {
-		return nil, fmt.Errorf("model %q is not in the catalog", model)
+	prov, err := g.providerOf(ctx, userID, model)
+	if err != nil {
+		return nil, err
 	}
-	if info.Provider != anthropic.Name {
-		return nil, fmt.Errorf("provider %q is not supported", info.Provider)
+	if prov != anthropic.Name {
+		return nil, fmt.Errorf("provider %q is not supported", prov)
 	}
-	key, _, err := openKey(ctx, g.Keys, g.Keyring, userID, info.Provider)
+	key, _, err := openKey(ctx, g.Keys, g.Keyring, userID, prov)
 	if errors.Is(err, providerkeys.ErrNotFound) {
-		return nil, fmt.Errorf("%s: %w", info.Provider, errNoKey)
+		return nil, fmt.Errorf("%s: %w", prov, errNoKey)
 	}
 	if err != nil {
 		return nil, err
 	}
 	defer clear(key)
 	return g.Anthropic.Provider(string(key)), nil
+}
+
+// providerOf names model's Provider: the catalog's, else the one whose
+// saved key lists it live. Such a model runs with default limits and no
+// price (provider-gateway.md D15). A model neither knows is
+// model_unavailable.
+func (g Gateway) providerOf(ctx context.Context, userID uuid.UUID, model string) (string, error) {
+	if info, ok := g.Catalog.Lookup(model); ok {
+		return info.Provider, nil
+	}
+	lists, err := g.Keys.Models(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	for prov, models := range lists {
+		if slices.ContainsFunc(models, func(m provider.Model) bool { return m.ID == model }) {
+			return prov, nil
+		}
+	}
+	return "", &provider.Error{Kind: provider.KindModelUnavailable, Err: fmt.Errorf("model %q is unknown", model)}
+}
+
+// price is model's list price, or nil when the catalog has none for it.
+func (g Gateway) price(model string) *provider.Prices {
+	if g.Catalog == nil {
+		return nil
+	}
+	info, _ := g.Catalog.Lookup(model)
+	return info.Price
 }
 
 // openKey returns userID's plaintext key for prov, which the caller clears,

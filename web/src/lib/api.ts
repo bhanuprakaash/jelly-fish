@@ -204,13 +204,48 @@ export async function deleteProviderKey(provider: string): Promise<void> {
   await request(`/api/provider-keys/${provider}`, { method: 'DELETE' })
 }
 
-// createSession starts a session; repeating the same sessionId returns the
-// existing one instead of sending message again (event-log.md §4).
-export function createSession(sessionId: string, clientMsgId: string, message: string) {
+// ModelPrice is a model's list price in USD per million tokens.
+export type ModelPrice = { input: number; output: number }
+
+export type ModelOption = {
+  id: string
+  display_name?: string
+  context_window?: number
+  // price is null when the catalog has no price for the model.
+  price: ModelPrice | null
+}
+
+// ProviderModels is one picker group. A Provider with no saved key is not
+// available: its models show but can't be picked.
+export type ProviderModels = { provider: string; available: boolean; models: ModelOption[] }
+
+export type Models = { default: string; providers: ProviderModels[] }
+
+// getModels lists the models the User can pick, grouped per Provider.
+export async function getModels(): Promise<Models> {
+  const res = await request('/api/models')
+  return res.json() as Promise<Models>
+}
+
+// changeModel switches a session's model for its next turn; a session
+// stopped on an error re-runs that turn on it.
+export async function changeModel(sessionId: string, model: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/model`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })
+}
+
+// createSession starts a session, on model if given, else the default;
+// repeating the same sessionId returns the existing one instead of sending
+// message again (event-log.md §4).
+export function createSession(sessionId: string, clientMsgId: string, message: string, model?: string) {
   return postJSON<{ session_id: string; last_seq: number }>('/api/sessions', {
     session_id: sessionId,
     client_msg_id: clientMsgId,
     message,
+    model,
   })
 }
 

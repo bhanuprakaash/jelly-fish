@@ -40,9 +40,11 @@ type createSessionRequest struct {
 	SessionID   uuid.UUID `json:"session_id"`
 	ClientMsgID uuid.UUID `json:"client_msg_id"`
 	Message     string    `json:"message"`
+	// Model is optional; empty starts the session on the default model.
+	Model string `json:"model"`
 }
 
-func handleCreateSession(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
+func handleCreateSession(repo SessionRepo, models ModelConfig, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createSessionRequest
 		if !decodeJSON(w, r, &req) {
@@ -54,7 +56,19 @@ func handleCreateSession(repo SessionRepo, logger *slog.Logger) http.HandlerFunc
 		}
 
 		scope := scopeFrom(r)
-		last, err := repo.CreateSession(r.Context(), scope, req.SessionID, req.ClientMsgID, req.Message)
+		if req.Model != "" {
+			groups, err := models.pickable(r.Context(), scope.UserID)
+			if err != nil {
+				logger.Error("list models", "error", err, "session_id", req.SessionID)
+				writeError(w, http.StatusInternalServerError, "could not create session")
+				return
+			}
+			if _, ok := providerOf(groups, req.Model); !ok {
+				writeError(w, http.StatusUnprocessableEntity, "model is not available")
+				return
+			}
+		}
+		last, err := repo.CreateSession(r.Context(), scope, req.SessionID, req.ClientMsgID, req.Message, req.Model)
 		if err != nil {
 			logger.Error("create session", "error", err, "session_id", req.SessionID)
 			writeError(w, http.StatusInternalServerError, "could not create session")

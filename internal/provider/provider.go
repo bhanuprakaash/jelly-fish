@@ -129,4 +129,17 @@ type ModelInfo struct {
 	Structured       bool     `json:"structured_outputs"`
 	ForcedToolChoice bool     `json:"forced_tool_choice"`
 	Thinking         Thinking `json:"thinking"`
+	// Price is nil when the list price is unknown; such a model's usage
+	// costs 0 (provider-gateway.md D15).
+	Price *Prices `json:"price,omitempty"`
+}
+
+// Prices are a model's list prices in USD per million tokens, by Usage
+// class, so tokens × price is micro-dollars.
+type Prices struct {
+	Input        float64 `json:"input"`
+	CacheRead    float64 `json:"cache_read"`
+	CacheWrite5m float64 `json:"cache_write_5m"`
+	CacheWrite1h float64 `json:"cache_write_1h"`
+	Output       float64 `json:"output"`
 }

@@ -19,7 +19,7 @@ const futureType = "test.renamed"
 func newSession(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	return sid

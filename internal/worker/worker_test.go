@@ -82,7 +82,7 @@ func TestWorkerRepliesAndParks(t *testing.T) {
 	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hello world"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hello world", ""); err != nil {
 		t.Fatal(err)
 	}
 	startWorker(t, pool)
@@ -111,7 +111,7 @@ func TestParkAfterNewMessageIsStale(t *testing.T) {
 	store := eventlog.NewStore(pool)
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -149,7 +149,7 @@ func TestFencedAppendFromOldEpochIsRejected(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 	c, _, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -168,7 +168,7 @@ func TestRescuedTurnIsRerun(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -197,7 +197,7 @@ func TestCrashLoopFailsSessionWithoutDeciding(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -243,7 +243,7 @@ func TestCrashLoopFailsSessionWithoutDeciding(t *testing.T) {
 func TestStreamedTurnPublishesDeltasNotEvents(t *testing.T) {
 	pool := testdb.NewPool(t)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello world"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello world", ""); err != nil {
 		t.Fatal(err)
 	}
 

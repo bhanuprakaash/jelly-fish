@@ -71,6 +71,16 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		}
 		st.Status = eventlog.StatusRunnable
 		st.Model = p.Agent.Model
+	case eventlog.TypeConfigChanged:
+		var p struct {
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		if p.Model != "" {
+			st.Model = p.Model
+		}
 	case eventlog.TypeUserMessage:
 		var p struct {
 			Message msg.Message `json:"message"`

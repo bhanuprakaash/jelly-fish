@@ -46,3 +46,31 @@ func TestFoldCountsRetryableErrorsSinceTheLastUserMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestFoldTakesTheLatestModel(t *testing.T) {
+	created := ev(t, 1, eventlog.TypeSessionCreated, map[string]any{"agent": map[string]string{"model": "fake"}})
+	changed := func(seq int64, payload map[string]any) eventlog.Event {
+		return ev(t, seq, eventlog.TypeConfigChanged, payload)
+	}
+	tests := []struct {
+		name string
+		evs  []eventlog.Event
+		want string
+	}{
+		{"created", []eventlog.Event{created}, "fake"},
+		{"one change", []eventlog.Event{created, changed(2, map[string]any{"model": "claude-opus-5-5"})}, "claude-opus-5-5"},
+		{"latest wins", []eventlog.Event{created, changed(2, map[string]any{"model": "claude-opus-5-5"}), changed(3, map[string]any{"model": "claude-sonnet-5-5"})}, "claude-sonnet-5-5"},
+		{"a change without a model keeps it", []eventlog.Event{created, changed(2, map[string]any{"model": "claude-opus-5-5"}), changed(3, map[string]any{"mode": "ask"})}, "claude-opus-5-5"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st, err := worker.Fold(tt.evs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.Model != tt.want {
+				t.Fatalf("Model = %q, want %q", st.Model, tt.want)
+			}
+		})
+	}
+}

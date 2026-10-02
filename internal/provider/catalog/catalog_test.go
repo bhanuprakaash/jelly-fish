@@ -40,3 +40,35 @@ func TestLookup(t *testing.T) {
 		t.Fatal("unknown id found")
 	}
 }
+
+func TestPrices(t *testing.T) {
+	c, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := c.Lookup("claude-haiku-4-5-20251001")
+	want := provider.Prices{Input: 1, CacheRead: 0.1, CacheWrite5m: 1.25, CacheWrite1h: 2, Output: 5}
+	if m.Price == nil || *m.Price != want {
+		t.Fatalf("haiku price = %+v, want %+v", m.Price, want)
+	}
+	for _, m := range c.All() {
+		if m.Price == nil || m.Price.Input <= 0 || m.Price.Output <= 0 {
+			t.Errorf("%s: unpriced: %+v", m.ID, m.Price)
+		}
+	}
+}
+
+func TestAllKeepsFileOrder(t *testing.T) {
+	c, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := c.All()
+	if len(all) == 0 || all[0].ID != "claude-fable-5-1" {
+		t.Fatalf("first = %+v", all)
+	}
+	all[0].ID = "mutated"
+	if c.All()[0].ID != "claude-fable-5-1" {
+		t.Fatal("All shares its slice with the caller")
+	}
+}
