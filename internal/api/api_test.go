@@ -72,7 +72,7 @@ type fakeMailer struct {
 
 type sentMail struct{ to, subject, text string }
 
-func (m *fakeMailer) Send(_ context.Context, to, subject, text, _ string) error {
+func (m *fakeMailer) Send(_ context.Context, to, subject, text string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sent = append(m.sent, sentMail{to, subject, text})

@@ -101,7 +101,7 @@ type Channel interface {
 }
 
 type Mailer interface { // shared with auth-keys.md §5.1
-    Send(ctx context.Context, to, subject, text, html string) error
+    Send(ctx context.Context, to, subject, text string) error
 }
 ```
 

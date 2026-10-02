@@ -19,7 +19,7 @@ const (
 	loginCookie = "__Host-jf_login"
 	// devLoginCookie is the cookie name when cookies may go over plain http.
 	devLoginCookie  = "jf_login"
-	loginCookieAge  = 30 * 24 * time.Hour
+	loginCookieAge  = auth.SessionLifetime
 	codeSendTimeout = 15 * time.Second
 	codeAcceptedMsg = "If you're invited, a code is on its way."
 )
@@ -34,10 +34,10 @@ type Authenticator interface {
 
 var _ Authenticator = (*auth.Store)(nil)
 
-// Mailer sends one email (notifications.md §4.1); html may be empty.
+// Mailer sends one plain-text email (notifications.md §4.1).
 // internal/mail.SMTP satisfies it.
 type Mailer interface {
-	Send(ctx context.Context, to, subject, text, html string) error
+	Send(ctx context.Context, to, subject, text string) error
 }
 
 var _ Mailer = (*mail.SMTP)(nil)
@@ -96,7 +96,7 @@ func (a *authHandlers) sendCode(ctx context.Context, email, code string) {
 		defer cancel()
 		subject := "Your jelly-fish code: " + code
 		text := "Your jelly-fish sign-in code is " + code + ".\nIt expires in 10 minutes. If you didn't ask for it, ignore this email.\n"
-		if err := a.cfg.Mailer.Send(ctx, email, subject, text, ""); err != nil {
+		if err := a.cfg.Mailer.Send(ctx, email, subject, text); err != nil {
 			a.logger.Error("send login code", "error", err)
 		}
 	})

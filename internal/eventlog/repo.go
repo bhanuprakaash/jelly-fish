@@ -48,8 +48,8 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 				INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at)
 				SELECT $1, $2, p.id, $3, $4, $5, 2, now()
 				FROM projects p
-				WHERE p.workspace_id = $2 AND p.user_id = $3 AND p.name = 'Personal'`,
-				sessionID, scope.WorkspaceID, scope.UserID, generalAgent(), StatusRunnable)
+				WHERE p.workspace_id = $2 AND p.user_id = $3 AND p.name = $6`,
+				sessionID, scope.WorkspaceID, scope.UserID, generalAgent(), StatusRunnable, PersonalProject)
 			if err == nil && tag.RowsAffected() == 0 {
 				return errNoPersonalProject
 			}

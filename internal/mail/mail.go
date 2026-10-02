@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/smtp"
 	"net/url"
-	"strings"
 )
 
 // SMTP is a Mailer that speaks SMTP to one server.
@@ -40,7 +39,7 @@ func NewSMTP(rawURL, from string) (*SMTP, error) {
 }
 
 // Send delivers the message, giving up when ctx is done.
-func (m *SMTP) Send(ctx context.Context, to, subject, text, html string) error {
+func (m *SMTP) Send(ctx context.Context, to, subject, text string) error {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", m.addr)
 	if err != nil {
 		return fmt.Errorf("dial smtp: %w", err)
@@ -78,7 +77,7 @@ func (m *SMTP) Send(ctx context.Context, to, subject, text, html string) error {
 	if err != nil {
 		return fmt.Errorf("smtp data: %w", err)
 	}
-	if _, err := w.Write([]byte(message(m.from, to, subject, text, html))); err != nil {
+	if _, err := w.Write([]byte(message(m.from, to, subject, text))); err != nil {
 		return fmt.Errorf("smtp write: %w", err)
 	}
 	if err := w.Close(); err != nil {
@@ -87,18 +86,7 @@ func (m *SMTP) Send(ctx context.Context, to, subject, text, html string) error {
 	return c.Quit()
 }
 
-func message(from, to, subject, text, html string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\n", from, to, subject)
-	if html == "" {
-		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-		b.WriteString(text)
-		return b.String()
-	}
-	const boundary = "jf-alt"
-	fmt.Fprintf(&b, "Content-Type: multipart/alternative; boundary=%s\r\n\r\n", boundary)
-	fmt.Fprintf(&b, "--%s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n", boundary, text)
-	fmt.Fprintf(&b, "--%s\r\nContent-Type: text/html; charset=utf-8\r\n\r\n%s\r\n", boundary, html)
-	fmt.Fprintf(&b, "--%s--\r\n", boundary)
-	return b.String()
+func message(from, to, subject, text string) string {
+	return fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s",
+		from, to, subject, text)
 }

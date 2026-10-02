@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -26,7 +27,11 @@ const (
 	maxCodeAttempts = 5
 	// maxCodesPerWindow caps login codes sent to one email per 15 minutes.
 	maxCodesPerWindow = 3
-	personalProject   = "Personal"
+	// SessionLifetime is how long a Login Session lasts without being seen.
+	SessionLifetime = 30 * 24 * time.Hour
+	// slideAfter is how stale last_seen_at must be before the next request
+	// extends the Login Session.
+	slideAfter = time.Hour
 )
 
 // ErrUnauthenticated is returned for a missing, expired or unknown Login
@@ -79,7 +84,7 @@ func CreateUser(ctx context.Context, tx pgx.Tx, email string, isAdmin bool) (Use
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO projects (id, workspace_id, user_id, name) VALUES ($1, $2, $3, $4)`,
-		uuid.New(), u.WorkspaceID, u.ID, personalProject); err != nil {
+		uuid.New(), u.WorkspaceID, u.ID, eventlog.PersonalProject); err != nil {
 		return User{}, fmt.Errorf("insert project: %w", err)
 	}
 	return u, nil
@@ -218,8 +223,8 @@ func login(ctx context.Context, tx pgx.Tx, email, userAgent string) (token strin
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO login_sessions (id, user_id, token_hash, user_agent, expires_at)
-		VALUES ($1, $2, $3, $4, now() + interval '30 days')`,
-		uuid.New(), userID, hash(token), userAgent); err != nil {
+		VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5))`,
+		uuid.New(), userID, hash(token), userAgent, SessionLifetime.Seconds()); err != nil {
 		return "", false, fmt.Errorf("insert login session: %w", err)
 	}
 	return token, false, nil
@@ -234,11 +239,11 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 	var stale bool
 	var name *string
 	err := s.pool.QueryRow(ctx, `
-		SELECT ls.id, ls.last_seen_at < now() - interval '1 hour',
+		SELECT ls.id, ls.last_seen_at < now() - make_interval(secs => $2),
 		       u.id, u.workspace_id, u.email, u.name, u.is_admin
 		FROM login_sessions ls JOIN users u ON u.id = ls.user_id
 		WHERE ls.token_hash = $1 AND ls.expires_at > now() AND u.disabled_at IS NULL`,
-		hash(token)).Scan(&loginID, &stale, &u.ID, &u.WorkspaceID, &u.Email, &name, &u.IsAdmin)
+		hash(token), slideAfter.Seconds()).Scan(&loginID, &stale, &u.ID, &u.WorkspaceID, &u.Email, &name, &u.IsAdmin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrUnauthenticated
 	}
@@ -251,8 +256,9 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 	if stale {
 		// Best effort: a failed extension must not reject a valid session.
 		_, _ = s.pool.Exec(ctx, `
-			UPDATE login_sessions SET last_seen_at = now(), expires_at = now() + interval '30 days'
-			WHERE id = $1 AND last_seen_at < now() - interval '1 hour'`, loginID)
+			UPDATE login_sessions SET last_seen_at = now(), expires_at = now() + make_interval(secs => $2)
+			WHERE id = $1 AND last_seen_at < now() - make_interval(secs => $3)`,
+			loginID, SessionLifetime.Seconds(), slideAfter.Seconds())
 	}
 	return u, nil
 }
