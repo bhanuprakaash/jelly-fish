@@ -1,0 +1,6 @@
+msg_v 2
+native nat,omitempty:*{provider:string,type:string,raw:json.RawMessage}
+text text,omitempty:string
+thinking th,omitempty:*{text,omitempty:string,provider:string,model,omitempty:string,opaque,omitempty:[]uint8}
+tool_result tr,omitempty:*{call_id:string,parts:[]Part,is_error,omitempty:bool}
+tool_use tu,omitempty:*{id:string,name:string,args:json.RawMessage,opaque,omitempty:[]uint8}

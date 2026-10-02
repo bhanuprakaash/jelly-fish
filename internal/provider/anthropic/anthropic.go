@@ -9,7 +9,6 @@ import (
 	"net/http"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 )
@@ -20,20 +19,20 @@ type Client struct {
 	BaseURL string
 	// HTTPClient overrides the transport, for tests.
 	HTTPClient *http.Client
+	// Catalog gives each model's output cap and thinking mode.
+	Catalog Catalog
+}
+
+// Catalog looks up a model's limits and capabilities.
+type Catalog interface {
+	Lookup(id string) (provider.ModelInfo, bool)
 }
 
 // ListModels lists every model key can use. It is free, so it doubles as the
 // key check. It does not retry: a rejected key must fail at once. Errors
 // never carry key.
 func (c Client) ListModels(ctx context.Context, key string) ([]provider.Model, error) {
-	opts := []option.RequestOption{option.WithAPIKey(key), option.WithMaxRetries(0)}
-	if c.BaseURL != "" {
-		opts = append(opts, option.WithBaseURL(c.BaseURL))
-	}
-	if c.HTTPClient != nil {
-		opts = append(opts, option.WithHTTPClient(c.HTTPClient))
-	}
-	client := sdk.NewClient(opts...)
+	client := sdk.NewClient(c.options(key)...)
 
 	var models []provider.Model
 	pager := client.Models.ListAutoPaging(ctx, sdk.ModelListParams{})

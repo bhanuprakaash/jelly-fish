@@ -4,6 +4,10 @@ package main
 
 import "github.com/bhanuprakaash/jelly-fish/internal/provider"
 
-// newProvider returns no Provider: the Fake Provider must not exist outside
-// dev builds, and there is no real one to wire.
-func newProvider() provider.Provider { return nil }
+// buildDefaultModel is the model new sessions use when JF_DEFAULT_MODEL is
+// unset.
+const buildDefaultModel = "claude-haiku-4-5-20251001"
+
+// devFake returns no Provider: the Fake Provider must not exist outside dev
+// builds.
+func devFake() provider.Provider { return nil }

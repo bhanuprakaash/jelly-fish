@@ -14,13 +14,14 @@ import (
 // exported method takes a TenantScope (enforced by TestRepoMethodsTakeScope)
 // and reports a session outside it as ErrNotFound (event-log.md §5.15).
 type Repo struct {
-	pool  *pgxpool.Pool
-	store *Store
+	pool         *pgxpool.Pool
+	store        *Store
+	defaultModel string
 }
 
-// NewRepo builds a Repo backed by pool.
-func NewRepo(pool *pgxpool.Pool) *Repo {
-	return &Repo{pool: pool, store: NewStore(pool)}
+// NewRepo builds a Repo backed by pool whose new sessions use defaultModel.
+func NewRepo(pool *pgxpool.Pool, defaultModel string) *Repo {
+	return &Repo{pool: pool, store: NewStore(pool), defaultModel: defaultModel}
 }
 
 var errNoPersonalProject = errors.New("user has no Personal project")
@@ -73,7 +74,7 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 
 		actor := "user:" + scope.UserID.String()
 		if err := insertEvent(ctx, tx, sessionID, scope.WorkspaceID, 1, nil, NewEvent{
-			Type: TypeSessionCreated, Actor: actor, Payload: sessionCreatedPayload(),
+			Type: TypeSessionCreated, Actor: actor, Payload: sessionCreatedPayload(r.defaultModel),
 		}); err != nil {
 			return err
 		}

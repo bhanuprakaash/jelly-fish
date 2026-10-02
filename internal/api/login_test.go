@@ -34,7 +34,7 @@ func newLoginEnv(t *testing.T) *loginEnv {
 	pool := testdb.NewPool(t)
 	mailer := &fakeMailer{}
 	store := auth.NewStore(pool, slog.New(slog.DiscardHandler))
-	srv, authH := newServer(":0", slog.New(slog.DiscardHandler), testWebFS(), eventlog.NewRepo(pool), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
+	srv, authH := newServer(":0", slog.New(slog.DiscardHandler), testWebFS(), eventlog.NewRepo(pool, "fake"), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
 		AuthConfig{Authenticator: store, Admin: store, Mailer: mailer, PublicURL: testPublicURL})
 	return &loginEnv{pool: pool, srv: srv, auth: authH, mailer: mailer}
 }

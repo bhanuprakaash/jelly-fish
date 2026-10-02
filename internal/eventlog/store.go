@@ -209,7 +209,9 @@ func project(ctx context.Context, tx pgx.Tx, sid uuid.UUID, seq int64, e NewEven
 // Claim is a session leased to a Worker.
 type Claim struct {
 	SessionID uuid.UUID
-	Fence     Fence
+	// UserID owns the session, and so the Provider Keys its turns run on.
+	UserID uuid.UUID
+	Fence  Fence
 	// RecoveryAttempts counts claims since the session's last successful
 	// fenced append, this one included (event-log.md §5.6).
 	RecoveryAttempts int
@@ -227,7 +229,7 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 	var c Claim
 	var found bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		var workspaceID, userID uuid.UUID
+		var workspaceID uuid.UUID
 		var last int64
 		var from string
 		err := tx.QueryRow(ctx, `
@@ -243,7 +245,7 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 			  last_seq = s.last_seq + 1, updated_at = now()
 			FROM c WHERE s.id = c.id
 			RETURNING s.id, s.lease_epoch, s.recovery_attempts, s.last_seq, s.workspace_id, s.user_id, c.status`,
-			owner, ttl, skip).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &workspaceID, &userID, &from)
+			owner, ttl, skip).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &workspaceID, &c.UserID, &from)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -257,7 +259,7 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 		if err := insertEvent(ctx, tx, c.SessionID, workspaceID, last, &c.Fence.Epoch, ev); err != nil {
 			return err
 		}
-		return notifyAppend(ctx, tx, c.SessionID, userID, last, false)
+		return notifyAppend(ctx, tx, c.SessionID, c.UserID, last, false)
 	})
 	return c, found, err
 }

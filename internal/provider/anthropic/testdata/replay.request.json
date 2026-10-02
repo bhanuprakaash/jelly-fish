@@ -1,0 +1,65 @@
+{
+  "max_tokens": 128000,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "find cats",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "signature": "sig-1",
+          "thinking": "search it",
+          "type": "thinking"
+        },
+        {
+          "type": "redacted_thinking",
+          "data": "RED"
+        },
+        {
+          "text": "Searching.",
+          "type": "text"
+        },
+        {
+          "id": "toolu_01ABC",
+          "input": {
+            "q": "cats"
+          },
+          "name": "search",
+          "type": "tool_use"
+        }
+      ],
+      "role": "assistant"
+    },
+    {
+      "content": [
+        {
+          "tool_use_id": "toolu_01ABC",
+          "is_error": true,
+          "cache_control": {
+            "type": "ephemeral"
+          },
+          "content": [
+            {
+              "text": "3 cats",
+              "type": "text"
+            }
+          ],
+          "type": "tool_result"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "thinking": {
+    "display": "summarized",
+    "type": "adaptive"
+  },
+  "stream": true
+}

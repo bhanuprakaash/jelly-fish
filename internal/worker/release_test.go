@@ -19,7 +19,7 @@ const futureType = "test.renamed"
 func newSession(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatal(err)
 	}
 	return sid
@@ -120,15 +120,15 @@ func TestStaleWorkerReleasesUnreadableMessage(t *testing.T) {
 	}{
 		{
 			"user.message with a newer msg_v", eventlog.TypeUserMessage,
-			map[string]any{"msg_v": msg.CurrentVersion + 1, "role": msg.RoleUser, "parts": []map[string]string{{"type": msg.PartText, "text": "x"}}},
+			map[string]any{"msg_v": msg.CurrentVersion + 1, "role": msg.RoleUser, "parts": []map[string]string{{"k": string(msg.KindText), "text": "x"}}},
 		},
 		{
 			"user.message with an unknown Part kind", eventlog.TypeUserMessage,
-			map[string]any{"msg_v": msg.CurrentVersion, "role": msg.RoleUser, "parts": []map[string]string{{"type": "hologram"}}},
+			map[string]any{"msg_v": msg.CurrentVersion, "role": msg.RoleUser, "parts": []map[string]string{{"k": "hologram"}}},
 		},
 		{
 			"llm.response with an unknown Part kind", eventlog.TypeLLMResponse,
-			map[string]any{"msg_v": msg.CurrentVersion, "role": msg.RoleAssistant, "parts": []map[string]string{{"type": "hologram"}}},
+			map[string]any{"msg_v": msg.CurrentVersion, "role": msg.RoleAssistant, "parts": []map[string]string{{"k": "hologram"}}},
 		},
 	}
 	for _, tc := range tests {
@@ -175,9 +175,10 @@ func TestFoldRejectsUnreadableMessageWithSentinel(t *testing.T) {
 		ev   eventlog.Event
 		want error
 	}{
-		{"current message", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":1,"role":"user","parts":[{"type":"text","text":"x"}]}}`), nil},
-		{"newer msg_v", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":2,"role":"user","parts":[{"type":"text","text":"x"}]}}`), msg.ErrUnsupported},
-		{"unknown Part kind", ev(eventlog.TypeLLMResponse, `{"message":{"msg_v":1,"role":"assistant","parts":[{"type":"hologram"}]}}`), msg.ErrUnsupported},
+		{"current message", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":2,"role":"user","parts":[{"k":"text","text":"x"}]}}`), nil},
+		{"older message", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":1,"role":"user","parts":[{"type":"text","text":"x"}]}}`), nil},
+		{"newer msg_v", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":3,"role":"user","parts":[{"k":"text","text":"x"}]}}`), msg.ErrUnsupported},
+		{"unknown Part kind", ev(eventlog.TypeLLMResponse, `{"message":{"msg_v":2,"role":"assistant","parts":[{"k":"hologram"}]}}`), msg.ErrUnsupported},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

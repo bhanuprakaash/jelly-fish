@@ -1,0 +1,17 @@
+{
+  "models": [
+    {"id": "claude-fable-5-1", "provider": "anthropic", "context_window": 1000000, "max_output": 128000, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": false, "thinking": "adaptive_only"},
+    {"id": "claude-opus-5-5", "provider": "anthropic", "context_window": 1000000, "max_output": 128000, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": false, "thinking": "adaptive_only"},
+    {"id": "claude-sonnet-5-5", "provider": "anthropic", "context_window": 1000000, "max_output": 128000, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": false, "thinking": "adaptive_only"},
+    {"id": "claude-haiku-4-5-20251001", "provider": "anthropic", "context_window": 200000, "max_output": 64000, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": true, "thinking": "none"},
+
+    {"id": "gpt-6-astra", "provider": "openai", "context_window": 1050000, "max_output": 128000, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": true, "thinking": "always_on"},
+    {"id": "gpt-6.1-sol", "provider": "openai", "context_window": 1050000, "max_output": 128000, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": true, "thinking": "always_on"},
+    {"id": "gpt-6-luna", "provider": "openai", "context_window": 1050000, "max_output": 128000, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": true, "thinking": "none"},
+    {"id": "gpt-5.4-mini", "provider": "openai", "context_window": 400000, "max_output": 128000, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": true, "thinking": "none"},
+
+    {"id": "gemini-3.1-pro-preview", "provider": "gemini", "context_window": 1048576, "max_output": 65536, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": true, "thinking": "always_on"},
+    {"id": "gemini-3.8-flash", "provider": "gemini", "context_window": 1048576, "max_output": 65536, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": true, "thinking": "always_on"},
+    {"id": "gemini-3.5-flash-lite", "provider": "gemini", "context_window": 1048576, "max_output": 65536, "vision": true, "pdf": true, "structured_outputs": true, "forced_tool_choice": true, "thinking": "always_on"}
+  ]
+}

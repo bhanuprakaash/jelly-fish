@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -62,6 +63,21 @@ func (s *Store) Upsert(ctx context.Context, userID uuid.UUID, k Sealed) (Info, e
 		return Info{}, fmt.Errorf("upsert provider key: %w", err)
 	}
 	return info, nil
+}
+
+// Sealed returns userID's stored key for provider, or ErrNotFound.
+func (s *Store) Sealed(ctx context.Context, userID uuid.UUID, provider string) (Sealed, error) {
+	k := Sealed{Provider: provider}
+	err := s.pool.QueryRow(ctx,
+		`SELECT ciphertext, key_id, last4, models FROM provider_keys WHERE user_id = $1 AND provider = $2`, userID, provider,
+	).Scan(&k.Ciphertext, &k.KeyID, &k.Last4, &k.Models)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Sealed{}, ErrNotFound
+	}
+	if err != nil {
+		return Sealed{}, fmt.Errorf("get provider key: %w", err)
+	}
+	return k, nil
 }
 
 // List returns userID's saved keys, by provider.

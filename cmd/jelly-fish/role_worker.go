@@ -11,12 +11,20 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/anthropic"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
+	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/worker"
 )
 
 func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
-	if _, err := loadKeyring(cfg); err != nil {
+	kr, err := loadKeyring(cfg)
+	if err != nil {
+		return err
+	}
+	cat, err := catalog.Load()
+	if err != nil {
 		return err
 	}
 	pool, err := pg.NewPool(ctx, cfg.DatabaseURL)
@@ -32,8 +40,11 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
+	claude := anthropic.Client{Catalog: cat}
+	gw := worker.Gateway{Keyring: kr, Keys: providerkeys.NewStore(pool), Catalog: cat, Anthropic: claude, Fake: devFake()}
+	g.Go(func() error { worker.RunModelRefresh(gctx, pool, kr, claude, logger); return nil })
 	g.Go(func() error {
-		worker.New(pool, newProvider(), stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger).Run(gctx)
+		worker.New(pool, gw, stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger).Run(gctx)
 		return nil
 	})
 	return g.Wait()

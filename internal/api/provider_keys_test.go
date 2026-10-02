@@ -64,7 +64,7 @@ func newKeysEnv(t *testing.T) *keysEnv {
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	lister := &fakeLister{}
 	store := auth.NewStore(pool, logger)
-	srv, authH := newServer(":0", logger, testWebFS(), eventlog.NewRepo(pool), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
+	srv, authH := newServer(":0", logger, testWebFS(), eventlog.NewRepo(pool, "fake"), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
 		AuthConfig{
 			Authenticator: store, Admin: store, Mailer: &fakeMailer{}, PublicURL: testPublicURL,
 			ProviderKeys: ProviderKeyConfig{Store: providerkeys.NewStore(pool), Sealer: kr, Models: lister},

@@ -14,7 +14,7 @@ import (
 func TestStreamEchoesRepeatedToMinReply(t *testing.T) {
 	p := fake.Provider{WordDelay: time.Millisecond, MinReply: 10 * time.Millisecond}
 	var deltas int
-	resp, err := p.Stream(t.Context(), provider.Request{Messages: []msg.Message{msg.UserText("hello there")}}, func(string) { deltas++ })
+	resp, err := p.Stream(t.Context(), provider.Request{Messages: []msg.Message{msg.UserText("hello there")}}, func(provider.Delta) { deltas++ })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestStreamEchoesRepeatedToMinReply(t *testing.T) {
 		t.Fatalf("text = %q", text)
 	}
 	words := int64(len(strings.Fields(text)))
-	if deltas != int(words) || resp.Usage.OutputTokens != words || resp.Usage.InputTokens != 2 {
+	if deltas != int(words) || resp.Usage.Output != words || resp.Usage.Input != 2 {
 		t.Fatalf("deltas=%d usage=%+v words=%d", deltas, resp.Usage, words)
 	}
 	if resp.StopReason != provider.StopReasonEndTurn {
@@ -34,7 +34,7 @@ func TestStreamEchoesRepeatedToMinReply(t *testing.T) {
 func TestStreamSlowPrefixStretchesReply(t *testing.T) {
 	p := fake.Provider{WordDelay: time.Millisecond}
 	start := time.Now()
-	resp, err := p.Stream(t.Context(), provider.Request{Messages: []msg.Message{msg.UserText("/slow 200ms hi")}}, func(string) {})
+	resp, err := p.Stream(t.Context(), provider.Request{Messages: []msg.Message{msg.UserText("/slow 200ms hi")}}, func(provider.Delta) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestStreamStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	p := fake.Provider{WordDelay: time.Hour}
-	if _, err := p.Stream(ctx, provider.Request{}, func(string) {}); err == nil {
+	if _, err := p.Stream(ctx, provider.Request{}, func(provider.Delta) {}); err == nil {
 		t.Fatal("want ctx error")
 	}
 }

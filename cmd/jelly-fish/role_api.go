@@ -17,6 +17,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
 	"github.com/bhanuprakaash/jelly-fish/internal/mail"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/web"
@@ -32,6 +33,14 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	if u, err := url.Parse(cfg.PublicURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return errors.New("JF_PUBLIC_URL is required: want http(s)://host[:port]")
+	}
+	cat, err := catalog.Load()
+	if err != nil {
+		return err
+	}
+	model, err := defaultModel(cfg, cat)
+	if err != nil {
+		return err
 	}
 	mailer, err := mail.NewSMTP(cfg.SMTPURL, cfg.MailFrom)
 	if err != nil {
@@ -49,7 +58,7 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("load web assets: %w", err)
 	}
 
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, model)
 	authStore := auth.NewStore(pool, logger)
 	hub := stream.NewHub()
 	deltas := stream.NewPGDeltaBus(pool)

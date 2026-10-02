@@ -17,7 +17,7 @@ import (
 
 func TestCreateSession(t *testing.T) {
 	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 	clientMsgID := uuid.New()
@@ -61,7 +61,7 @@ func TestCreateSession(t *testing.T) {
 
 func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
 	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 	clientMsgID := uuid.New()
@@ -89,7 +89,7 @@ func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
 
 func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
 	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
@@ -128,7 +128,7 @@ func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
 
 func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
@@ -160,7 +160,7 @@ func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 
 func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
@@ -222,7 +222,7 @@ func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 
 func TestTenancy_WrongScopeIsNotFound(t *testing.T) {
 	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	other := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()

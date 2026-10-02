@@ -52,7 +52,7 @@ type Lease struct {
 type Worker struct {
 	pool     *pgxpool.Pool
 	store    *eventlog.Store
-	provider provider.Provider
+	gateway  Gateway
 	deltas   DeltaPublisher
 	lease    Lease
 	upcast   eventlog.Upcasters
@@ -62,25 +62,25 @@ type Worker struct {
 	slots    chan struct{}
 }
 
-// New builds a Worker that streams reply text to deltas and leases sessions
-// as lease says. It reads stored events through upcast, and releases any
-// session holding an event it cannot read. A nil prov leaves it idle: without
-// a Provider it cannot run a turn, so it claims nothing.
-func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, lease Lease, upcast eventlog.Upcasters, logger *slog.Logger) *Worker {
+// New builds a Worker that runs each turn on the Provider gw picks, streams
+// reply text to deltas and leases sessions as lease says. It reads stored
+// events through upcast, and releases any session holding an event it cannot
+// read.
+func New(pool *pgxpool.Pool, gw Gateway, deltas DeltaPublisher, lease Lease, upcast eventlog.Upcasters, logger *slog.Logger) *Worker {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
 	}
 	return &Worker{
-		pool:     pool,
-		store:    eventlog.NewStore(pool),
-		provider: prov,
-		deltas:   deltas,
-		lease:    lease,
-		upcast:   upcast,
-		id:       fmt.Sprintf("%s:%d", host, os.Getpid()),
-		logger:   logger,
-		slots:    make(chan struct{}, maxSessions),
+		pool:    pool,
+		store:   eventlog.NewStore(pool),
+		gateway: gw,
+		deltas:  deltas,
+		lease:   lease,
+		upcast:  upcast,
+		id:      fmt.Sprintf("%s:%d", host, os.Getpid()),
+		logger:  logger,
+		slots:   make(chan struct{}, maxSessions),
 	}
 }
 
@@ -88,12 +88,6 @@ func New(pool *pgxpool.Pool, prov provider.Provider, deltas DeltaPublisher, leas
 // for in-flight sessions to stop. Their Leases expire and another Worker
 // rescues them.
 func (w *Worker) Run(ctx context.Context) {
-	if w.provider == nil {
-		w.logger.Warn("no provider configured, worker idle")
-		<-ctx.Done()
-		return
-	}
-
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -202,7 +196,7 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 		if step.Kind.Parks() {
 			f.ExpectSeq = &st.LastSeq
 		}
-		err = w.exec(ctx, c.SessionID, f, st, step)
+		err = w.exec(ctx, c, f, st, step)
 		switch {
 		case errors.Is(err, eventlog.ErrStale):
 			continue
@@ -297,7 +291,8 @@ func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelFunc, c eve
 
 func (w *Worker) actor() string { return "worker:" + w.id }
 
-func (w *Worker) exec(ctx context.Context, sid uuid.UUID, f eventlog.Fence, st State, step Step) error {
+func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State, step Step) error {
+	sid := c.SessionID
 	switch step.Kind {
 	case StepMarkInterrupted:
 		_, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
@@ -308,28 +303,33 @@ func (w *Worker) exec(ctx context.Context, sid uuid.UUID, f eventlog.Fence, st S
 		}}, nil)
 		return err
 	case StepStartTurn:
-		return w.startTurn(ctx, sid, f, st)
+		return w.startTurn(ctx, c, f, st)
 	case StepComplete:
 		_, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
 			Type:    eventlog.TypeSessionCompleted,
 			Actor:   w.actor(),
-			Payload: map[string]string{"outcome": provider.StopReasonEndTurn},
-		}}, &eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: provider.StopReasonEndTurn})
+			Payload: map[string]string{"outcome": string(provider.StopReasonEndTurn)},
+		}}, &eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: string(provider.StopReasonEndTurn)})
 		return err
 	}
 	return fmt.Errorf("unknown step %d", step.Kind)
 }
 
-func (w *Worker) startTurn(ctx context.Context, sid uuid.UUID, f eventlog.Fence, st State) error {
+func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {
+	sid := c.SessionID
+	prov, err := w.gateway.forTurn(ctx, c.UserID, st.Model)
+	if err != nil {
+		return fmt.Errorf("pick provider: %w", err)
+	}
 	turnID := uuid.NewString()
-	_, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
+	_, err = w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
 		Type:          eventlog.TypeTurnStarted,
 		Actor:         w.actor(),
 		CorrelationID: turnID,
 		Payload: map[string]any{
 			"turn_id":           turnID,
 			"model":             st.Model,
-			"provider":          w.provider.Name(),
+			"provider":          prov.Name(),
 			"input_through_seq": st.LastSeq,
 			"tools_hash":        emptyToolsHash,
 		},
@@ -338,15 +338,33 @@ func (w *Worker) startTurn(ctx context.Context, sid uuid.UUID, f eventlog.Fence,
 		return err
 	}
 
-	// The full reply lands with llm.response; deltas only preview it.
+	// The full reply lands with llm.response; deltas only preview its text.
 	batch := stream.NewBatcher(w.deltas.Publish, sid, turnID, stream.CoalesceInterval, w.logger)
 	stopBatch := batch.Start(ctx)
-	resp, err := w.provider.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages}, batch.Add)
+	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages}, func(d provider.Delta) {
+		if d.Kind == provider.DeltaText {
+			batch.Add(d.Text)
+		}
+	})
 	stopBatch()
 	if err != nil {
 		return fmt.Errorf("call provider: %w", err)
 	}
 
+	classes := []struct {
+		unit string
+		n    int64
+	}{
+		{"input_tokens", resp.Usage.Input},
+		{"cache_read_tokens", resp.Usage.CacheRead},
+		{"cache_write_5m_tokens", resp.Usage.CacheWrite5m},
+		{"cache_write_1h_tokens", resp.Usage.CacheWrite1h},
+		{"output_tokens", resp.Usage.Output},
+	}
+	usage := map[string]int64{}
+	for _, u := range classes {
+		usage[u.unit] = u.n
+	}
 	evs := []eventlog.NewEvent{{
 		Type:          eventlog.TypeLLMResponse,
 		Actor:         w.actor(),
@@ -355,19 +373,11 @@ func (w *Worker) startTurn(ctx context.Context, sid uuid.UUID, f eventlog.Fence,
 			"turn_id":     turnID,
 			"message":     resp.Message,
 			"stop_reason": resp.StopReason,
-			"usage": map[string]int64{
-				"input_tokens":  resp.Usage.InputTokens,
-				"output_tokens": resp.Usage.OutputTokens,
-			},
+			"usage":       usage,
 		},
 	}}
-	for _, u := range []struct {
-		unit string
-		n    int64
-	}{
-		{"input_tokens", resp.Usage.InputTokens},
-		{"output_tokens", resp.Usage.OutputTokens},
-	} {
+	// Reasoning is part of output_tokens, so it gets no row of its own.
+	for _, u := range classes {
 		if u.n == 0 {
 			continue
 		}
@@ -376,7 +386,7 @@ func (w *Worker) startTurn(ctx context.Context, sid uuid.UUID, f eventlog.Fence,
 			Actor:         w.actor(),
 			CorrelationID: turnID,
 			Payload: eventlog.UsageRecorded{
-				Kind: eventlog.KindLLM, Provider: w.provider.Name(), Model: st.Model,
+				Kind: eventlog.KindLLM, Provider: prov.Name(), Model: st.Model,
 				Quantity: u.n, Unit: u.unit,
 			},
 		})

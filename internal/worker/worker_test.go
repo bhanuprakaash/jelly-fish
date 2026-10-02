@@ -29,7 +29,7 @@ func startWorker(t *testing.T, pool *pgxpool.Pool) {
 func startWorkerWith(t *testing.T, pool *pgxpool.Pool, upcast eventlog.Upcasters) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	w := worker.New(pool, fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, upcast, slog.New(slog.DiscardHandler))
+	w := worker.New(pool, worker.Gateway{Fake: fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}}, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, upcast, slog.New(slog.DiscardHandler))
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
@@ -79,7 +79,7 @@ func assertFoldMatchesRow(t *testing.T, pool *pgxpool.Pool, sid uuid.UUID) {
 
 func TestWorkerRepliesAndParks(t *testing.T) {
 	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
 	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hello world"); err != nil {
@@ -107,7 +107,7 @@ func TestWorkerRepliesAndParks(t *testing.T) {
 
 func TestParkAfterNewMessageIsStale(t *testing.T) {
 	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool)
+	repo := eventlog.NewRepo(pool, "fake")
 	store := eventlog.NewStore(pool)
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
@@ -149,7 +149,7 @@ func TestFencedAppendFromOldEpochIsRejected(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatal(err)
 	}
 	c, _, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -168,7 +168,7 @@ func TestRescuedTurnIsRerun(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -197,7 +197,7 @@ func TestCrashLoopFailsSessionWithoutDeciding(t *testing.T) {
 	pool := testdb.NewPool(t)
 	store := eventlog.NewStore(pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -243,7 +243,7 @@ func TestCrashLoopFailsSessionWithoutDeciding(t *testing.T) {
 func TestStreamedTurnPublishesDeltasNotEvents(t *testing.T) {
 	pool := testdb.NewPool(t)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool).CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello world"); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello world"); err != nil {
 		t.Fatal(err)
 	}
 

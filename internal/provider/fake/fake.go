@@ -38,7 +38,7 @@ func (Provider) Name() string { return Name }
 
 // Stream implements provider.Provider. A "/slow 30s" prefix on the last user
 // message stretches the reply over that duration.
-func (p Provider) Stream(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Response, error) {
+func (p Provider) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {
 	delay := cmp.Or(p.WordDelay, defaultWordDelay)
 	total := cmp.Or(p.MinReply, defaultMinReply)
 
@@ -69,15 +69,15 @@ func (p Provider) Stream(ctx context.Context, req provider.Request, onDelta func
 			w = " " + w
 		}
 		out.WriteString(w)
-		onDelta(w)
+		onDelta(provider.Delta{Text: w})
 	}
 
 	return provider.Response{
 		Message:    msg.AssistantText(out.String()),
 		StopReason: provider.StopReasonEndTurn,
 		Usage: provider.Usage{
-			InputTokens:  wordCount(req.Messages),
-			OutputTokens: int64(len(reply)),
+			Input:  wordCount(req.Messages),
+			Output: int64(len(reply)),
 		},
 	}, nil
 }

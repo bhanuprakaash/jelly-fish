@@ -6,10 +6,10 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 )
 
-func sessionCreatedPayload() map[string]any {
+func sessionCreatedPayload(model string) map[string]any {
 	return map[string]any{
 		"agent_id": generalAgent(),
-		"agent":    map[string]string{"name": "General", "model": "fake"},
+		"agent":    map[string]string{"name": "General", "model": model},
 	}
 }
 
