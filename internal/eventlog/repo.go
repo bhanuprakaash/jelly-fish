@@ -23,7 +23,9 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 	return &Repo{pool: pool, store: NewStore(pool)}
 }
 
-// CreateSession creates a session with a session.created + user.message pair
+var errNoPersonalProject = errors.New("user has no Personal project")
+
+// CreateSession creates a session in the User's "Personal" Project with a session.created + user.message pair
 // (session.created snapshotting the hard-coded "General" agent) and returns
 // its last_seq. Repeating the same sessionID returns the existing session's
 // last_seq instead of creating a second one.
@@ -42,10 +44,15 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 		// Postgres otherwise aborts the whole transaction on any statement
 		// error, which would break the fallback query below.
 		insertErr := pgx.BeginFunc(ctx, tx, func(spTx pgx.Tx) error {
-			_, err := spTx.Exec(ctx, `
+			tag, err := spTx.Exec(ctx, `
 				INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at)
-				VALUES ($1, $2, $3, $4, $5, $6, 2, now())`,
-				sessionID, scope.WorkspaceID, devProject(), scope.UserID, devAgent(), StatusRunnable)
+				SELECT $1, $2, p.id, $3, $4, $5, 2, now()
+				FROM projects p
+				WHERE p.workspace_id = $2 AND p.user_id = $3 AND p.name = 'Personal'`,
+				sessionID, scope.WorkspaceID, scope.UserID, generalAgent(), StatusRunnable)
+			if err == nil && tag.RowsAffected() == 0 {
+				return errNoPersonalProject
+			}
 			return err
 		})
 		if insertErr != nil {

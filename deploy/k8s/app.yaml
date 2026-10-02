@@ -24,6 +24,8 @@ spec:
           envFrom:
             - secretRef:
                 name: postgres-secrets
+            - secretRef:
+                name: app-secrets
           env:
             - name: DATABASE_URL
               value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
@@ -43,6 +45,10 @@ spec:
           env:
             - name: DATABASE_URL
               value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
+            - name: JF_SMTP_URL
+              value: smtp://mailpit:1025
+            - name: JF_MAIL_FROM
+              value: jelly-fish@localhost
           livenessProbe:
             httpGet:
               path: /healthz

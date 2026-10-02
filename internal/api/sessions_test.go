@@ -79,7 +79,7 @@ func TestCreateSessionHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := newTestServer(t, tt.repo)
-			req := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(tt.body))
+			req := signIn(httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(tt.body)))
 			rr := httptest.NewRecorder()
 			srv.Handler.ServeHTTP(rr, req)
 
@@ -132,7 +132,7 @@ func TestPostMessageHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := newTestServer(t, tt.repo)
 			path := "/api/sessions/" + uuid.New().String() + "/messages"
-			req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(tt.body))
+			req := signIn(httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(tt.body)))
 			rr := httptest.NewRecorder()
 			srv.Handler.ServeHTTP(rr, req)
 
@@ -146,7 +146,7 @@ func TestPostMessageHandler(t *testing.T) {
 func TestSessionEventsHandler(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		srv := newTestServer(t, &fakeRepo{lastSeqErr: eventlog.ErrNotFound})
-		req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+uuid.New().String()+"/events", nil)
+		req := signIn(httptest.NewRequest(http.MethodGet, "/api/sessions/"+uuid.New().String()+"/events", nil))
 		rr := httptest.NewRecorder()
 		srv.Handler.ServeHTTP(rr, req)
 
@@ -169,7 +169,7 @@ func TestSessionEventsHandler(t *testing.T) {
 		srv := newTestServer(t, repo)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+uuid.New().String()+"/events", nil).WithContext(ctx)
+		req := signIn(httptest.NewRequest(http.MethodGet, "/api/sessions/"+uuid.New().String()+"/events", nil)).WithContext(ctx)
 		rr := httptest.NewRecorder()
 
 		done := make(chan struct{})

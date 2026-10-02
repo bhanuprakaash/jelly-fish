@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
 
+	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/migrate"
 )
 
@@ -68,6 +69,22 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	return pool
+}
+
+// NewUser creates a real workspace, User and "Personal" Project in pool and
+// returns the User. Each call makes a separate tenant.
+func NewUser(t *testing.T, pool *pgxpool.Pool) auth.User {
+	t.Helper()
+	var u auth.User
+	err := pgx.BeginFunc(t.Context(), pool, func(tx pgx.Tx) error {
+		var err error
+		u, err = auth.CreateUser(t.Context(), tx, uuid.NewString()+"@example.test", false)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("create test user: %v", err)
+	}
+	return u
 }
 
 func withDatabase(rawURL, dbName string) (string, error) {

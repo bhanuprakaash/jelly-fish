@@ -13,15 +13,17 @@ Preconditions:
 
 - Local k8s infra is up: `kubectl get pods -n jelly-fish` shows `postgres`, `minio`, `mailpit` all `Running`. If not, run `make infra` and wait for `postgres-0` to become ready.
 - Postgres is reachable at `localhost:5433`: check with `lsof -iTCP:5433 -sTCP:LISTEN`. If nothing is listening, start it yourself with `make db &` and remember you started it (see Cleanup).
+- Mailpit is reachable at `localhost:8025` (web API) and `localhost:1025` (SMTP): check with `lsof -iTCP:8025 -sTCP:LISTEN`. If nothing is listening, start it yourself with `kubectl port-forward -n jelly-fish svc/mailpit 8025:8025 1025:1025 &` and remember you started it (see Cleanup). `make serve` already forwards 8025 but not 1025.
 - `$DATABASE_URL` is exported and points at `localhost:5433` with the credentials from `deploy/k8s/.env.postgres`. This is the user's own env var — read it with `echo $DATABASE_URL`, never grep or cat the `.env.postgres` file for it. If it's unset, stop and ask the user to export it.
 
 Steps, from the repo root:
 
-1. Apply migrations (idempotent, safe to rerun): `go run ./cmd/jelly-fish migrate`. Ready signal: process exits `0`.
+1. Apply migrations and bootstrap the Admin (idempotent, safe to rerun): `JF_ADMIN_EMAIL=admin@example.test go run ./cmd/jelly-fish migrate`. Ready signal: process exits `0`, last log line `admin bootstrap`.
 2. Build a fixed binary once, then run that — never background `go run` itself. `go run` compiles and execs a *child* process; `$!` captures the short-lived wrapper PID, not the child, so killing it later leaves the real server orphaned and still listening:
    ```
    go build -o /tmp/jelly-fish-verify-bin ./cmd/jelly-fish
-   /tmp/jelly-fish-verify-bin api > /tmp/jelly-fish-verify-api.log 2>&1 &
+   JF_SMTP_URL=smtp://localhost:1025 JF_MAIL_FROM=jelly-fish@localhost JF_DEV_INSECURE_COOKIE=1 \
+     /tmp/jelly-fish-verify-bin api > /tmp/jelly-fish-verify-api.log 2>&1 &
    echo $! > /tmp/jelly-fish-verify-api.pid
    ```
    Ready signal: `curl -sf localhost:9090/healthz` returns `ok`.
@@ -48,7 +50,7 @@ Run before driving anything, and again after any failed drive:
 
 ## Drive
 
-See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `hello-api`, `migrate`, `web-shell`.
+See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `hello-api`, `migrate`, `web-shell`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
 
 ## Evidence
 
@@ -69,6 +71,7 @@ For every feature, capture and quote in the report:
   rm -f /tmp/jelly-fish-verify-bin /tmp/jelly-fish-verify-*.log
   ```
   Confirm the ports are actually free afterward (`lsof -iTCP:8080 -sTCP:LISTEN`, `:9090`, `:9091`) — don't assume `kill` on the PID file was enough.
+- If this run started the Mailpit port-forward itself, kill that `kubectl port-forward` process too.
 - If this run started the postgres port-forward itself (it wasn't already listening in Launch step 2), kill that `kubectl port-forward` process too. If it was already running before this run, leave it — it's the user's persistent dev tunnel.
 - Never tear down `make infra` or delete k8s resources — postgres/minio/mailpit are persistent local dev infra, not scoped to a single verification run.
 - Evidence already quoted in the report survives cleanup; nothing here deletes report content, only processes.

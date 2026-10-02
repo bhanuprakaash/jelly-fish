@@ -1,6 +1,6 @@
 # Hello API (`/api/hello`)
 
-The one public endpoint: returns a static JSON greeting. It's what the web PWA shell renders.
+A static JSON greeting behind sign-in (`401` without a Login Session cookie).
 
 ## Sub-features
 
@@ -17,9 +17,10 @@ The one public endpoint: returns a static JSON greeting. It's what the web PWA s
 Preconditions:
 
 - The api role is running per [`../SKILL.md`](../SKILL.md) Launch step 2.
+- A cookie jar from [`sign-in`](./sign-in.md) (`/tmp/jf-cj`).
 
-- **Direct.** Run `curl -si localhost:8080/api/hello`. Status `200`, `Content-Type: application/json`, body `{"message":"hello"}`.
-- **Via web proxy.** Only if the web dev server was started (Launch step 4). Run `curl -si localhost:5173/api/hello`. Same status and body as direct — Vite's proxy config (`web/vite.config.ts`) forwards `/api` to `localhost:8080` untouched.
+- **Direct.** Run `curl -si -b /tmp/jf-cj localhost:8080/api/hello`. Without `-b`, status `401`. With it, status `200`, `Content-Type: application/json`, body `{"message":"hello"}`.
+- **Via web proxy.** Only if the web dev server was started (Launch step 4). Run `curl -si -b /tmp/jf-cj localhost:5173/api/hello`. Same status and body as direct — Vite's proxy config (`web/vite.config.ts`) forwards `/api` to `localhost:8080` untouched.
 
 ## Gotchas
 

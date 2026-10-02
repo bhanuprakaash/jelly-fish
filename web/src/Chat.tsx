@@ -1,5 +1,5 @@
-import { useState, type SubmitEvent } from 'react'
-import { createSession, postMessage, type Message } from './lib/api'
+import { useEffect, useState, type SubmitEvent } from 'react'
+import { createSession, getMe, postMessage, UnauthorizedError, type Message } from './lib/api'
 import { useSessionStream } from './lib/useSessionStream'
 
 type Props = {
@@ -8,6 +8,8 @@ type Props = {
   // the session is known not to exist yet; false when the page opened
   // directly at /s/{id} (a reopen).
   isNew: boolean
+  // onUnauthorized is called when the server says the Login Session is gone.
+  onUnauthorized: () => void
 }
 
 function bubbleText(payload: unknown): string {
@@ -15,13 +17,21 @@ function bubbleText(payload: unknown): string {
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
 }
 
-export function Chat({ sessionId, isNew }: Props) {
+export function Chat({ sessionId, isNew, onUnauthorized }: Props) {
   const [started, setStarted] = useState(!isNew)
   const { events, partials, connected, failed } = useSessionStream(sessionId, started)
   // A brand-new chat has a session once its first message creates one; a
   // reopened chat has one once the stream confirms it (streaming's onopen
   // only succeeds once the session exists).
   const hasSession = isNew ? started : connected
+
+  // EventSource cannot see a 401, so a failed stream is checked with /api/me.
+  useEffect(() => {
+    if (!failed) return
+    getMe().catch((err) => {
+      if (err instanceof UnauthorizedError) onUnauthorized()
+    })
+  }, [failed, onUnauthorized])
 
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -43,7 +53,11 @@ export function Chat({ sessionId, isNew }: Props) {
         setStarted(true)
       }
       setDraft('')
-    } catch {
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        onUnauthorized()
+        return
+      }
       setError('Could not send. Try again.')
     } finally {
       setSending(false)

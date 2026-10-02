@@ -1,2 +1,3 @@
 deploy/k8s/.env.postgres
 deploy/k8s/.env.minio
+deploy/k8s/.env.app

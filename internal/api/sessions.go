@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
@@ -52,7 +53,7 @@ func handleCreateSession(repo SessionRepo, logger *slog.Logger) http.HandlerFunc
 			return
 		}
 
-		scope := eventlog.DevScope()
+		scope := scopeFrom(r)
 		last, err := repo.CreateSession(r.Context(), scope, req.SessionID, req.ClientMsgID, req.Message)
 		if err != nil {
 			logger.Error("create session", "error", err, "session_id", req.SessionID)
@@ -83,7 +84,7 @@ func handlePostMessage(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
 			return
 		}
 
-		scope := eventlog.DevScope()
+		scope := scopeFrom(r)
 		seq, err := repo.PostMessage(r.Context(), scope, sessionID, req.ClientMsgID, req.Message)
 		if err != nil {
 			if errors.Is(err, eventlog.ErrNotFound) {
@@ -119,7 +120,7 @@ func (s *sessionStreams) handle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	scope := eventlog.DevScope()
+	scope := scopeFrom(r)
 	ctx := r.Context()
 
 	lastSeq, err := s.repo.SessionLastSeq(ctx, scope, sessionID)
@@ -288,6 +289,12 @@ func parseAfter(r *http.Request, lastSeq int64) int64 {
 		return 0
 	}
 	return after
+}
+
+// scopeFrom returns the TenantScope of the User authn put on r.
+func scopeFrom(r *http.Request) eventlog.TenantScope {
+	u, _ := auth.UserFrom(r.Context())
+	return u.Scope()
 }
 
 func pathUUID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {

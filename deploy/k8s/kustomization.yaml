@@ -11,6 +11,9 @@ secretGenerator:
   - name: postgres-secrets
     envs:
       - .env.postgres
+  - name: app-secrets
+    envs:
+      - .env.app
   - name: minio-secrets
     envs:
       - .env.minio

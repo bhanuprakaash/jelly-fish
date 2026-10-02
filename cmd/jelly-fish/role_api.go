@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -9,15 +10,25 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/api"
+	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/config"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
+	"github.com/bhanuprakaash/jelly-fish/internal/mail"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/web"
 )
 
 func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	if cfg.SMTPURL == "" || cfg.MailFrom == "" {
+		return errors.New("JF_SMTP_URL and JF_MAIL_FROM are required")
+	}
+	mailer, err := mail.NewSMTP(cfg.SMTPURL, cfg.MailFrom)
+	if err != nil {
+		return fmt.Errorf("JF_SMTP_URL: %w", err)
+	}
+
 	pool, err := pg.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connect db: %w", err)
@@ -44,7 +55,11 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	healthSrv := health.NewServer(cfg.HealthAddr, pg.NewReadinessChecker(pool), logger)
 	mountMetrics(healthSrv, reg)
-	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics)
+	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics, api.AuthConfig{
+		Authenticator:  auth.NewStore(pool),
+		Mailer:         mailer,
+		InsecureCookie: cfg.DevInsecureCookie,
+	})
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { stream.Listen(gctx, pool, logger, hub, deltas, metrics); return nil })

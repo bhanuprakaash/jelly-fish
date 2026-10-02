@@ -18,7 +18,7 @@ import (
 func TestCreateSession(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
-	scope := eventlog.DevScope()
+	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 	clientMsgID := uuid.New()
 
@@ -62,7 +62,7 @@ func TestCreateSession(t *testing.T) {
 func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
-	scope := eventlog.DevScope()
+	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 	clientMsgID := uuid.New()
 
@@ -90,7 +90,7 @@ func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
 func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
-	scope := eventlog.DevScope()
+	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
 	const n = 10
@@ -129,7 +129,7 @@ func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
 func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
-	scope := eventlog.DevScope()
+	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
 	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello"); err != nil {
@@ -161,7 +161,7 @@ func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
-	scope := eventlog.DevScope()
+	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
 	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello"); err != nil {
@@ -223,8 +223,8 @@ func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 func TestTenancy_WrongScopeIsNotFound(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool)
-	scope := eventlog.DevScope()
-	other := eventlog.TenantScope{WorkspaceID: uuid.New(), UserID: uuid.New()}
+	scope := testdb.NewUser(t, pool).Scope()
+	other := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
 	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello"); err != nil {

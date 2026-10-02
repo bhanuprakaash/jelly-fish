@@ -18,6 +18,15 @@ type Config struct {
 	// §5.2).
 	LeaseTTL  time.Duration
 	Heartbeat time.Duration
+	// AdminEmail, if set, is bootstrapped as the Admin by the migrate role
+	// (auth-keys.md §5.6).
+	AdminEmail string
+	// SMTPURL and MailFrom configure login email; only the api role needs them.
+	SMTPURL  string
+	MailFrom string
+	// DevInsecureCookie sends the login cookie without Secure, for local http
+	// only.
+	DevInsecureCookie bool
 }
 
 // Load reads Config from the environment.
@@ -43,6 +52,11 @@ func Load() (Config, error) {
 		HealthAddr:  envOr("HEALTH_ADDR", ":9090"),
 		LeaseTTL:    leaseTTL,
 		Heartbeat:   heartbeat,
+
+		AdminEmail:        os.Getenv("JF_ADMIN_EMAIL"),
+		SMTPURL:           os.Getenv("JF_SMTP_URL"),
+		MailFrom:          os.Getenv("JF_MAIL_FROM"),
+		DevInsecureCookie: os.Getenv("JF_DEV_INSECURE_COOKIE") == "1",
 	}, nil
 }
 
