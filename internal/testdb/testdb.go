@@ -36,14 +36,17 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("connect admin pool: %v", err)
 	}
-	defer admin.Close()
+	// Cleanups run last-in first-out, so this closes admin after the drop below.
+	t.Cleanup(admin.Close)
 
 	dbName := "test_" + uuidHex()
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{dbName}.Sanitize()); err != nil {
 		t.Fatalf("create test database: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.Exec(context.Background(), "DROP DATABASE "+pgx.Identifier{dbName}.Sanitize()+" WITH (FORCE)")
+		if _, err := admin.Exec(context.Background(), "DROP DATABASE "+pgx.Identifier{dbName}.Sanitize()+" WITH (FORCE)"); err != nil {
+			t.Logf("drop test database %s: %v", dbName, err)
+		}
 	})
 
 	dbURL, err := withDatabase(base, dbName)
