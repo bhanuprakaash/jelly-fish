@@ -42,7 +42,7 @@ Done when: the new build answers on `http://localhost:8080`.
 
 ## 4. Stop for approval
 
-Show: the checklist with evidence (table), what is partial, and hand-test steps for `http://localhost:8080` (Mailpit at `http://localhost:8025`; login codes are capped at 3 per email per 15 min). Then **stop** and wait.
+Show: the checklist with evidence (table), what is partial, the parent lines step 6 will tick or split (before → after), and hand-test steps for `http://localhost:8080` (Mailpit at `http://localhost:8025`; login codes are capped at 3 per email per 15 min). Then **stop** and wait.
 
 Invoking this skill approves nothing. Only an explicit "go" / "push" in reply authorizes steps 5–6, for this issue only.
 
@@ -59,9 +59,15 @@ Done when: `git status -sb` shows `main...origin/main` with nothing ahead.
 - Fetch the body to a temp file, tick every proven line (`- [ ]` → `- [x]`; macOS `sed -i ''`). Leave a partial line unticked unless the user accepted it.
 - Add a `## Done` section above `## Blocked by`: the commit SHA and only the decisions a reader of the code would not guess.
 - `gh issue edit <n> --body-file …`, then `gh issue close <n> --comment "Done in <sha>. <one line of what shipped>."` Delete the temp file.
+- Tick the parent (the issue under `## Parent`): its "Acceptance criteria" is the source the sub-issue's criteria were cut from. For each parent `- [ ]` line, match it against the sub-issue's ticked lines:
+  - fully delivered → `- [x]`;
+  - partly delivered → split it in place into a `- [x]` line for the delivered part and a `- [ ]` line for the rest, each a self-contained criterion in the parent's wording;
+  - not touched → leave it.
 
-Done when: `gh issue view <n> --json state` is `CLOSED` and the body shows the ticks.
+  Edit the parent body with `gh issue edit <parent> --body-file …`; leave the parent open.
+
+Done when: `gh issue view <n> --json state` is `CLOSED`, its body shows the ticks, and every parent line this issue delivered is ticked or split.
 
 ## 7. Report
 
-Terse: SHA pushed, issue closed, and every open issue whose "Blocked by" list is now fully closed (check the parent's sub-issues).
+Terse: SHA pushed, issue closed, parent lines ticked or split, and every open issue whose "Blocked by" list is now fully closed (check the parent's sub-issues).
