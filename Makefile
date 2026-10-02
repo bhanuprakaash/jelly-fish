@@ -1,4 +1,4 @@
-.PHONY: infra db deploy serve test chaos lint fmt
+.PHONY: infra down db deploy serve test chaos lint fmt
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 IMAGE := localhost:5001/jelly-fish:latest
@@ -6,6 +6,12 @@ IMAGE := localhost:5001/jelly-fish:latest
 infra:
 	@grep -q '^JF_MASTER_KEY=' deploy/k8s/.env.app 2>/dev/null || printf '\nJF_MASTER_KEY=m1:%s\n' "$$(openssl rand -base64 32)" >> deploy/k8s/.env.app
 	kubectl apply -k deploy/k8s
+
+# down removes the workloads and keeps the namespace, secrets and volumes, so
+# make infra brings the same data back. The context is pinned: the current one
+# may be a remote cluster.
+down:
+	kubectl --context jelly-fish -n jelly-fish delete deploy,statefulset,svc --all
 
 db:
 	kubectl port-forward -n jelly-fish svc/postgres 5433:5432
