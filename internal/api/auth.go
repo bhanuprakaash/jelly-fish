@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/mail"
 )
@@ -31,6 +33,10 @@ type Authenticator interface {
 	VerifyCode(ctx context.Context, email, code, userAgent string) (string, error)
 	VerifyLink(ctx context.Context, link, userAgent string) (string, error)
 	Authenticate(ctx context.Context, token string) (auth.User, error)
+	LoginSessions(ctx context.Context, userID uuid.UUID) ([]auth.LoginSession, error)
+	DeleteLoginSession(ctx context.Context, userID, id uuid.UUID) error
+	DeleteLoginSessions(ctx context.Context, userID uuid.UUID) error
+	loginChecker
 }
 
 var _ Authenticator = (*auth.Store)(nil)

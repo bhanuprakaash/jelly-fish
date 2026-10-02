@@ -319,3 +319,123 @@ func TestAuthenticate(t *testing.T) {
 		}
 	})
 }
+
+// signIn starts a Login Session for u and returns its cookie token.
+func signIn(t *testing.T, s *auth.Store, u auth.User, userAgent string) string {
+	t.Helper()
+	token, err := s.VerifyCode(t.Context(), u.Email, requestCode(t, s, u.Email), userAgent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+func TestLoginSessionLifecycle(t *testing.T) {
+	pool := testdb.NewPool(t)
+	s := auth.NewStore(pool)
+	alice, bob := testdb.NewUser(t, pool), testdb.NewUser(t, pool)
+	phone, laptop := signIn(t, s, alice, "phone"), signIn(t, s, alice, "laptop")
+	bobToken := signIn(t, s, bob, "bob-laptop")
+	phoneUser, err := s.Authenticate(t.Context(), phone)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("lists only the User's own devices", func(t *testing.T) {
+		got, err := s.LoginSessions(t.Context(), alice.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		agents := map[string]bool{}
+		for _, ls := range got {
+			agents[ls.UserAgent] = true
+		}
+		if len(got) != 2 || !agents["phone"] || !agents["laptop"] {
+			t.Errorf("LoginSessions = %+v, want phone and laptop", got)
+		}
+	})
+
+	t.Run("expired sessions are not listed", func(t *testing.T) {
+		signIn(t, s, alice, "old")
+		if _, err := pool.Exec(t.Context(), `UPDATE login_sessions SET expires_at = now() - interval '1 second' WHERE user_agent = 'old'`); err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.LoginSessions(t.Context(), alice.ID)
+		if err != nil || len(got) != 2 {
+			t.Errorf("LoginSessions = %d, %v; want 2", len(got), err)
+		}
+	})
+
+	t.Run("another User's session is not found", func(t *testing.T) {
+		if err := s.DeleteLoginSession(t.Context(), bob.ID, phoneUser.LoginSessionID); !errors.Is(err, auth.ErrNotFound) {
+			t.Fatalf("err = %v, want ErrNotFound", err)
+		}
+		if _, err := s.Authenticate(t.Context(), phone); err != nil {
+			t.Errorf("alice's session was affected: %v", err)
+		}
+	})
+
+	t.Run("deleting one device leaves the others", func(t *testing.T) {
+		if err := s.DeleteLoginSession(t.Context(), alice.ID, phoneUser.LoginSessionID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Authenticate(t.Context(), phone); !errors.Is(err, auth.ErrUnauthenticated) {
+			t.Errorf("deleted device: err = %v, want ErrUnauthenticated", err)
+		}
+		if _, err := s.Authenticate(t.Context(), laptop); err != nil {
+			t.Errorf("other device: %v", err)
+		}
+		if err := s.DeleteLoginSession(t.Context(), alice.ID, phoneUser.LoginSessionID); !errors.Is(err, auth.ErrNotFound) {
+			t.Errorf("second delete: err = %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("logout all ends every device of that User only", func(t *testing.T) {
+		if err := s.DeleteLoginSessions(t.Context(), alice.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Authenticate(t.Context(), laptop); !errors.Is(err, auth.ErrUnauthenticated) {
+			t.Errorf("alice: err = %v, want ErrUnauthenticated", err)
+		}
+		if _, err := s.Authenticate(t.Context(), bobToken); err != nil {
+			t.Errorf("bob: %v", err)
+		}
+	})
+}
+
+func TestLoginActive(t *testing.T) {
+	pool := testdb.NewPool(t)
+	s := auth.NewStore(pool)
+	u := testdb.NewUser(t, pool)
+	au, err := s.Authenticate(t.Context(), signIn(t, s, u, "ua"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := func() bool {
+		t.Helper()
+		ok, err := s.LoginActive(t.Context(), au.LoginSessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+
+	if !active() {
+		t.Fatal("fresh session is not active")
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE users SET disabled_at = now()`); err != nil {
+		t.Fatal(err)
+	}
+	if active() {
+		t.Error("session of a disabled User is active")
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE users SET disabled_at = NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteLoginSessions(t.Context(), u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if active() {
+		t.Error("deleted session is active")
+	}
+}

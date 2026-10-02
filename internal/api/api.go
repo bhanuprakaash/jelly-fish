@@ -27,6 +27,7 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	authH := &authHandlers{cfg: authCfg, logger: logger}
 	streams := &sessionStreams{
 		repo: repo, hub: hub, deltas: deltas, metrics: metrics, logger: logger,
+		logins:       authCfg.Authenticator,
 		limiter:      newStreamLimiter(maxStreamsPerUser),
 		writeTimeout: writeTimeout,
 		pingInterval: pingInterval,
@@ -34,6 +35,10 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/hello", handleHello)
 	protected.HandleFunc("GET /api/me", handleMe)
+	protected.HandleFunc("POST /api/auth/logout", authH.handleLogout)
+	protected.HandleFunc("POST /api/auth/logout-all", authH.handleLogoutAll)
+	protected.HandleFunc("GET /api/me/login-sessions", authH.handleListLoginSessions)
+	protected.HandleFunc("DELETE /api/me/login-sessions/{id}", authH.handleDeleteLoginSession)
 	protected.HandleFunc("POST /api/sessions", handleCreateSession(repo, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/messages", handlePostMessage(repo, logger))
 	protected.HandleFunc("GET /api/sessions/{id}/events", streams.handle)

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Chat } from './Chat'
 import { LinkSignIn } from './LinkSignIn'
 import { Login } from './Login'
+import { Settings } from './Settings'
 import { getMe, UnauthorizedError } from './lib/api'
 
 const sessionPath = /^\/s\/([0-9a-f-]{36})$/i
@@ -12,6 +13,12 @@ function App() {
   const [signIn, setSignIn] = useState<SignIn>('checking')
   const [path, setPath] = useState(window.location.pathname)
   const [justCreated, setJustCreated] = useState(false)
+
+  const signedOut = useCallback(() => {
+    window.history.replaceState({}, '', '/')
+    setPath('/')
+    setSignIn('signed-out')
+  }, [])
 
   useEffect(() => {
     getMe().then(
@@ -56,6 +63,8 @@ function App() {
     return <Login onSignedIn={() => setSignIn('signed-in')} />
   }
 
+  if (path === '/settings') return <Settings onSignedOut={signedOut} />
+
   const match = sessionPath.exec(path)
   if (match) {
     return (
@@ -85,6 +94,9 @@ function App() {
         >
           New chat
         </button>
+        <a href="/settings" className="mt-4 block text-sm text-neutral-400 hover:text-neutral-200">
+          Settings
+        </a>
       </div>
     </main>
   )

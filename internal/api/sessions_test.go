@@ -286,6 +286,7 @@ func newStreams(t *testing.T, repo SessionRepo, hub *stream.Hub, deltas DeltaSub
 		limiter:      newStreamLimiter(maxStreamsPerUser),
 		writeTimeout: writeTimeout,
 		pingInterval: pingInterval,
+		logins:       fakeLogins{active: true},
 	}
 }
 

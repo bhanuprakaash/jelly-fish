@@ -39,6 +39,18 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 // code, so callers cannot tell the cases apart.
 var ErrInvalidCode = errors.New("invalid code")
 
+// ErrNotFound is returned when a Login Session does not exist or belongs to
+// another User.
+var ErrNotFound = errors.New("not found")
+
+// LoginSession is one signed-in device, as listed to its User.
+type LoginSession struct {
+	ID         uuid.UUID
+	UserAgent  string
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+}
+
 // Store keeps login codes and Login Sessions in Postgres.
 type Store struct {
 	pool *pgxpool.Pool
@@ -204,7 +216,6 @@ func login(ctx context.Context, tx pgx.Tx, email, userAgent string) (token strin
 // one write per hour (auth-keys.md §5.4).
 func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 	var u User
-	var loginID uuid.UUID
 	var stale bool
 	var name *string
 	err := s.pool.QueryRow(ctx, `
@@ -212,7 +223,7 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 		       u.id, u.workspace_id, u.email, u.name, u.is_admin
 		FROM login_sessions ls JOIN users u ON u.id = ls.user_id
 		WHERE ls.token_hash = $1 AND ls.expires_at > now() AND u.disabled_at IS NULL`,
-		hash(token), slideAfter.Seconds()).Scan(&loginID, &stale, &u.ID, &u.WorkspaceID, &u.Email, &name, &u.IsAdmin)
+		hash(token), slideAfter.Seconds()).Scan(&u.LoginSessionID, &stale, &u.ID, &u.WorkspaceID, &u.Email, &name, &u.IsAdmin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrUnauthenticated
 	}
@@ -227,9 +238,63 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 		_, _ = s.pool.Exec(ctx, `
 			UPDATE login_sessions SET last_seen_at = now(), expires_at = now() + make_interval(secs => $2)
 			WHERE id = $1 AND last_seen_at < now() - make_interval(secs => $3)`,
-			loginID, SessionLifetime.Seconds(), slideAfter.Seconds())
+			u.LoginSessionID, SessionLifetime.Seconds(), slideAfter.Seconds())
 	}
 	return u, nil
+}
+
+// LoginSessions lists userID's live Login Sessions, newest first.
+func (s *Store) LoginSessions(ctx context.Context, userID uuid.UUID) ([]LoginSession, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, coalesce(user_agent, ''), created_at, last_seen_at FROM login_sessions
+		WHERE user_id = $1 AND expires_at > now() ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list login sessions: %w", err)
+	}
+	list, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (LoginSession, error) {
+		var ls LoginSession
+		err := row.Scan(&ls.ID, &ls.UserAgent, &ls.CreatedAt, &ls.LastSeenAt)
+		return ls, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read login sessions: %w", err)
+	}
+	return list, nil
+}
+
+// DeleteLoginSession ends one of userID's Login Sessions. It is ErrNotFound
+// for an unknown id or one owned by another User, so ids cannot be probed.
+func (s *Store) DeleteLoginSession(ctx context.Context, userID, id uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM login_sessions WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return fmt.Errorf("delete login session: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteLoginSessions ends every Login Session of userID.
+func (s *Store) DeleteLoginSessions(ctx context.Context, userID uuid.UUID) error {
+	if _, err := s.pool.Exec(ctx, `DELETE FROM login_sessions WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete login sessions: %w", err)
+	}
+	return nil
+}
+
+// LoginActive reports whether the Login Session is unexpired and its User is
+// not disabled, which is what an open stream re-checks (auth-keys.md §5.5).
+func (s *Store) LoginActive(ctx context.Context, id uuid.UUID) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM login_sessions ls JOIN users u ON u.id = ls.user_id
+			WHERE ls.id = $1 AND ls.expires_at > now() AND u.disabled_at IS NULL)`, id).Scan(&ok)
+	if err != nil {
+		return false, fmt.Errorf("check login session: %w", err)
+	}
+	return ok, nil
 }
 
 func hash(s string) []byte {

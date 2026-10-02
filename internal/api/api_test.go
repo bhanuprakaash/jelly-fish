@@ -64,6 +64,26 @@ func (fakeAuthenticator) Authenticate(_ context.Context, token string) (auth.Use
 	return auth.User{ID: uuid.New(), WorkspaceID: uuid.New(), Email: "me@example.test"}, nil
 }
 
+func (fakeAuthenticator) DeleteLoginSession(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (fakeAuthenticator) DeleteLoginSessions(context.Context, uuid.UUID) error { return nil }
+
+func (fakeAuthenticator) LoginSessions(context.Context, uuid.UUID) ([]auth.LoginSession, error) {
+	return nil, nil
+}
+
+func (fakeAuthenticator) LoginActive(context.Context, uuid.UUID) (bool, error) { return true, nil }
+
+// fakeLogins is a loginChecker with a fixed answer.
+type fakeLogins struct {
+	active bool
+	err    error
+}
+
+func (f fakeLogins) LoginActive(context.Context, uuid.UUID) (bool, error) { return f.active, f.err }
+
 // signIn adds the Login Session cookie fakeAuthenticator accepts.
 func signIn(req *http.Request) *http.Request {
 	req.AddCookie(&http.Cookie{Name: loginCookie, Value: testToken})

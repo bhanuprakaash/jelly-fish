@@ -107,6 +107,7 @@ type sessionStreams struct {
 	limiter *streamLimiter
 	metrics *stream.Metrics
 	logger  *slog.Logger
+	logins  loginChecker
 	// writeTimeout bounds each write; pingInterval paces the idle ping.
 	writeTimeout time.Duration
 	pingInterval time.Duration
@@ -188,6 +189,9 @@ func (s *sessionStreams) handle(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-ticker.C:
+			if !s.loginHolds(ctx) {
+				return
+			}
 			if !sw.frame(": ping\n\n") || !sw.pendingDeltas(deltaCh) {
 				return
 			}
@@ -199,6 +203,19 @@ func (s *sessionStreams) handle(w http.ResponseWriter, r *http.Request) {
 			lastSent = sent
 		}
 	}
+}
+
+// loginHolds reports whether the stream's Login Session is still valid and its
+// User enabled. A failed check keeps the stream open: the next ping asks
+// again, and a reconnect is authenticated anyway (auth-keys.md §5.5).
+func (s *sessionStreams) loginHolds(ctx context.Context) bool {
+	u, _ := auth.UserFrom(ctx)
+	ok, err := s.logins.LoginActive(ctx, u.LoginSessionID)
+	if err != nil {
+		s.logger.Error("check login session", "error", err)
+		return true
+	}
+	return ok
 }
 
 // sendEvents writes every event with seq > after as a durable frame and

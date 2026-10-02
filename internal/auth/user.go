@@ -21,6 +21,9 @@ type User struct {
 	Email       string
 	Name        string
 	IsAdmin     bool
+	// LoginSessionID is the Login Session the request came in on; zero for a
+	// User not loaded through Authenticate.
+	LoginSessionID uuid.UUID
 }
 
 // Scope is the TenantScope every Repo call for this User runs under.

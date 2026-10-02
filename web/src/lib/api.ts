@@ -90,6 +90,35 @@ export async function verifyLink(token: string): Promise<boolean> {
   }
 }
 
+export type LoginSession = {
+  id: string
+  user_agent: string
+  created_at: string
+  last_seen_at: string
+  current: boolean
+}
+
+// getLoginSessions lists the signed-in devices of the current User.
+export async function getLoginSessions(): Promise<LoginSession[]> {
+  const res = await request('/api/me/login-sessions')
+  return res.json() as Promise<LoginSession[]>
+}
+
+// deleteLoginSession logs one device out, possibly this one.
+export async function deleteLoginSession(id: string): Promise<void> {
+  await request(`/api/me/login-sessions/${id}`, { method: 'DELETE' })
+}
+
+// logout ends this device's Login Session.
+export async function logout(): Promise<void> {
+  await request('/api/auth/logout', { method: 'POST' })
+}
+
+// logoutAll ends every Login Session of the current User, this one included.
+export async function logoutAll(): Promise<void> {
+  await request('/api/auth/logout-all', { method: 'POST' })
+}
+
 // createSession starts a session; repeating the same sessionId returns the
 // existing one instead of sending message again (event-log.md §4).
 export function createSession(sessionId: string, clientMsgId: string, message: string) {
