@@ -16,10 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 )
 
 const (
@@ -42,20 +39,6 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 // code, so callers cannot tell the cases apart.
 var ErrInvalidCode = errors.New("invalid code")
 
-// User is the signed-in person behind a request.
-type User struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Email       string
-	Name        string
-	IsAdmin     bool
-}
-
-// Scope is the TenantScope every Repo call for this User runs under.
-func (u User) Scope() eventlog.TenantScope {
-	return eventlog.TenantScope{WorkspaceID: u.WorkspaceID, UserID: u.ID}
-}
-
 // Store keeps login codes and Login Sessions in Postgres.
 type Store struct {
 	pool *pgxpool.Pool
@@ -64,56 +47,6 @@ type Store struct {
 // NewStore builds a Store backed by pool.
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
-}
-
-// NormalizeEmail lowercases and trims an email, the form users.email holds.
-func NormalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
-}
-
-// CreateUser inserts a workspace, a User and their "Personal" Project in tx.
-func CreateUser(ctx context.Context, tx pgx.Tx, email string, isAdmin bool) (User, error) {
-	u := User{ID: uuid.New(), WorkspaceID: uuid.New(), Email: NormalizeEmail(email), IsAdmin: isAdmin}
-	if _, err := tx.Exec(ctx, `INSERT INTO workspaces (id) VALUES ($1)`, u.WorkspaceID); err != nil {
-		return User{}, fmt.Errorf("insert workspace: %w", err)
-	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO users (id, workspace_id, email, is_admin) VALUES ($1, $2, $3, $4)`,
-		u.ID, u.WorkspaceID, u.Email, u.IsAdmin); err != nil {
-		return User{}, fmt.Errorf("insert user: %w", err)
-	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO projects (id, workspace_id, user_id, name) VALUES ($1, $2, $3, $4)`,
-		uuid.New(), u.WorkspaceID, u.ID, eventlog.PersonalProject); err != nil {
-		return User{}, fmt.Errorf("insert project: %w", err)
-	}
-	return u, nil
-}
-
-// BootstrapAdmin creates the Admin for email unless a User with that email
-// exists, and reports whether it did. Existing Users are never changed
-// (auth-keys.md §5.6).
-func BootstrapAdmin(ctx context.Context, pool *pgxpool.Pool, email string) (bool, error) {
-	created := false
-	err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)`, NormalizeEmail(email)).Scan(&exists); err != nil {
-			return fmt.Errorf("look up user: %w", err)
-		}
-		if exists {
-			return nil
-		}
-		if _, err := CreateUser(ctx, tx, email, true); err != nil {
-			return err
-		}
-		created = true
-		return nil
-	})
-	if isUniqueViolation(err) {
-		// Another process bootstrapped the same email first.
-		return false, nil
-	}
-	return created, err
 }
 
 // RequestCode records a login code for email and returns it for sending. It
@@ -263,19 +196,6 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 	return u, nil
 }
 
-type userKey struct{}
-
-// WithUser returns ctx carrying u, as set by the Authn middleware.
-func WithUser(ctx context.Context, u User) context.Context {
-	return context.WithValue(ctx, userKey{}, u)
-}
-
-// UserFrom returns the User WithUser stored in ctx.
-func UserFrom(ctx context.Context) (User, bool) {
-	u, ok := ctx.Value(userKey{}).(User)
-	return u, ok
-}
-
 func hash(s string) []byte {
 	h := sha256.Sum256([]byte(s))
 	return h[:]
@@ -297,9 +217,4 @@ func randomToken() (string, error) {
 		return "", fmt.Errorf("generate token: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
