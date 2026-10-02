@@ -148,13 +148,16 @@ func (s *Store) DisableUser(ctx context.Context, id uuid.UUID) error {
 		if _, err := tx.Exec(ctx, `SELECT id FROM users WHERE is_admin AND disabled_at IS NULL FOR UPDATE`); err != nil {
 			return fmt.Errorf("lock admins: %w", err)
 		}
-		var isAdmin bool
+		var wasActiveAdmin bool
 		err := tx.QueryRow(ctx,
-			`UPDATE users SET disabled_at = coalesce(disabled_at, now()) WHERE id = $1 RETURNING is_admin`, id).Scan(&isAdmin)
+			`SELECT is_admin AND disabled_at IS NULL FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&wasActiveAdmin)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		if err != nil {
+			return fmt.Errorf("lock user: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE users SET disabled_at = coalesce(disabled_at, now()) WHERE id = $1`, id); err != nil {
 			return fmt.Errorf("disable user: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM login_sessions WHERE user_id = $1`, id); err != nil {
@@ -164,7 +167,7 @@ func (s *Store) DisableUser(ctx context.Context, id uuid.UUID) error {
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE is_admin AND disabled_at IS NULL)`).Scan(&remaining); err != nil {
 			return fmt.Errorf("count active admins: %w", err)
 		}
-		if isAdmin && !remaining {
+		if wasActiveAdmin && !remaining {
 			return ErrLastAdmin
 		}
 		return nil

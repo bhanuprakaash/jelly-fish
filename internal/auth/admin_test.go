@@ -250,6 +250,15 @@ func TestDisableKeepsAnActiveAdmin(t *testing.T) {
 	if err := s.DisableUser(t.Context(), b.ID); !errors.Is(err, auth.ErrLastAdmin) {
 		t.Fatalf("disabling the only active Admin err = %v, want ErrLastAdmin", err)
 	}
+
+	// With no active Admin left, re-disabling the already disabled a changes
+	// nothing, so it is a no-op rather than ErrLastAdmin.
+	if _, err := pool.Exec(t.Context(), `UPDATE users SET disabled_at = now() WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DisableUser(t.Context(), a.ID); err != nil {
+		t.Fatalf("re-disabling an already disabled Admin: %v", err)
+	}
 }
 
 func TestMakeAdminAndAdminList(t *testing.T) {
