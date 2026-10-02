@@ -17,7 +17,7 @@ There's no HTTP surface for this feature — it's a CLI/process action, proven t
 
 Preconditions:
 
-- `$DATABASE_URL` exported.
+- `$DATABASE_URL` set from `jellyfish_db` (see [`../SKILL.md`](../SKILL.md) Launch).
 
 - **Apply.** Run `go run ./cmd/jelly-fish migrate`. Exit code `0`.
 - **Confirm applied.** Start the api role afterward (Launch steps 1 then 2, in that order) and run `curl -si localhost:9090/readyz`. Status `200`, body `ok` — this is the actual proof migrations landed, since `readyz` checks for the goose version table.

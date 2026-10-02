@@ -4,7 +4,7 @@ This directory is the maintained source for verifying jelly-fish's real behavior
 
 ## Baseline preconditions
 
-- `$DATABASE_URL` exported, pointing at the port-forwarded local postgres (`localhost:5433`).
+- `$DATABASE_URL` pointing at the port-forwarded local postgres (`localhost:5433`), taken from `jellyfish_db` as in [`../SKILL.md`](../SKILL.md) Launch.
 - Local k8s infra (`postgres`, `minio`, `mailpit`) running via `make infra`; Mailpit forwarded on `:8025` and `:1025`.
 - The api role started per [`../SKILL.md`](../SKILL.md) Launch, answering on `:8080` (api) and `:9090` (health).
 

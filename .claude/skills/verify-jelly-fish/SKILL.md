@@ -14,7 +14,7 @@ Preconditions:
 - Local k8s infra is up: `kubectl get pods -n jelly-fish` shows `postgres`, `minio`, `mailpit` all `Running`. If not, run `make infra` and wait for `postgres-0` to become ready.
 - Postgres is reachable at `localhost:5433`: check with `lsof -iTCP:5433 -sTCP:LISTEN`. If nothing is listening, start it yourself with `make db &` and remember you started it (see Cleanup).
 - Mailpit is reachable at `localhost:8025` (web API) and `localhost:1025` (SMTP): check with `lsof -iTCP:8025 -sTCP:LISTEN`. If nothing is listening, start it yourself with `kubectl port-forward -n jelly-fish svc/mailpit 8025:8025 1025:1025 &` and remember you started it (see Cleanup). `make serve` already forwards 8025 but not 1025.
-- `$DATABASE_URL` is exported and points at `localhost:5433` with the credentials from `deploy/k8s/.env.postgres`. This is the user's own env var — read it with `echo $DATABASE_URL`, never grep or cat the `.env.postgres` file for it. If it's unset, stop and ask the user to export it.
+- `$DATABASE_URL` points at `localhost:5433`. Get it from the user's shell function (in `~/.zshrc`, reads the cluster secret, pre-authorized): prefix each command that needs it with `DATABASE_URL=$(zsh -ic 'jellyfish_db' 2>/dev/null | tail -1)`, since shell state does not persist between calls. Keep the value out of output and files; never grep or cat `.env.postgres` for it.
 
 Steps, from the repo root:
 
