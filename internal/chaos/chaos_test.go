@@ -8,6 +8,7 @@ package chaos
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -90,6 +91,7 @@ func spawn(t *testing.T, bin string, pool *pgxpool.Pool) *proc {
 		"HEALTH_ADDR=127.0.0.1:0",
 		"JF_LEASE_TTL="+leaseTTL.String(),
 		"JF_HEARTBEAT="+heartbeat.String(),
+		"JF_MASTER_KEY=m1:"+base64.StdEncoding.EncodeToString(make([]byte, 32)),
 	)
 	cmd.Stdout, cmd.Stderr = log, log
 	if err := cmd.Start(); err != nil {
