@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,9 @@ type Config struct {
 	// SMTPURL and MailFrom configure login email; only the api role needs them.
 	SMTPURL  string
 	MailFrom string
+	// PublicURL is the app's external origin, e.g. https://jf.example.com; the
+	// api role puts it in login email links.
+	PublicURL string
 	// DevInsecureCookie sends the login cookie without Secure, for local http
 	// only.
 	DevInsecureCookie bool
@@ -56,6 +60,7 @@ func Load() (Config, error) {
 		AdminEmail:        os.Getenv("JF_ADMIN_EMAIL"),
 		SMTPURL:           os.Getenv("JF_SMTP_URL"),
 		MailFrom:          os.Getenv("JF_MAIL_FROM"),
+		PublicURL:         strings.TrimRight(os.Getenv("JF_PUBLIC_URL"), "/"),
 		DevInsecureCookie: os.Getenv("JF_DEV_INSECURE_COOKIE") == "1",
 	}, nil
 }

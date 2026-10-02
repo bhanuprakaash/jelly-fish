@@ -22,7 +22,7 @@ Steps, from the repo root:
 2. Build a fixed binary once, then run that — never background `go run` itself. `go run` compiles and execs a *child* process; `$!` captures the short-lived wrapper PID, not the child, so killing it later leaves the real server orphaned and still listening:
    ```
    go build -o /tmp/jelly-fish-verify-bin ./cmd/jelly-fish
-   JF_SMTP_URL=smtp://localhost:1025 JF_MAIL_FROM=jelly-fish@localhost JF_DEV_INSECURE_COOKIE=1 \
+   JF_SMTP_URL=smtp://localhost:1025 JF_MAIL_FROM=jelly-fish@localhost JF_PUBLIC_URL=http://localhost:8080 JF_DEV_INSECURE_COOKIE=1 \
      /tmp/jelly-fish-verify-bin api > /tmp/jelly-fish-verify-api.log 2>&1 &
    echo $! > /tmp/jelly-fish-verify-api.pid
    ```

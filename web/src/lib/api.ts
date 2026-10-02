@@ -74,6 +74,22 @@ export async function verifyCode(email: string, code: string): Promise<boolean> 
   }
 }
 
+// verifyLink signs in with the token from the emailed link and resolves true,
+// or false when the link is used or expired.
+export async function verifyLink(token: string): Promise<boolean> {
+  try {
+    await request('/api/auth/link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ t: token }),
+    })
+    return true
+  } catch (err) {
+    if (err instanceof UnauthorizedError) return false
+    throw err
+  }
+}
+
 // createSession starts a session; repeating the same sessionId returns the
 // existing one instead of sending message again (event-log.md §4).
 export function createSession(sessionId: string, clientMsgId: string, message: string) {

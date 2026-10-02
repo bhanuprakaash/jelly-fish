@@ -17,7 +17,7 @@ An invited email gets a 6-digit code, trades it for a Login Session cookie, and 
 
 Preconditions:
 
-- Migrate ran with `JF_ADMIN_EMAIL` set (Launch step 1), and the api role has `JF_SMTP_URL`, `JF_MAIL_FROM` and `JF_DEV_INSECURE_COOKIE=1` (Launch step 2). Mailpit is forwarded on `:8025` / `:1025`.
+- Migrate ran with `JF_ADMIN_EMAIL` set (Launch step 1), and the api role has `JF_SMTP_URL`, `JF_MAIL_FROM`, `JF_PUBLIC_URL` and `JF_DEV_INSECURE_COOKIE=1` (Launch step 2). Mailpit is forwarded on `:8025` / `:1025`.
 
 - **Request.** `curl -si -XPOST localhost:8080/api/auth/code -d '{"email":"admin@example.test"}'` → `202`, `{"message":"If you're invited, a code is on its way."}`. Repeat with `nobody@example.test` → identical response, and no new Mailpit message.
 - **Read the code.** `curl -s localhost:8025/api/v1/messages` — the newest message's `Subject` is `Your jelly-fish code: NNNNNN`.

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Chat } from './Chat'
+import { LinkSignIn } from './LinkSignIn'
 import { Login } from './Login'
 import { getMe, UnauthorizedError } from './lib/api'
 
@@ -27,6 +28,21 @@ function App() {
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
+
+  if (path === '/auth/link') {
+    const token = new URLSearchParams(window.location.search).get('t')
+    if (token) {
+      return (
+        <LinkSignIn
+          token={token}
+          onSignedIn={() => {
+            setSignIn('signed-in')
+            setPath('/')
+          }}
+        />
+      )
+    }
+  }
 
   if (signIn === 'checking') return null
   if (signIn === 'error') {

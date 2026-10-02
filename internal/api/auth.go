@@ -27,8 +27,9 @@ const (
 // Authenticator is what the auth endpoints and middleware need from the login
 // store (internal/auth.Store satisfies it).
 type Authenticator interface {
-	RequestCode(ctx context.Context, email string) (string, error)
+	RequestCode(ctx context.Context, email string) (code, link string, err error)
 	VerifyCode(ctx context.Context, email, code, userAgent string) (string, error)
+	VerifyLink(ctx context.Context, link, userAgent string) (string, error)
 	Authenticate(ctx context.Context, token string) (auth.User, error)
 }
 
@@ -46,6 +47,9 @@ var _ Mailer = (*mail.SMTP)(nil)
 type AuthConfig struct {
 	Authenticator Authenticator
 	Mailer        Mailer
+	// PublicURL is the app's external origin, used for links in email. It is
+	// config because the request Host is attacker-controlled.
+	PublicURL string
 	// InsecureCookie sends the cookie without Secure under the name jf_login,
 	// for local http only.
 	InsecureCookie bool
@@ -79,23 +83,26 @@ func (a *authHandlers) handleRequestCode(w http.ResponseWriter, r *http.Request)
 	}
 	// An address that can't be parsed gets the same answer, and no email.
 	if addr, err := netmail.ParseAddress(req.Email); err == nil {
-		code, err := a.cfg.Authenticator.RequestCode(r.Context(), addr.Address)
+		code, link, err := a.cfg.Authenticator.RequestCode(r.Context(), addr.Address)
 		if err != nil {
 			a.logger.Error("request login code", "error", err)
 		} else if code != "" {
-			a.sendCode(context.WithoutCancel(r.Context()), auth.NormalizeEmail(addr.Address), code)
+			a.sendCode(context.WithoutCancel(r.Context()), auth.NormalizeEmail(addr.Address), code, link)
 		}
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"message": codeAcceptedMsg})
 }
 
-// sendCode emails the code in the background, outliving the request.
-func (a *authHandlers) sendCode(ctx context.Context, email, code string) {
+// sendCode emails the code and its link in the background, outliving the
+// request.
+func (a *authHandlers) sendCode(ctx context.Context, email, code, link string) {
 	a.bg.Go(func() {
 		ctx, cancel := context.WithTimeout(ctx, codeSendTimeout)
 		defer cancel()
 		subject := "Your jelly-fish code: " + code
-		text := "Your jelly-fish sign-in code is " + code + ".\nIt expires in 10 minutes. If you didn't ask for it, ignore this email.\n"
+		text := "Sign in to jelly-fish: " + a.cfg.PublicURL + "/auth/link?t=" + link + "\n\n" +
+			"On the app? Type this code. Your code is " + code + ".\n\n" +
+			"It expires in 10 minutes. If you didn't ask for it, ignore this email.\n"
 		if err := a.cfg.Mailer.Send(ctx, email, subject, text); err != nil {
 			a.logger.Error("send login code", "error", err)
 		}
@@ -124,6 +131,34 @@ func (a *authHandlers) handleVerifyCode(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.logger.Info("login succeeded", "email", auth.NormalizeEmail(req.Email), "method", "code")
+	a.setLoginCookie(w, token)
+}
+
+type linkRequest struct {
+	Token string `json:"t"`
+}
+
+func (a *authHandlers) handleVerifyLink(w http.ResponseWriter, r *http.Request) {
+	var req linkRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	token, err := a.cfg.Authenticator.VerifyLink(r.Context(), req.Token, r.UserAgent())
+	if errors.Is(err, auth.ErrInvalidCode) {
+		a.logger.Info("login failed", "method", "link")
+		writeError(w, http.StatusUnauthorized, "invalid or expired link")
+		return
+	}
+	if err != nil {
+		a.logger.Error("verify login link", "error", err)
+		writeError(w, http.StatusInternalServerError, "could not sign in")
+		return
+	}
+	a.logger.Info("login succeeded", "method", "link")
+	a.setLoginCookie(w, token)
+}
+
+func (a *authHandlers) setLoginCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     a.cookieName(),
 		Value:    token,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
@@ -23,6 +24,9 @@ import (
 func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if cfg.SMTPURL == "" || cfg.MailFrom == "" {
 		return errors.New("JF_SMTP_URL and JF_MAIL_FROM are required")
+	}
+	if u, err := url.Parse(cfg.PublicURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errors.New("JF_PUBLIC_URL is required: want http(s)://host[:port]")
 	}
 	mailer, err := mail.NewSMTP(cfg.SMTPURL, cfg.MailFrom)
 	if err != nil {
@@ -58,6 +62,7 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics, api.AuthConfig{
 		Authenticator:  auth.NewStore(pool),
 		Mailer:         mailer,
+		PublicURL:      cfg.PublicURL,
 		InsecureCookie: cfg.DevInsecureCookie,
 	})
 

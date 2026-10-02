@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -17,6 +18,8 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
 )
+
+const testPublicURL = "https://jf.example.test"
 
 // loginEnv is a real server over a real database, with a recording Mailer.
 type loginEnv struct {
@@ -31,7 +34,7 @@ func newLoginEnv(t *testing.T) *loginEnv {
 	pool := testdb.NewPool(t)
 	mailer := &fakeMailer{}
 	srv, authH := newServer(":0", slog.New(slog.DiscardHandler), testWebFS(), eventlog.NewRepo(pool), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
-		AuthConfig{Authenticator: auth.NewStore(pool), Mailer: mailer})
+		AuthConfig{Authenticator: auth.NewStore(pool), Mailer: mailer, PublicURL: testPublicURL})
 	return &loginEnv{pool: pool, srv: srv, auth: authH, mailer: mailer}
 }
 
@@ -98,6 +101,131 @@ func TestRequestCodeAnswersAlikeForUnknownEmail(t *testing.T) {
 	mails := e.waitMail(t)
 	if len(mails) != 1 || mails[0].to != u.Email {
 		t.Fatalf("sent = %+v, want exactly one email to %s", mails, u.Email)
+	}
+}
+
+var linkPattern = regexp.MustCompile(`https://jf\.example\.test/auth/link\?t=([A-Za-z0-9_-]+)`)
+
+func TestCodeEmailCarriesLinkOnPublicURL(t *testing.T) {
+	e := newLoginEnv(t)
+	u := testdb.NewUser(t, e.pool)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/code", bytes.NewBufferString(`{"email":"`+u.Email+`"}`))
+	req.Host = "evil.example"
+	rr := httptest.NewRecorder()
+	e.srv.Handler.ServeHTTP(rr, req)
+
+	mails := e.waitMail(t)
+	if len(mails) != 1 {
+		t.Fatalf("sent %d emails, want 1", len(mails))
+	}
+	text := mails[0].text
+	if !linkPattern.MatchString(text) {
+		t.Errorf("email has no link on JF_PUBLIC_URL:\n%s", text)
+	}
+	if strings.Contains(text, "evil.example") {
+		t.Errorf("email used the request Host:\n%s", text)
+	}
+	if !strings.Contains(text, "On the app? Type this code.") {
+		t.Errorf("email lacks the app hint:\n%s", text)
+	}
+}
+
+// requestLink runs the code request for u and returns the emailed link token.
+func (e *loginEnv) requestLink(t *testing.T, u auth.User) string {
+	t.Helper()
+	e.do(http.MethodPost, "/api/auth/code", map[string]string{"email": u.Email}, nil)
+	mails := e.waitMail(t)
+	if len(mails) == 0 {
+		t.Fatal("no code email sent")
+	}
+	m := linkPattern.FindStringSubmatch(mails[len(mails)-1].text)
+	if m == nil {
+		t.Fatal("email has no link")
+	}
+	return m[1]
+}
+
+func TestLinkPageConsumesNothing(t *testing.T) {
+	e := newLoginEnv(t)
+	u := testdb.NewUser(t, e.pool)
+	link := e.requestLink(t, u)
+
+	if rr := e.do(http.MethodGet, "/auth/link?t="+link, nil, nil); rr.Code != http.StatusOK {
+		t.Fatalf("GET /auth/link status = %d, want 200", rr.Code)
+	}
+	var used int
+	if err := e.pool.QueryRow(t.Context(), `SELECT count(*) FROM login_codes WHERE used_at IS NOT NULL`).Scan(&used); err != nil || used != 0 {
+		t.Fatalf("used codes = %d, %v; want 0", used, err)
+	}
+	if rr := e.do(http.MethodPost, "/api/auth/link", map[string]string{"t": link}, nil); rr.Code != http.StatusNoContent {
+		t.Errorf("POST after GET: status = %d, want 204", rr.Code)
+	}
+}
+
+func TestLinkSignsInAndConsumesCode(t *testing.T) {
+	e := newLoginEnv(t)
+	u := testdb.NewUser(t, e.pool)
+	link := e.requestLink(t, u)
+	code := codePattern.FindString(e.mailer.sentMails()[0].text)
+
+	rr := e.do(http.MethodPost, "/api/auth/link", map[string]string{"t": link}, nil)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body %s", rr.Code, rr.Body)
+	}
+	var c *http.Cookie
+	for _, ck := range rr.Result().Cookies() {
+		if ck.Name == loginCookie {
+			c = ck
+		}
+	}
+	if c == nil || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("cookie = %+v, want HttpOnly Secure SameSite=Lax", c)
+	}
+	if me := e.do(http.MethodGet, "/api/me", nil, c); me.Code != http.StatusOK {
+		t.Errorf("/api/me status = %d, want 200", me.Code)
+	}
+	if rr := e.do(http.MethodPost, "/api/auth/link", map[string]string{"t": link}, nil); rr.Code != http.StatusUnauthorized {
+		t.Errorf("reused link: status = %d, want 401", rr.Code)
+	}
+	if rr := e.do(http.MethodPost, "/api/auth/code/verify", map[string]string{"email": u.Email, "code": code}, nil); rr.Code != http.StatusUnauthorized {
+		t.Errorf("code after link: status = %d, want 401", rr.Code)
+	}
+}
+
+func TestBadLinkIs401(t *testing.T) {
+	e := newLoginEnv(t)
+	rr := e.do(http.MethodPost, "/api/auth/link", map[string]string{"t": "forged"}, nil)
+	if rr.Code != http.StatusUnauthorized || len(rr.Result().Cookies()) != 0 {
+		t.Fatalf("status = %d, cookies %v; want 401 and none", rr.Code, rr.Result().Cookies())
+	}
+}
+
+func TestCodeRateLimitAndLockoutOverHTTP(t *testing.T) {
+	e := newLoginEnv(t)
+	u := testdb.NewUser(t, e.pool)
+
+	for range 4 {
+		e.do(http.MethodPost, "/api/auth/code", map[string]string{"email": u.Email}, nil)
+	}
+	mails := e.waitMail(t)
+	if len(mails) != 3 {
+		t.Fatalf("sent %d emails for 4 requests, want 3", len(mails))
+	}
+
+	code := codePattern.FindString(mails[2].text)
+	wrong := "000000"
+	if code == wrong {
+		wrong = "000001"
+	}
+	for i := 1; i <= 6; i++ {
+		rr := e.do(http.MethodPost, "/api/auth/code/verify", map[string]string{"email": u.Email, "code": wrong}, nil)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("guess %d: status = %d, want 401", i, rr.Code)
+		}
+	}
+	if rr := e.do(http.MethodPost, "/api/auth/code/verify", map[string]string{"email": u.Email, "code": code}, nil); rr.Code != http.StatusUnauthorized {
+		t.Errorf("right code after lockout: status = %d, want 401", rr.Code)
 	}
 }
 

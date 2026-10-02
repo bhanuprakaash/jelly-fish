@@ -49,28 +49,29 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
-// RequestCode records a login code for email and returns it for sending. It
-// returns "" when nothing should be sent: the email is not an enabled User, or
-// three codes went out in the last 15 minutes (auth-keys.md §5.1).
-func (s *Store) RequestCode(ctx context.Context, email string) (string, error) {
+// RequestCode records a login code for email and returns it with its link
+// token for sending. Both are "" when nothing should be sent: the email is not
+// an enabled User, or three codes went out in the last 15 minutes
+// (auth-keys.md §5.1).
+func (s *Store) RequestCode(ctx context.Context, email string) (code, link string, err error) {
 	email = NormalizeEmail(email)
 	var allowed bool
-	err := s.pool.QueryRow(ctx,
+	err = s.pool.QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM users WHERE email = $1 AND disabled_at IS NULL)`, email).Scan(&allowed)
 	if err != nil {
-		return "", fmt.Errorf("look up user: %w", err)
+		return "", "", fmt.Errorf("look up user: %w", err)
 	}
 	if !allowed {
-		return "", nil
+		return "", "", nil
 	}
 
-	code, err := newCode()
+	code, err = newCode()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	link, err := randomToken()
+	link, err = randomToken()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	// The count and insert are one statement, so concurrent requests cannot
 	// both slip under the limit and a row only exists for a code that is sent.
@@ -81,12 +82,12 @@ func (s *Store) RequestCode(ctx context.Context, email string) (string, error) {
 		       WHERE email = $2 AND created_at > now() - interval '15 minutes') < $5`,
 		uuid.New(), email, hash(code), hash(link), maxCodesPerWindow)
 	if err != nil {
-		return "", fmt.Errorf("insert login code: %w", err)
+		return "", "", fmt.Errorf("insert login code: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return "", nil
+		return "", "", nil
 	}
-	return code, nil
+	return code, link, nil
 }
 
 // VerifyCode checks the newest unused, unexpired code for email and, if it
@@ -123,6 +124,41 @@ func (s *Store) VerifyCode(ctx context.Context, email, code, userAgent string) (
 				return fmt.Errorf("count attempt: %w", err)
 			}
 			return nil
+		}
+		if _, err := tx.Exec(ctx, `UPDATE login_codes SET used_at = now() WHERE id = $1`, id); err != nil {
+			return fmt.Errorf("use login code: %w", err)
+		}
+		token, wrong, err = login(ctx, tx, email, userAgent)
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	if wrong {
+		return "", ErrInvalidCode
+	}
+	return token, nil
+}
+
+// VerifyLink starts a Login Session for the unused, unexpired code behind link
+// and returns its cookie token. Using the link consumes the code too. Every
+// failure is ErrInvalidCode.
+func (s *Store) VerifyLink(ctx context.Context, link, userAgent string) (string, error) {
+	var token string
+	wrong := false
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var id uuid.UUID
+		var email string
+		err := tx.QueryRow(ctx, `
+			SELECT id, email FROM login_codes
+			WHERE link_hash = $1 AND used_at IS NULL AND expires_at > now() FOR UPDATE`,
+			hash(link)).Scan(&id, &email)
+		if errors.Is(err, pgx.ErrNoRows) {
+			wrong = true
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("select login link: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE login_codes SET used_at = now() WHERE id = $1`, id); err != nil {
 			return fmt.Errorf("use login code: %w", err)

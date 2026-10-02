@@ -41,6 +41,7 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/auth/code", authH.handleRequestCode)
 	mux.HandleFunc("POST /api/auth/code/verify", authH.handleVerifyCode)
+	mux.HandleFunc("POST /api/auth/link", authH.handleVerifyLink)
 	mux.Handle("/api/", authH.authn(protected))
 	mux.Handle("/", spaHandler(webFS))
 	srv := &http.Server{Addr: addr, Handler: mux}

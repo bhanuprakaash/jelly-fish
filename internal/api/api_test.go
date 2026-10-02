@@ -45,7 +45,13 @@ const testToken = "test-token"
 // fakeAuthenticator signs in the one holder of testToken.
 type fakeAuthenticator struct{}
 
-func (fakeAuthenticator) RequestCode(context.Context, string) (string, error) { return "", nil }
+func (fakeAuthenticator) RequestCode(context.Context, string) (string, string, error) {
+	return "", "", nil
+}
+
+func (fakeAuthenticator) VerifyLink(context.Context, string, string) (string, error) {
+	return "", auth.ErrInvalidCode
+}
 
 func (fakeAuthenticator) VerifyCode(context.Context, string, string, string) (string, error) {
 	return "", auth.ErrInvalidCode

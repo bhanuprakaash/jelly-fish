@@ -49,6 +49,8 @@ spec:
               value: smtp://mailpit:1025
             - name: JF_MAIL_FROM
               value: jelly-fish@localhost
+            - name: JF_PUBLIC_URL
+              value: http://localhost:8080
           livenessProbe:
             httpGet:
               path: /healthz

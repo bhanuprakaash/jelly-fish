@@ -22,16 +22,22 @@ func countRows(t *testing.T, pool *pgxpool.Pool, query string, args ...any) int 
 	return n
 }
 
-// requestCode fails the test unless a code is issued for email.
-func requestCode(t *testing.T, s *auth.Store, email string) string {
+// requestLogin fails the test unless a code and link are issued for email.
+func requestLogin(t *testing.T, s *auth.Store, email string) (code, link string) {
 	t.Helper()
-	code, err := s.RequestCode(t.Context(), email)
+	code, link, err := s.RequestCode(t.Context(), email)
 	if err != nil {
 		t.Fatalf("RequestCode: %v", err)
 	}
-	if code == "" {
-		t.Fatalf("RequestCode(%q) issued no code", email)
+	if code == "" || link == "" {
+		t.Fatalf("RequestCode(%q) issued code %q, link %q", email, code, link)
 	}
+	return code, link
+}
+
+func requestCode(t *testing.T, s *auth.Store, email string) string {
+	t.Helper()
+	code, _ := requestLogin(t, s, email)
 	return code
 }
 
@@ -70,9 +76,9 @@ func TestRequestCode(t *testing.T) {
 	u := testdb.NewUser(t, pool)
 
 	t.Run("unknown email gets no code", func(t *testing.T) {
-		code, err := s.RequestCode(t.Context(), "nobody@example.test")
-		if err != nil || code != "" {
-			t.Fatalf("RequestCode = %q, %v; want no code", code, err)
+		code, link, err := s.RequestCode(t.Context(), "nobody@example.test")
+		if err != nil || code != "" || link != "" {
+			t.Fatalf("RequestCode = %q, %q, %v; want nothing", code, link, err)
 		}
 	})
 
@@ -81,7 +87,7 @@ func TestRequestCode(t *testing.T) {
 		if _, err := pool.Exec(t.Context(), `UPDATE users SET disabled_at = now() WHERE id = $1`, d.ID); err != nil {
 			t.Fatal(err)
 		}
-		if code, err := s.RequestCode(t.Context(), d.Email); err != nil || code != "" {
+		if code, _, err := s.RequestCode(t.Context(), d.Email); err != nil || code != "" {
 			t.Fatalf("RequestCode = %q, %v; want no code", code, err)
 		}
 	})
@@ -90,7 +96,7 @@ func TestRequestCode(t *testing.T) {
 		for range 3 {
 			requestCode(t, s, strings.ToUpper(u.Email))
 		}
-		if code, err := s.RequestCode(t.Context(), u.Email); err != nil || code != "" {
+		if code, _, err := s.RequestCode(t.Context(), u.Email); err != nil || code != "" {
 			t.Fatalf("4th RequestCode = %q, %v; want no code", code, err)
 		}
 	})
@@ -154,6 +160,105 @@ func TestVerifyCode(t *testing.T) {
 			t.Fatalf("err = %v, want ErrInvalidCode", err)
 		}
 	})
+}
+
+func TestVerifyLink(t *testing.T) {
+	pool := testdb.NewPool(t)
+	s := auth.NewStore(pool)
+
+	t.Run("link signs in once and consumes the code", func(t *testing.T) {
+		u := testdb.NewUser(t, pool)
+		code, link := requestLogin(t, s, u.Email)
+		token, err := s.VerifyLink(t.Context(), link, "ua")
+		if err != nil || token == "" {
+			t.Fatalf("VerifyLink = %q, %v", token, err)
+		}
+		if got, err := s.Authenticate(t.Context(), token); err != nil || got.ID != u.ID {
+			t.Fatalf("Authenticate = %+v, %v; want %v", got, err, u.ID)
+		}
+		if _, err := s.VerifyLink(t.Context(), link, "ua"); !errors.Is(err, auth.ErrInvalidCode) {
+			t.Errorf("reusing the link: err = %v, want ErrInvalidCode", err)
+		}
+		if _, err := s.VerifyCode(t.Context(), u.Email, code, "ua"); !errors.Is(err, auth.ErrInvalidCode) {
+			t.Errorf("code after link: err = %v, want ErrInvalidCode", err)
+		}
+	})
+
+	t.Run("code consumes the link", func(t *testing.T) {
+		u := testdb.NewUser(t, pool)
+		code, link := requestLogin(t, s, u.Email)
+		if _, err := s.VerifyCode(t.Context(), u.Email, code, "ua"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.VerifyLink(t.Context(), link, "ua"); !errors.Is(err, auth.ErrInvalidCode) {
+			t.Fatalf("link after code: err = %v, want ErrInvalidCode", err)
+		}
+	})
+
+	t.Run("unknown and expired links fail", func(t *testing.T) {
+		u := testdb.NewUser(t, pool)
+		_, link := requestLogin(t, s, u.Email)
+		if _, err := s.VerifyLink(t.Context(), "nope", "ua"); !errors.Is(err, auth.ErrInvalidCode) {
+			t.Errorf("unknown link: err = %v, want ErrInvalidCode", err)
+		}
+		if _, err := pool.Exec(t.Context(), `UPDATE login_codes SET expires_at = now() - interval '1 minute' WHERE email = $1`, u.Email); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.VerifyLink(t.Context(), link, "ua"); !errors.Is(err, auth.ErrInvalidCode) {
+			t.Errorf("expired link: err = %v, want ErrInvalidCode", err)
+		}
+	})
+
+	t.Run("link of a user disabled since is refused", func(t *testing.T) {
+		u := testdb.NewUser(t, pool)
+		_, link := requestLogin(t, s, u.Email)
+		if _, err := pool.Exec(t.Context(), `UPDATE users SET disabled_at = now() WHERE id = $1`, u.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.VerifyLink(t.Context(), link, "ua"); !errors.Is(err, auth.ErrInvalidCode) {
+			t.Fatalf("err = %v, want ErrInvalidCode", err)
+		}
+	})
+}
+
+func TestOnlyNewestCodeVerifies(t *testing.T) {
+	pool := testdb.NewPool(t)
+	s := auth.NewStore(pool)
+	u := testdb.NewUser(t, pool)
+
+	older := requestCode(t, s, u.Email)
+	newer := requestCode(t, s, u.Email)
+	if older == newer {
+		t.Skip("random codes collided")
+	}
+	if _, err := s.VerifyCode(t.Context(), u.Email, older, "ua"); !errors.Is(err, auth.ErrInvalidCode) {
+		t.Fatalf("older code: err = %v, want ErrInvalidCode", err)
+	}
+	if _, err := s.VerifyCode(t.Context(), u.Email, newer, "ua"); err != nil {
+		t.Fatalf("newer code: %v", err)
+	}
+}
+
+func TestNoPlaintextCredentialsStored(t *testing.T) {
+	pool := testdb.NewPool(t)
+	s := auth.NewStore(pool)
+	u := testdb.NewUser(t, pool)
+
+	code, link := requestLogin(t, s, u.Email)
+	cookie, err := s.VerifyLink(t.Context(), link, "ua")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, secret := range []string{code, link, cookie} {
+		// Every column of both tables, as text, the way a dump would show it.
+		n := countRows(t, pool, `
+			SELECT (SELECT count(*) FROM login_codes c WHERE c::text LIKE '%' || $1 || '%')
+			     + (SELECT count(*) FROM login_sessions ls WHERE ls::text LIKE '%' || $1 || '%')`, secret)
+		if n != 0 {
+			t.Errorf("secret %q appears in %d stored rows", secret, n)
+		}
+	}
 }
 
 func TestAuthenticate(t *testing.T) {
