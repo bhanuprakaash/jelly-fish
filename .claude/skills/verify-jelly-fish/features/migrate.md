@@ -9,7 +9,7 @@ Applies goose migrations from `migrations/` against `$DATABASE_URL`. Currently o
 
 ## How to get to it (user POV)
 
-- Not interactive; it's the `migrate` role of the binary: `go run ./cmd/jelly-fish migrate` (or the built binary in a real deploy).
+- Not interactive; it's the `migrate` role of the binary, run as the api pod's `migrate` init container on every rollout.
 
 ## Driving it directly
 
@@ -17,13 +17,12 @@ There's no HTTP surface for this feature — it's a CLI/process action, proven t
 
 Preconditions:
 
-- `$DATABASE_URL` set from `jellyfish_db` (see [`../SKILL.md`](../SKILL.md) Launch).
+- The cluster api redeployed per [`../SKILL.md`](../SKILL.md) Launch (the rollout runs migrate).
 
-- **Apply.** Run `go run ./cmd/jelly-fish migrate`. Exit code `0`.
-- **Confirm applied.** Start the api role afterward (Launch steps 1 then 2, in that order) and run `curl -si localhost:9090/readyz`. Status `200`, body `ok` — this is the actual proof migrations landed, since `readyz` checks for the goose version table.
-- **Idempotent rerun.** Run `go run ./cmd/jelly-fish migrate` a second time. Exit code `0` again, with goose reporting the database already at the latest version, no new migration applied.
+- **Apply.** `kubectl --context jelly-fish -n jelly-fish logs deploy/api -c migrate`. The init container exited `0`; goose lists any migration it applied, then `admin bootstrap`.
+- **Confirm applied.** The api pod went Ready (`rollout status`), and with the `:9090` forward up, `curl -si localhost:9090/readyz` returns `200`, body `ok`. This is the actual proof migrations landed, since `readyz` checks for the goose version table.
+- **Idempotent rerun.** `kubectl --context jelly-fish -n jelly-fish rollout restart deploy/api`, wait for it, and read the init log again: `no pending migrations`, exit `0`.
 
 ## Gotchas
 
 - jelly-fish exposes no standalone "list applied migrations" command; `readyz`'s existence check is the only external proof available today.
-- Running `migrate` against a `DATABASE_URL` that doesn't match what the api role was started with proves nothing about that api instance's readiness.

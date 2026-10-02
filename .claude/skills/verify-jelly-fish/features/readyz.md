@@ -16,14 +16,12 @@ Reports whether postgres is reachable and migrated, via `internal/pg.ReadinessCh
 
 Preconditions:
 
-- The api role is running per [`../SKILL.md`](../SKILL.md) Launch step 2.
-- `$DATABASE_URL` points at the same postgres the api role was started against.
+- The cluster api is deployed per [`../SKILL.md`](../SKILL.md) Launch, with `kubectl --context jelly-fish -n jelly-fish port-forward svc/api 9090:9090` running.
 
-- **Ready.** With migrations already applied (Launch step 1 ran first). Run `curl -si localhost:9090/readyz`. Status `200`, body `ok`.
-- **Unmigrated.** Only worth proving against a throwaway database, never the shared dev postgres: point `DATABASE_URL` at a fresh database with no goose table, start the api role against it, run `curl -si localhost:9090/readyz`. Status `503`, body `not ready`. Skip this drive when there's no disposable database handy.
-- **DB down.** Only in a disposable cluster, never the shared dev cluster: stop the postgres port-forward you started yourself, or scale `postgres-0` to `0`. Run `curl -si localhost:9090/readyz`. Status `503`, body `not ready`.
+- **Ready.** The rollout already ran the migrate init container. Run `curl -si localhost:9090/readyz`. Status `200`, body `ok`.
+- **Unmigrated** and **DB down.** Not drivable on the cluster without breaking the shared dev database. Report them as skipped; the unit tests in `internal/pg` / `internal/health` cover them.
 
 ## Gotchas
 
-- The unmigrated and db-down drives are destructive to shared state if run against the real dev postgres; only prove them with a disposable instance, and report them as skipped otherwise — don't fake the result.
+- The unmigrated and db-down drives are destructive to shared state if run against the real dev postgres; report them as skipped — don't fake the result.
 - `readyz` pings postgres on every request; don't loop-poll it under load, it isn't a spam target.
