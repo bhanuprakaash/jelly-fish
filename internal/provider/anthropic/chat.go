@@ -3,7 +3,6 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -38,10 +37,25 @@ func (c Client) options(key string) []option.RequestOption {
 	if c.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(c.BaseURL))
 	}
+	return append(opts, option.WithHTTPClient(c.watchedClient()))
+}
+
+// watchedClient is the HTTP client with every response body under the idle
+// watchdog.
+func (c Client) watchedClient() *http.Client {
+	hc := http.Client{}
 	if c.HTTPClient != nil {
-		opts = append(opts, option.WithHTTPClient(c.HTTPClient))
+		hc = *c.HTTPClient
 	}
-	return opts
+	if hc.Transport == nil {
+		hc.Transport = http.DefaultTransport
+	}
+	idle := c.IdleTimeout
+	if idle == 0 {
+		idle = provider.IdleTimeout
+	}
+	hc.Transport = provider.WatchIdle(hc.Transport, idle)
+	return &hc
 }
 
 type chat struct {
@@ -90,7 +104,7 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return provider.Response{}, streamError(err)
+		return provider.Response{}, classify(ctx, err, usage(acc.Usage), requestID(httpResp))
 	}
 
 	resp := provider.Response{
@@ -98,23 +112,15 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 		StopReason: stopReason(acc.StopReason),
 		Usage:      usage(acc.Usage),
 	}
-	if httpResp != nil {
-		resp.RequestID = httpResp.Header.Get("request-id")
-	}
+	resp.RequestID = requestID(httpResp)
 	return resp, nil
 }
 
-// streamError keeps only the status and request id: the SDK's own message
-// can echo the request.
-func streamError(err error) error {
-	var apiErr *sdk.Error
-	if errors.As(err, &apiErr) {
-		return fmt.Errorf("anthropic: status %d (request %s)", apiErr.StatusCode, apiErr.RequestID)
+func requestID(resp *http.Response) string {
+	if resp == nil {
+		return ""
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return err
-	}
-	return errors.New("anthropic: stream failed")
+	return resp.Header.Get("request-id")
 }
 
 func (c chat) params(req provider.Request) (sdk.MessageNewParams, error) {

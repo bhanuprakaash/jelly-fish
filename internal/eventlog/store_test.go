@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
@@ -166,5 +167,120 @@ func TestReleaseNeverCountsTowardCrashLoop(t *testing.T) {
 		if err := store.Release(t.Context(), sid, c.Fence); err != nil {
 			t.Fatalf("Release: %v", err)
 		}
+	}
+}
+
+func sleepingSession(t *testing.T, pool *pgxpool.Pool, wake time.Duration) (uuid.UUID, eventlog.TenantScope) {
+	t.Helper()
+	store := eventlog.NewStore(pool)
+	scope := testdb.NewUser(t, pool).Scope()
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("Claim: ok=%v err=%v", ok, err)
+	}
+	if _, err := store.AppendFenced(t.Context(), sid, c.Fence, nil, &eventlog.StatusChange{To: eventlog.StatusSleeping, Reason: "provider_down", WakeIn: wake}); err != nil {
+		t.Fatal(err)
+	}
+	return sid, scope
+}
+
+func TestSleepingStatusChangeSetsWakeAtFromTheDBClock(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid, scope := sleepingSession(t, pool, time.Minute)
+
+	var status string
+	var inWindow bool
+	if err := pool.QueryRow(t.Context(), `
+		SELECT status, wake_at BETWEEN now() + interval '55 seconds' AND now() + interval '65 seconds'
+		FROM sessions WHERE id = $1`, sid).Scan(&status, &inWindow); err != nil {
+		t.Fatal(err)
+	}
+	if status != eventlog.StatusSleeping || !inWindow {
+		t.Fatalf("status=%s wake_at about now+1m: %v", status, inWindow)
+	}
+
+	evs, err := eventlog.NewRepo(pool, "fake").ListEvents(t.Context(), scope, sid, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 2 || evs[0].Type != eventlog.TypeTimerSet || evs[1].Type != eventlog.TypeStatusChanged {
+		t.Fatalf("events = %+v, want timer.set then status_changed", evs)
+	}
+	var p struct {
+		WakeAt time.Time `json:"wake_at"`
+		Reason string    `json:"reason"`
+	}
+	if err := json.Unmarshal(evs[0].Payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	var matches bool
+	if err := pool.QueryRow(t.Context(), `SELECT wake_at = $2 FROM sessions WHERE id = $1`, sid, p.WakeAt).Scan(&matches); err != nil {
+		t.Fatal(err)
+	}
+	if !matches || p.Reason != "provider_down" {
+		t.Fatalf("timer.set = %+v, wake_at must equal the column", p)
+	}
+}
+
+func TestClaimWakesSleepingSessionAtWakeAt(t *testing.T) {
+	pool := testdb.NewPool(t)
+	store := eventlog.NewStore(pool)
+	sid, scope := sleepingSession(t, pool, time.Minute)
+
+	if _, ok, err := store.Claim(t.Context(), "w2", 30*time.Second); err != nil || ok {
+		t.Fatalf("Claim before wake_at: ok=%v err=%v, want none", ok, err)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE sessions SET wake_at = now() - interval '1 second' WHERE id = $1`, sid); err != nil {
+		t.Fatal(err)
+	}
+	var before int64
+	if err := pool.QueryRow(t.Context(), `SELECT last_seq FROM sessions WHERE id = $1`, sid).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+
+	c, ok, err := store.Claim(t.Context(), "w2", 30*time.Second)
+	if err != nil || !ok || c.SessionID != sid {
+		t.Fatalf("Claim at wake_at: ok=%v err=%v", ok, err)
+	}
+	evs, err := eventlog.NewRepo(pool, "fake").ListEvents(t.Context(), scope, sid, before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 2 || evs[0].Type != eventlog.TypeTimerFired || evs[1].Type != eventlog.TypeStatusChanged || evs[1].Seq != before+2 {
+		t.Fatalf("events = %+v, want timer.fired then status_changed at last_seq+2", evs)
+	}
+	var wake *time.Time
+	var status string
+	if err := pool.QueryRow(t.Context(), `SELECT status, wake_at FROM sessions WHERE id = $1`, sid).Scan(&status, &wake); err != nil {
+		t.Fatal(err)
+	}
+	if status != eventlog.StatusRunning || wake != nil {
+		t.Fatalf("status=%s wake_at=%v, want running with wake_at cleared", status, wake)
+	}
+}
+
+func TestHeartbeatReportsCancelRequested(t *testing.T) {
+	pool := testdb.NewPool(t)
+	store := eventlog.NewStore(pool)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := store.Claim(t.Context(), "w1", 30*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancel, err := store.Heartbeat(t.Context(), sid, c.Fence, 30*time.Second); err != nil || cancel {
+		t.Fatalf("Heartbeat = %v, %v, want no cancel", cancel, err)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE sessions SET cancel_requested = true WHERE id = $1`, sid); err != nil {
+		t.Fatal(err)
+	}
+	if cancel, err := store.Heartbeat(t.Context(), sid, c.Fence, 30*time.Second); err != nil || !cancel {
+		t.Fatalf("Heartbeat = %v, %v, want cancel", cancel, err)
 	}
 }

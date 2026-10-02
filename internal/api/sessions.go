@@ -99,6 +99,27 @@ func handlePostMessage(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
 	}
 }
 
+// handleSessionAction serves a POST on a session that takes no body and
+// answers 204: do is one of the repo's tenant-scoped actions.
+func handleSessionAction(do func(context.Context, eventlog.TenantScope, uuid.UUID) error, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := pathUUID(w, r)
+		if !ok {
+			return
+		}
+		if err := do(r.Context(), scopeFrom(r), sessionID); err != nil {
+			if errors.Is(err, eventlog.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "session not found")
+				return
+			}
+			logger.Error("session action", "route", r.Pattern, "error", err, "session_id", sessionID)
+			writeError(w, http.StatusInternalServerError, "could not update session")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // sessionStreams serves the Session stream.
 type sessionStreams struct {
 	repo    SessionRepo

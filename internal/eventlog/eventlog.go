@@ -22,12 +22,16 @@ const (
 	TypeUsageRecorded    = "usage.recorded"
 	TypeSessionError     = "session.error"
 	TypeSessionCompleted = "session.completed"
+	TypeUserInterrupt    = "user.interrupt"
+	TypeTimerSet         = "timer.set"
+	TypeTimerFired       = "timer.fired"
 )
 
 // Session statuses this slice uses (event-log.md §3).
 const (
 	StatusRunnable     = "runnable"
 	StatusRunning      = "running"
+	StatusSleeping     = "sleeping"
 	StatusAwaitingUser = "awaiting_user"
 	StatusCompleted    = "completed"
 	StatusFailed       = "failed"
@@ -73,10 +77,14 @@ type NewEvent struct {
 // the same transaction as the rest of an Append call (event-log.md §3, §5.1).
 // A non-empty From restricts it to sessions currently in one of those
 // statuses; otherwise the change is skipped and the events are still written.
+// A non-zero WakeIn on a change to sleeping also appends timer.set and sets
+// sessions.wake_at, both from the database clock so Workers need not agree
+// on the time (event-log.md §5.2).
 type StatusChange struct {
 	To     string
 	Reason string
 	From   []string
+	WakeIn time.Duration
 }
 
 func (sc StatusChange) applies(current string) bool {

@@ -161,7 +161,7 @@ func TestTurnRunsOnTheUsersAnthropicKey(t *testing.T) {
 	}
 }
 
-func TestTurnWithoutAKeyFailsTheSession(t *testing.T) {
+func TestTurnWithoutAKeyIsKeyInvalid(t *testing.T) {
 	pool := testdb.NewPool(t)
 	api := newFakeAnthropic(t, http.StatusOK)
 	user := testdb.NewUser(t, pool)
@@ -170,9 +170,18 @@ func TestTurnWithoutAKeyFailsTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, testGateway(t, pool, api.srv.URL))
-	waitFor(t, pool, sid, eventlog.StatusFailed)
+	waitFor(t, pool, sid, eventlog.StatusAwaitingUser)
 	if keys := api.seenKeys(); len(keys) != 0 {
 		t.Fatalf("Anthropic was called %d times", len(keys))
+	}
+
+	var code string
+	var retryable bool
+	if err := pool.QueryRow(t.Context(), `SELECT payload->>'code', (payload->>'retryable')::bool FROM events WHERE session_id = $1 AND type = $2`, sid, eventlog.TypeSessionError).Scan(&code, &retryable); err != nil {
+		t.Fatal(err)
+	}
+	if code != "key_invalid" || retryable {
+		t.Fatalf("session.error = %s retryable=%v, want key_invalid, not retryable", code, retryable)
 	}
 }
 

@@ -1,6 +1,8 @@
 import { useEffect, useState, type SubmitEvent } from 'react'
 import { createSession, getMe, postMessage, UnauthorizedError, type Message } from './lib/api'
+import { sessionNotice } from './lib/sessionNotice'
 import { useSessionStream } from './lib/useSessionStream'
+import { SessionNotice } from './SessionNotice'
 
 type Props = {
   sessionId: string
@@ -66,6 +68,7 @@ export function Chat({ sessionId, isNew, onUnauthorized }: Props) {
 
   const bubbles = events.filter((e) => e.type === 'user.message' || e.type === 'llm.response')
   const loading = !isNew && !connected && !failed
+  const notice = sessionNotice(events)
 
   return (
     <div className="flex min-h-svh flex-col bg-neutral-950 text-neutral-100">
@@ -101,6 +104,7 @@ export function Chat({ sessionId, isNew, onUnauthorized }: Props) {
             {text}
           </div>
         ))}
+        {notice && <SessionNotice sessionId={sessionId} notice={notice} onUnauthorized={onUnauthorized} />}
       </main>
 
       <form onSubmit={send} className="border-t border-neutral-800 p-4">

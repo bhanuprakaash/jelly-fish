@@ -29,8 +29,14 @@ const (
 	CoalesceInterval = 50 * time.Millisecond
 )
 
-// KindText is a Delta carrying reply text.
-const KindText = "text"
+// Delta kinds.
+const (
+	// KindText carries reply text.
+	KindText = "text"
+	// KindReset tells subscribers to drop the turn's text so far: the attempt
+	// that produced it failed and another is starting.
+	KindReset = "reset"
+)
 
 // Delta is one ephemeral fragment of a streaming reply; it is never stored
 // (event-log.md §5.11).
@@ -173,6 +179,8 @@ type Batcher struct {
 
 	mu  sync.Mutex
 	buf strings.Builder
+	// pubMu keeps a flush and a Reset from publishing out of order.
+	pubMu sync.Mutex
 }
 
 // NewBatcher builds a Batcher for one turn that sends batches to publish.
@@ -188,10 +196,20 @@ func (b *Batcher) Add(text string) {
 	b.buf.WriteString(text)
 }
 
+// Reset drops text not yet published and publishes a reset delta, so
+// subscribers clear the turn's partial reply.
+func (b *Batcher) Reset(ctx context.Context) {
+	b.pubMu.Lock()
+	defer b.pubMu.Unlock()
+	b.mu.Lock()
+	b.buf.Reset()
+	b.mu.Unlock()
+	b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindReset})
+}
+
 // Start publishes buffered text every interval until ctx is cancelled or stop
 // is called. stop waits for the flusher to exit, then publishes the remainder,
-// so a turn's text reaches the bus in order and before stop returns. The
-// flusher is the only publisher while it runs, so batches cannot reorder.
+// so a turn's text reaches the bus in order and before stop returns.
 func (b *Batcher) Start(ctx context.Context) (stop func()) {
 	flushCtx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
@@ -215,6 +233,8 @@ func (b *Batcher) Start(ctx context.Context) (stop func()) {
 }
 
 func (b *Batcher) flush(ctx context.Context) {
+	b.pubMu.Lock()
+	defer b.pubMu.Unlock()
 	b.mu.Lock()
 	text := b.buf.String()
 	b.buf.Reset()
@@ -222,7 +242,10 @@ func (b *Batcher) flush(ctx context.Context) {
 	if text == "" {
 		return
 	}
-	d := Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindText, Text: text}
+	b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindText, Text: text})
+}
+
+func (b *Batcher) send(ctx context.Context, d Delta) {
 	if err := b.publish(ctx, d); err != nil {
 		b.logger.Warn("publish delta", "session_id", b.sid, "error", err)
 	}

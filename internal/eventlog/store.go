@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,6 +73,10 @@ func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *T
 		next = nil
 	}
 
+	evs, wakeAt, err := withTimer(ctx, tx, evs, next)
+	if err != nil {
+		return nil, err
+	}
 	n := len(evs)
 	if next != nil {
 		n++
@@ -138,9 +143,11 @@ func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *T
 		_, err := tx.Exec(ctx, `
 			UPDATE sessions SET status = $2,
 			  ready_at = CASE WHEN $2 = 'runnable' THEN now() ELSE ready_at END,
+			  wake_at = CASE WHEN $2 = 'sleeping' THEN $3::timestamptz ELSE NULL END,
+			  cancel_requested = CASE WHEN $2 = 'running' THEN cancel_requested ELSE false END,
 			  lease_owner = CASE WHEN $2 = 'running' THEN lease_owner END,
 			  lease_expires_at = CASE WHEN $2 = 'running' THEN lease_expires_at END
-			WHERE id = $1`, sid, next.To)
+			WHERE id = $1`, sid, next.To, wakeAt)
 		if err != nil {
 			return nil, fmt.Errorf("apply status: %w", err)
 		}
@@ -149,6 +156,20 @@ func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *T
 		return nil, err
 	}
 	return seqs, nil
+}
+
+// withTimer adds the timer.set a change to sleeping with a WakeIn calls for,
+// and returns the wake time it carries (nil if none).
+func withTimer(ctx context.Context, tx pgx.Tx, evs []NewEvent, next *StatusChange) ([]NewEvent, *time.Time, error) {
+	if next == nil || next.To != StatusSleeping || next.WakeIn <= 0 {
+		return evs, nil, nil
+	}
+	var wakeAt time.Time
+	if err := tx.QueryRow(ctx, `SELECT now() + $1::interval`, next.WakeIn).Scan(&wakeAt); err != nil {
+		return nil, nil, fmt.Errorf("compute wake_at: %w", err)
+	}
+	timer := NewEvent{Type: TypeTimerSet, Actor: "system", Payload: map[string]any{"wake_at": wakeAt, "reason": next.Reason}}
+	return append(slices.Clone(evs), timer), &wakeAt, nil
 }
 
 func (s *Store) fenceHolds(ctx context.Context, tx pgx.Tx, sid uuid.UUID, f Fence) bool {
@@ -235,14 +256,15 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 		err := tx.QueryRow(ctx, `
 			WITH c AS (
 			  SELECT id, status FROM sessions
-			  WHERE (status = 'runnable' OR (status = 'running' AND lease_expires_at < now()))
+			  WHERE (status = 'runnable' OR (status = 'sleeping' AND wake_at <= now())
+			         OR (status = 'running' AND lease_expires_at < now()))
 			    AND id <> ALL($3)
 			  ORDER BY ready_at NULLS LAST
 			  FOR UPDATE SKIP LOCKED LIMIT 1)
 			UPDATE sessions s SET status = 'running', lease_owner = $1, lease_epoch = s.lease_epoch + 1,
 			  lease_expires_at = now() + $2::interval,
-			  recovery_attempts = s.recovery_attempts + 1,
-			  last_seq = s.last_seq + 1, updated_at = now()
+			  recovery_attempts = s.recovery_attempts + 1, wake_at = NULL,
+			  last_seq = s.last_seq + CASE WHEN c.status = 'sleeping' THEN 2 ELSE 1 END, updated_at = now()
 			FROM c WHERE s.id = c.id
 			RETURNING s.id, s.lease_epoch, s.recovery_attempts, s.last_seq, s.workspace_id, s.user_id, c.status`,
 			owner, ttl, skip).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &workspaceID, &c.UserID, &from)
@@ -255,6 +277,12 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 		c.Fence.Owner = owner
 		found = true
 
+		if from == StatusSleeping {
+			fired := NewEvent{Type: TypeTimerFired, Actor: "system", Payload: map[string]string{"reason": "wake_at"}}
+			if err := insertEvent(ctx, tx, c.SessionID, workspaceID, last-1, &c.Fence.Epoch, fired); err != nil {
+				return err
+			}
+		}
 		ev := StatusChange{To: StatusRunning, Reason: "claimed"}.event(from)
 		if err := insertEvent(ctx, tx, c.SessionID, workspaceID, last, &c.Fence.Epoch, ev); err != nil {
 			return err
@@ -264,20 +292,22 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 	return c, found, err
 }
 
-// Heartbeat extends f's Lease to ttl from now, or returns ErrLeaseLost if it
-// no longer holds it (event-log.md §5.2).
-func (s *Store) Heartbeat(ctx context.Context, sid uuid.UUID, f Fence, ttl time.Duration) error {
-	tag, err := s.pool.Exec(ctx, `
+// Heartbeat extends f's Lease to ttl from now and reports whether the User
+// asked to interrupt the session, or returns ErrLeaseLost if f no longer
+// holds the Lease (event-log.md §5.2).
+func (s *Store) Heartbeat(ctx context.Context, sid uuid.UUID, f Fence, ttl time.Duration) (cancelRequested bool, err error) {
+	err = s.pool.QueryRow(ctx, `
 		UPDATE sessions SET lease_expires_at = now() + $4::interval
-		WHERE id = $1 AND lease_owner = $2 AND lease_epoch = $3 AND lease_expires_at > now()`,
-		sid, f.Owner, f.Epoch, ttl)
+		WHERE id = $1 AND lease_owner = $2 AND lease_epoch = $3 AND lease_expires_at > now()
+		RETURNING cancel_requested`,
+		sid, f.Owner, f.Epoch, ttl).Scan(&cancelRequested)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrLeaseLost
+	}
 	if err != nil {
-		return fmt.Errorf("heartbeat: %w", err)
+		return false, fmt.Errorf("heartbeat: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrLeaseLost
-	}
-	return nil
+	return cancelRequested, nil
 }
 
 // Release hands f's Lease back without writing an event: the session stays

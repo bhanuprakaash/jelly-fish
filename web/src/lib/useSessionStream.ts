@@ -14,12 +14,13 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
   // forever with no way to tell "still connecting" from "never will".
   const [failed, setFailed] = useState(false)
   // Streaming reply text so far, by turn_id. Ephemeral: replaced by the
-  // turn's llm.response or turn.interrupted, and dropped on reconnect because
-  // the deltas missed meanwhile are gone (event-log.md §5.12).
+  // turn's llm.response, turn.interrupted or session.error, cleared when an
+  // attempt fails and another starts, and dropped on reconnect because the
+  // deltas missed meanwhile are gone (event-log.md §5.12).
   const [partials, setPartials] = useState<Record<string, string>>({})
   const lastSeqRef = useRef(0)
-  // Turns that ended (llm.response or turn.interrupted); a late delta for one
-  // is ignored.
+  // Turns that ended (llm.response, turn.interrupted or session.error); a late
+  // delta for one is ignored.
   const doneTurnsRef = useRef(new Set<string>())
 
   useEffect(() => {
@@ -38,8 +39,13 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
         const evt = JSON.parse(e.data) as UIEvent
         lastSeqRef.current = evt.seq
         setEvents((prev) => [...prev, evt])
-        if (evt.type === 'llm.response' || evt.type === 'turn.interrupted') {
-          const turnId = (evt.payload as { turn_id: string }).turn_id
+        if (
+          evt.type === 'llm.response' ||
+          evt.type === 'turn.interrupted' ||
+          evt.type === 'session.error'
+        ) {
+          const turnId = (evt.payload as { turn_id?: string }).turn_id
+          if (!turnId) return
           doneTurnsRef.current.add(turnId)
           setPartials((prev) => {
             const next = { ...prev }
@@ -50,7 +56,16 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
       }
       es.addEventListener('delta', (e) => {
         const d = JSON.parse((e as MessageEvent<string>).data) as Delta
-        if (d.kind !== 'text' || doneTurnsRef.current.has(d.turn_id)) return
+        if (doneTurnsRef.current.has(d.turn_id)) return
+        if (d.kind === 'reset') {
+          setPartials((prev) => {
+            const next = { ...prev }
+            delete next[d.turn_id]
+            return next
+          })
+          return
+        }
+        if (d.kind !== 'text') return
         setPartials((prev) => ({ ...prev, [d.turn_id]: (prev[d.turn_id] ?? '') + d.text }))
       })
       es.onerror = () => {

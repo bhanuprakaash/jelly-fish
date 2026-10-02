@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -164,10 +165,10 @@ func (w *Worker) listenOnce(ctx context.Context, wake chan<- struct{}) error {
 }
 
 func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
-	ctx, cancel := context.WithCancel(parent)
+	ctx, cancel := context.WithCancelCause(parent)
 	var hb sync.WaitGroup
 	defer hb.Wait()
-	defer cancel()
+	defer cancel(nil)
 	hb.Go(func() { w.heartbeat(ctx, cancel, c) })
 
 	logger := w.logger.With("session_id", c.SessionID)
@@ -200,6 +201,9 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 		switch {
 		case errors.Is(err, eventlog.ErrStale):
 			continue
+		case errors.Is(err, errParked):
+			logger.Info("session parked after provider error")
+			return
 		case err != nil:
 			w.stop(ctx, logger, c, err)
 			return
@@ -209,6 +213,10 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 		}
 	}
 }
+
+// errParked is what a step returns after its own write took the session out
+// of running, so the drive stops without reading the log again.
+var errParked = errors.New("session parked")
 
 func (w *Worker) fold(evs []eventlog.Event) (State, error) {
 	evs, err := w.upcast.Events(evs)
@@ -243,9 +251,49 @@ func (w *Worker) stop(ctx context.Context, logger *slog.Logger, c eventlog.Claim
 		return
 	}
 	if ctx.Err() != nil {
+		if errors.Is(context.Cause(ctx), errInterrupted) {
+			w.finishInterrupt(ctx, logger, c)
+		}
 		return
 	}
 	w.fail(ctx, logger, c, err)
+}
+
+// errInterrupted is the cancel cause when the User asked to stop the running
+// session, as opposed to losing the Lease or shutting down.
+var errInterrupted = errors.New("interrupted by user")
+
+// interruptTimeout bounds finishInterrupt, which runs after its session's
+// context is already cancelled.
+const interruptTimeout = 10 * time.Second
+
+// finishInterrupt closes the open turn, if any, and parks the session
+// awaiting the User (event-log.md §5.8).
+func (w *Worker) finishInterrupt(ctx context.Context, logger *slog.Logger, c eventlog.Claim) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), interruptTimeout)
+	defer cancel()
+	evs, err := w.store.Load(ctx, c.SessionID)
+	var st State
+	if err == nil {
+		st, err = w.fold(evs)
+	}
+	if err != nil {
+		logger.Error("finish interrupt", "error", err)
+		return
+	}
+	var closing []eventlog.NewEvent
+	if st.OpenTurn != nil {
+		closing = append(closing, eventlog.NewEvent{
+			Type:          eventlog.TypeTurnInterrupted,
+			Actor:         w.actor(),
+			CorrelationID: st.OpenTurn.ID,
+			Payload:       map[string]string{"turn_id": st.OpenTurn.ID, "reason": "user_interrupt"},
+		})
+	}
+	_, err = w.store.AppendFenced(ctx, c.SessionID, c.Fence, closing, &eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "interrupted"})
+	if err != nil && !errors.Is(err, eventlog.ErrLeaseLost) {
+		logger.Error("finish interrupt", "error", err)
+	}
 }
 
 // errCrashLoop fails a session whose last claims all died before making
@@ -268,7 +316,7 @@ func (w *Worker) fail(ctx context.Context, logger *slog.Logger, c eventlog.Claim
 	}
 }
 
-func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelFunc, c eventlog.Claim) {
+func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelCauseFunc, c eventlog.Claim) {
 	t := time.NewTicker(w.lease.Heartbeat)
 	defer t.Stop()
 	for {
@@ -276,14 +324,20 @@ func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelFunc, c eve
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			err := w.store.Heartbeat(ctx, c.SessionID, c.Fence, w.lease.TTL)
-			if errors.Is(err, eventlog.ErrLeaseLost) {
+			cancelRequested, err := w.store.Heartbeat(ctx, c.SessionID, c.Fence, w.lease.TTL)
+			switch {
+			case errors.Is(err, eventlog.ErrLeaseLost):
 				w.logger.Warn("lease lost, cancelling session", "session_id", c.SessionID)
-				cancel()
+				cancel(err)
 				return
-			}
-			if err != nil && ctx.Err() == nil {
-				w.logger.Error("heartbeat", "session_id", c.SessionID, "error", err)
+			case err != nil:
+				if ctx.Err() == nil {
+					w.logger.Error("heartbeat", "session_id", c.SessionID, "error", err)
+				}
+			case cancelRequested:
+				w.logger.Info("interrupt requested, cancelling session", "session_id", c.SessionID)
+				cancel(errInterrupted)
+				return
 			}
 		}
 	}
@@ -317,12 +371,18 @@ func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, s
 
 func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {
 	sid := c.SessionID
-	prov, err := w.gateway.forTurn(ctx, c.UserID, st.Model)
-	if err != nil {
+	turnID := uuid.NewString()
+	// The full reply lands with llm.response; deltas only preview its text.
+	batch := stream.NewBatcher(w.deltas.Publish, sid, turnID, stream.CoalesceInterval, w.logger)
+	prov, err := w.gateway.forTurn(ctx, c.UserID, st.Model, func() { batch.Reset(ctx) })
+	var pe *provider.Error
+	switch {
+	case errors.As(err, &pe):
+		return w.parkOnProviderError(ctx, c, f, st, "", "", st.LastSeq, pe)
+	case err != nil:
 		return fmt.Errorf("pick provider: %w", err)
 	}
-	turnID := uuid.NewString()
-	_, err = w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
+	seqs, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
 		Type:          eventlog.TypeTurnStarted,
 		Actor:         w.actor(),
 		CorrelationID: turnID,
@@ -338,8 +398,6 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 		return err
 	}
 
-	// The full reply lands with llm.response; deltas only preview its text.
-	batch := stream.NewBatcher(w.deltas.Publish, sid, turnID, stream.CoalesceInterval, w.logger)
 	stopBatch := batch.Start(ctx)
 	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages}, func(d provider.Delta) {
 		if d.Kind == provider.DeltaText {
@@ -347,20 +405,18 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 		}
 	})
 	stopBatch()
+	if errors.As(err, &pe) {
+		err := w.parkOnProviderError(ctx, c, f, st, turnID, prov.Name(), seqs[0], pe)
+		if errors.Is(err, errParked) {
+			batch.Reset(ctx)
+		}
+		return err
+	}
 	if err != nil {
 		return fmt.Errorf("call provider: %w", err)
 	}
 
-	classes := []struct {
-		unit string
-		n    int64
-	}{
-		{"input_tokens", resp.Usage.Input},
-		{"cache_read_tokens", resp.Usage.CacheRead},
-		{"cache_write_5m_tokens", resp.Usage.CacheWrite5m},
-		{"cache_write_1h_tokens", resp.Usage.CacheWrite1h},
-		{"output_tokens", resp.Usage.Output},
-	}
+	classes := usageClasses(resp.Usage)
 	usage := map[string]int64{}
 	for _, u := range classes {
 		usage[u.unit] = u.n
@@ -376,7 +432,31 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 			"usage":       usage,
 		},
 	}}
-	// Reasoning is part of output_tokens, so it gets no row of its own.
+	evs = append(evs, w.usageEvents(classes, turnID, prov.Name(), st.Model)...)
+	_, err = w.store.AppendFenced(ctx, sid, f, evs, nil)
+	return err
+}
+
+type usageClass struct {
+	unit string
+	n    int64
+}
+
+// usageClasses lists u's billing classes. Reasoning is part of output_tokens,
+// so it gets none of its own.
+func usageClasses(u provider.Usage) []usageClass {
+	return []usageClass{
+		{"input_tokens", u.Input},
+		{"cache_read_tokens", u.CacheRead},
+		{"cache_write_5m_tokens", u.CacheWrite5m},
+		{"cache_write_1h_tokens", u.CacheWrite1h},
+		{"output_tokens", u.Output},
+	}
+}
+
+// usageEvents is one usage.recorded per non-zero class.
+func (w *Worker) usageEvents(classes []usageClass, turnID, providerName, model string) []eventlog.NewEvent {
+	var evs []eventlog.NewEvent
 	for _, u := range classes {
 		if u.n == 0 {
 			continue
@@ -386,11 +466,110 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 			Actor:         w.actor(),
 			CorrelationID: turnID,
 			Payload: eventlog.UsageRecorded{
-				Kind: eventlog.KindLLM, Provider: prov.Name(), Model: st.Model,
+				Kind: eventlog.KindLLM, Provider: providerName, Model: model,
 				Quantity: u.n, Unit: u.unit,
 			},
 		})
 	}
-	_, err = w.store.AppendFenced(ctx, sid, f, evs, nil)
-	return err
+	return evs
+}
+
+// sleepFor is how long a session sleeps after its step-th retryable error
+// outlasted the quick retries: 1, 5 then 15 minutes, after which it fails
+// (agent-loop.md §5.3).
+func sleepFor(step int) (time.Duration, bool) {
+	switch step {
+	case 0:
+		return time.Minute, true
+	case 1:
+		return 5 * time.Minute, true
+	case 2:
+		return 15 * time.Minute, true
+	}
+	return 0, false
+}
+
+// errorMessage is the fixed text for a session.error: Provider text can echo
+// the request, so none of it is stored.
+func errorMessage(kind provider.ErrorKind) string {
+	switch kind {
+	case provider.KindKeyInvalid:
+		return "Provider key rejected"
+	case provider.KindBilling:
+		return "Provider account out of credit or limit reached"
+	case provider.KindModelUnavailable:
+		return "Key can't use this model"
+	case provider.KindTooLarge:
+		return "File too large"
+	case provider.KindBug:
+		return "Internal error"
+	}
+	return "Provider having trouble"
+}
+
+// parkOnProviderError writes what a failed call leaves behind in one tx: its
+// usage, then the session.error and the status that follows from its class
+// (agent-loop.md §5.3). It returns errParked on success. lastSeq is the log head the call began from, so a
+// message that arrived meanwhile makes the park stale instead of stranding it.
+func (w *Worker) parkOnProviderError(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State, turnID, providerName string, lastSeq int64, pe *provider.Error) error {
+	usage := w.usageEvents(usageClasses(pe.Usage), turnID, providerName, st.Model)
+	evs := slices.Clone(usage)
+	sessionError := func(retryable bool) eventlog.NewEvent {
+		payload := map[string]any{
+			"code":       pe.Kind,
+			"message":    errorMessage(pe.Kind),
+			"retryable":  retryable,
+			"request_id": pe.RequestID,
+		}
+		if turnID != "" {
+			payload["turn_id"] = turnID
+		}
+		return eventlog.NewEvent{Type: eventlog.TypeSessionError, Actor: w.actor(), CorrelationID: turnID, Payload: payload}
+	}
+
+	var next eventlog.StatusChange
+	sleep, canSleep := sleepFor(st.RetryStep)
+	switch {
+	case pe.Kind == provider.KindLongWait:
+		// No session.error: the Provider asked for a pause, nothing broke. The
+		// turn is closed here because no error event will.
+		evs = append(evs, eventlog.NewEvent{
+			Type:          eventlog.TypeTurnInterrupted,
+			Actor:         w.actor(),
+			CorrelationID: turnID,
+			Payload:       map[string]string{"turn_id": turnID, "reason": "provider_wait"},
+		})
+		next = eventlog.StatusChange{To: eventlog.StatusSleeping, Reason: string(pe.Kind), WakeIn: pe.RetryAfter}
+	case pe.Kind.Retryable() && canSleep:
+		evs = append(evs, sessionError(true))
+		next = eventlog.StatusChange{To: eventlog.StatusSleeping, Reason: string(pe.Kind), WakeIn: sleep}
+	case pe.Kind.Retryable():
+		evs = append(evs, sessionError(false))
+		next = eventlog.StatusChange{To: eventlog.StatusFailed, Reason: "retries_exhausted"}
+	default:
+		evs = append(evs, sessionError(false))
+		next = eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "error"}
+	}
+	w.logger.Warn("provider call failed", "session_id", c.SessionID, "code", pe.Kind, "request_id", pe.RequestID, "status", next.To)
+	f.ExpectSeq = &lastSeq
+	_, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, &next)
+	if errors.Is(err, eventlog.ErrStale) && turnID != "" {
+		// The new events win and the turn is re-run, but what the failed
+		// attempts consumed is still billed.
+		usage = append(usage, eventlog.NewEvent{
+			Type:          eventlog.TypeTurnInterrupted,
+			Actor:         w.actor(),
+			CorrelationID: turnID,
+			Payload:       map[string]string{"turn_id": turnID, "reason": "provider_error"},
+		})
+		f.ExpectSeq = nil
+		if _, err := w.store.AppendFenced(ctx, c.SessionID, f, usage, nil); err != nil {
+			return err
+		}
+		return eventlog.ErrStale
+	}
+	if err != nil {
+		return err
+	}
+	return errParked
 }

@@ -58,6 +58,8 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.Handle("/api/admin/", authH.adminOnly(admin))
 	protected.HandleFunc("POST /api/sessions", handleCreateSession(repo, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/messages", handlePostMessage(repo, logger))
+	protected.HandleFunc("POST /api/sessions/{id}/interrupt", handleSessionAction(repo.Interrupt, logger))
+	protected.HandleFunc("POST /api/sessions/{id}/retry", handleSessionAction(repo.Retry, logger))
 	protected.Handle("GET /api/sessions/{id}/events", rejectCrossSite(http.HandlerFunc(streams.handle)))
 
 	mux := http.NewServeMux()

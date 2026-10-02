@@ -73,6 +73,29 @@ func TestBatcherFlushesOnInterval(t *testing.T) {
 	})
 }
 
+func TestBatcherResetDropsBufferedTextAndTellsSubscribers(t *testing.T) {
+	var mu sync.Mutex
+	var sent []stream.Delta
+	publish := func(_ context.Context, d stream.Delta) error {
+		mu.Lock()
+		defer mu.Unlock()
+		sent = append(sent, d)
+		return nil
+	}
+	sid := uuid.New()
+	b := stream.NewBatcher(publish, sid, "t1", time.Hour, slog.New(slog.DiscardHandler))
+	b.Add("first attempt")
+	b.Reset(t.Context())
+	b.Add("second")
+	b.Start(t.Context())()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(sent) != 2 || sent[0].Kind != stream.KindReset || sent[0].TurnID != "t1" || sent[0].SessionID != sid || sent[1].Text != "second" {
+		t.Fatalf("published %+v, want a reset for t1 then only the second attempt's text", sent)
+	}
+}
+
 func TestPGDeltaBusSplitsAndDelivers(t *testing.T) {
 	pool := testdb.NewPool(t)
 	bus := stream.NewPGDeltaBus(pool)

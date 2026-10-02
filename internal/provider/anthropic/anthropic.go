@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 
@@ -19,6 +20,9 @@ type Client struct {
 	BaseURL string
 	// HTTPClient overrides the transport, for tests.
 	HTTPClient *http.Client
+	// IdleTimeout cuts a stream that sends no bytes for this long; zero
+	// means provider.IdleTimeout.
+	IdleTimeout time.Duration
 	// Catalog gives each model's output cap and thinking mode.
 	Catalog Catalog
 }

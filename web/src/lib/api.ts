@@ -222,6 +222,17 @@ export function postMessage(sessionId: string, clientMsgId: string, message: str
   })
 }
 
+// interruptSession is "Stop retrying": it parks a sleeping session, and stops
+// a turn a Worker has just started.
+export async function interruptSession(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/interrupt`, { method: 'POST' })
+}
+
+// retrySession is "Retry now" after a Provider error.
+export async function retrySession(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/retry`, { method: 'POST' })
+}
+
 // Delta is an ephemeral fragment of a streaming reply (streaming.md §4.1).
 export type Delta = {
   turn_id: string

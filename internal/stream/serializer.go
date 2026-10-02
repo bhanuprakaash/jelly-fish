@@ -25,9 +25,32 @@ func ToUI(e eventlog.Event) (UIEvent, bool) {
 	case eventlog.TypeLLMResponse:
 		payload, ok := withoutKey(e.Payload, "usage")
 		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok
+	case eventlog.TypeSessionError:
+		payload, ok := onlyKeys(e.Payload, "code", "retryable", "request_id", "turn_id")
+		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok
+	case eventlog.TypeTimerSet:
+		payload, ok := onlyKeys(e.Payload, "wake_at", "reason")
+		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok
 	default:
 		return UIEvent{}, false
 	}
+}
+
+// onlyKeys returns the JSON object payload reduced to keys, or false if
+// payload isn't an object.
+func onlyKeys(payload []byte, keys ...string) (json.RawMessage, bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return nil, false
+	}
+	kept := map[string]json.RawMessage{}
+	for _, k := range keys {
+		if v, ok := fields[k]; ok {
+			kept[k] = v
+		}
+	}
+	out, err := json.Marshal(kept)
+	return out, err == nil
 }
 
 // withoutKey returns the JSON object payload minus key, or false if payload

@@ -93,7 +93,8 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 }
 
 // PostMessage appends a follow-up user.message to an existing session and
-// returns its seq, resuming the session if it was waiting on the user.
+// returns its seq, resuming the session if it was waiting on the user or
+// sleeping before a retry.
 // Repeating the same clientMsgID returns the existing seq instead of
 // appending a second event.
 func (r *Repo) PostMessage(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text string) (int64, error) {
@@ -103,7 +104,7 @@ func (r *Repo) PostMessage(ctx context.Context, scope TenantScope, sessionID, cl
 	}, &StatusChange{
 		To:     StatusRunnable,
 		Reason: "user_message",
-		From:   []string{StatusAwaitingUser, StatusCompleted, StatusFailed},
+		From:   []string{StatusAwaitingUser, StatusSleeping, StatusCompleted, StatusFailed},
 	})
 	if err != nil {
 		if errors.Is(err, ErrDuplicate) {
@@ -112,6 +113,87 @@ func (r *Repo) PostMessage(ctx context.Context, scope TenantScope, sessionID, cl
 		return 0, err
 	}
 	return seqs[0], nil
+}
+
+// Interrupt appends the User's user.interrupt. A sleeping session ("Stop
+// retrying") parks as awaiting_user at once. A running one is only flagged:
+// its Worker's heartbeat cancels the in-flight call (event-log.md §5.8, §8).
+// A session in any other status is left alone (§5.17).
+func (r *Repo) Interrupt(ctx context.Context, scope TenantScope, sessionID uuid.UUID) error {
+	interrupt := NewEvent{Type: TypeUserInterrupt, Actor: "user:" + scope.UserID.String(), Payload: map[string]string{"reason": "user_request"}}
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		status, err := lockStatus(ctx, tx, scope, sessionID)
+		if err != nil {
+			return err
+		}
+		switch status {
+		case StatusSleeping:
+			_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{interrupt}, &StatusChange{To: StatusAwaitingUser, Reason: "interrupted"})
+		case StatusRunning:
+			if _, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{interrupt}, nil); err == nil {
+				_, err = tx.Exec(ctx, `UPDATE sessions SET cancel_requested = true WHERE id = $1`, sessionID)
+			}
+		}
+		return err
+	})
+}
+
+// Retry is the User's "Retry now". It makes a session runnable when it is
+// sleeping, failed, or awaiting_user because its last turn hit a stop-class
+// error (the newest event other than a status change is a session.error
+// with retryable false). An awaiting_user session that ended normally, or
+// a session in any other status, is left alone.
+func (r *Repo) Retry(ctx context.Context, scope TenantScope, sessionID uuid.UUID) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		status, err := lockStatus(ctx, tx, scope, sessionID)
+		if err != nil {
+			return err
+		}
+		switch status {
+		case StatusSleeping, StatusFailed:
+		case StatusAwaitingUser:
+			stopped, err := endsInStopError(ctx, tx, sessionID)
+			if err != nil || !stopped {
+				return err
+			}
+		default:
+			return nil
+		}
+		if _, err := r.store.appendTx(ctx, tx, sessionID, &scope, nil, nil, &StatusChange{To: StatusRunnable, Reason: "user_retry"}); err != nil {
+			return err
+		}
+		// A session failed by crash_loop would otherwise fail again at once.
+		if _, err := tx.Exec(ctx, `UPDATE sessions SET recovery_attempts = 0 WHERE id = $1`, sessionID); err != nil {
+			return fmt.Errorf("reset recovery attempts: %w", err)
+		}
+		return nil
+	})
+}
+
+func lockStatus(ctx context.Context, tx pgx.Tx, scope TenantScope, sessionID uuid.UUID) (string, error) {
+	var status string
+	err := tx.QueryRow(ctx,
+		`SELECT status FROM sessions WHERE id = $1 AND workspace_id = $2 AND user_id = $3 FOR UPDATE`,
+		sessionID, scope.WorkspaceID, scope.UserID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lock session: %w", err)
+	}
+	return status, nil
+}
+
+func endsInStopError(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID) (bool, error) {
+	var stop bool
+	err := tx.QueryRow(ctx, `
+		SELECT type = $2 AND payload->>'retryable' = 'false' FROM events
+		WHERE session_id = $1 AND type <> $3
+		ORDER BY seq DESC LIMIT 1`, sessionID, TypeSessionError, TypeStatusChanged).Scan(&stop)
+	if err != nil {
+		return false, fmt.Errorf("look up last event: %w", err)
+	}
+	return stop, nil
 }
 
 func (r *Repo) existingMessageSeq(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID) (int64, error) {

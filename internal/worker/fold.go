@@ -23,6 +23,10 @@ type State struct {
 	// OpenTurn is set for a turn.started with no llm.response or
 	// turn.interrupted after it.
 	OpenTurn *Turn
+	// RetryStep is how many retryable session.errors came since the last
+	// user.message; it picks the next sleep of the 1/5/15 minute backoff
+	// (agent-loop.md §5.3).
+	RetryStep int
 	// PendingUserSeqs are user.messages the latest turn has not seen.
 	PendingUserSeqs []int64
 	// Messages is the conversation so far, in the neutral format.
@@ -76,6 +80,7 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		}
 		st.Messages = append(st.Messages, p.Message)
 		*userSeqs = append(*userSeqs, e.Seq)
+		st.RetryStep = 0
 	case eventlog.TypeStatusChanged:
 		var p struct {
 			To string `json:"to"`
@@ -108,6 +113,21 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		st.Messages = append(st.Messages, p.Message)
 	case eventlog.TypeTurnInterrupted:
 		st.OpenTurn = nil
+	case eventlog.TypeSessionError:
+		var p struct {
+			Retryable bool `json:"retryable"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		if p.Retryable {
+			st.RetryStep++
+		}
+		// Only an error the turn itself raised ends it; a crash_loop error
+		// has no turn.
+		if st.OpenTurn != nil && e.CorrelationID == st.OpenTurn.ID {
+			st.OpenTurn = nil
+		}
 	case eventlog.TypeUsageRecorded:
 		var p eventlog.UsageRecorded
 		if err := json.Unmarshal(e.Payload, &p); err != nil {

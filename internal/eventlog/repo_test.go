@@ -8,8 +8,10 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
@@ -260,5 +262,219 @@ func TestRepoMethodsTakeTenantScope(t *testing.T) {
 		if !found {
 			t.Errorf("Repo.%s does not take a TenantScope", m.Name)
 		}
+	}
+}
+
+type interruptRow struct {
+	status  string
+	wake    *time.Time
+	cancel  bool
+	attempt int
+}
+
+func readRow(t *testing.T, pool *pgxpool.Pool, sid uuid.UUID) interruptRow {
+	t.Helper()
+	var r interruptRow
+	if err := pool.QueryRow(t.Context(), `SELECT status, wake_at, cancel_requested, recovery_attempts FROM sessions WHERE id = $1`, sid).Scan(&r.status, &r.wake, &r.cancel, &r.attempt); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func eventTypes(t *testing.T, repo *eventlog.Repo, scope eventlog.TenantScope, sid uuid.UUID, after int64) []string {
+	t.Helper()
+	evs, err := repo.ListEvents(t.Context(), scope, sid, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var types []string
+	for _, e := range evs {
+		types = append(types, e.Type)
+	}
+	return types
+}
+
+func TestInterruptParksASleepingSession(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	sid, scope := sleepingSession(t, pool, time.Minute)
+	last, err := repo.SessionLastSeq(t.Context(), scope, sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.Interrupt(t.Context(), scope, sid); err != nil {
+		t.Fatal(err)
+	}
+	if r := readRow(t, pool, sid); r.status != eventlog.StatusAwaitingUser || r.wake != nil || r.cancel {
+		t.Fatalf("row = %+v, want awaiting_user with wake_at cleared", r)
+	}
+	want := []string{eventlog.TypeUserInterrupt, eventlog.TypeStatusChanged}
+	if got := eventTypes(t, repo, scope, sid, last); !reflect.DeepEqual(got, want) {
+		t.Fatalf("events = %v, want %v", got, want)
+	}
+
+	// Nothing wakes it afterwards, and a repeat writes nothing.
+	if _, ok, err := eventlog.NewStore(pool).Claim(t.Context(), "w", time.Minute); err != nil || ok {
+		t.Fatalf("Claim after Stop retrying: ok=%v err=%v", ok, err)
+	}
+	if err := repo.Interrupt(t.Context(), scope, sid); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventTypes(t, repo, scope, sid, last); len(got) != 2 {
+		t.Fatalf("events after a repeat = %v", got)
+	}
+}
+
+func TestInterruptAfterAWorkerClaimedFlagsTheRunningSession(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	store := eventlog.NewStore(pool)
+	sid, scope := sleepingSession(t, pool, time.Minute)
+	if _, err := pool.Exec(t.Context(), `UPDATE sessions SET wake_at = now() - interval '1 second' WHERE id = $1`, sid); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := store.Claim(t.Context(), "w2", 30*time.Second); err != nil || !ok {
+		t.Fatalf("Claim: ok=%v err=%v", ok, err)
+	}
+	last, err := repo.SessionLastSeq(t.Context(), scope, sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.Interrupt(t.Context(), scope, sid); err != nil {
+		t.Fatal(err)
+	}
+	if r := readRow(t, pool, sid); r.status != eventlog.StatusRunning || !r.cancel {
+		t.Fatalf("row = %+v, want running with cancel_requested", r)
+	}
+	if got := eventTypes(t, repo, scope, sid, last); !reflect.DeepEqual(got, []string{eventlog.TypeUserInterrupt}) {
+		t.Fatalf("events = %v, want just user.interrupt", got)
+	}
+}
+
+func TestInterruptIgnoresOtherStatusesAndTenants(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	scope := testdb.NewUser(t, pool).Scope()
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Interrupt(t.Context(), scope, sid); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventTypes(t, repo, scope, sid, 2); len(got) != 0 {
+		t.Fatalf("a runnable session got events %v", got)
+	}
+	if err := repo.Interrupt(t.Context(), testdb.NewUser(t, pool).Scope(), sid); !errors.Is(err, eventlog.ErrNotFound) {
+		t.Fatalf("other tenant: err = %v, want ErrNotFound", err)
+	}
+}
+
+func parkedWith(t *testing.T, pool *pgxpool.Pool, retryable bool, to string) (uuid.UUID, eventlog.TenantScope) {
+	t.Helper()
+	store := eventlog.NewStore(pool)
+	scope := testdb.NewUser(t, pool).Scope()
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), scope, sid, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("Claim: ok=%v err=%v", ok, err)
+	}
+	if _, err := store.AppendFenced(t.Context(), sid, c.Fence, []eventlog.NewEvent{{
+		Type: eventlog.TypeSessionError, Actor: "worker:w1",
+		Payload: map[string]any{"code": "key_invalid", "message": "m", "retryable": retryable},
+	}}, &eventlog.StatusChange{To: to, Reason: "error"}); err != nil {
+		t.Fatal(err)
+	}
+	return sid, scope
+}
+
+func TestRetryResumesWhereTheUserCan(t *testing.T) {
+	tests := []struct {
+		name      string
+		retryable bool
+		to        string
+		want      string
+	}{
+		{"after a stop-class error", false, eventlog.StatusAwaitingUser, eventlog.StatusRunnable},
+		{"after retries are exhausted", false, eventlog.StatusFailed, eventlog.StatusRunnable},
+		{"while sleeping", true, eventlog.StatusSleeping, eventlog.StatusRunnable},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := testdb.NewPool(t)
+			repo := eventlog.NewRepo(pool, "fake")
+			sid, scope := parkedWith(t, pool, tc.retryable, tc.to)
+			if _, err := pool.Exec(t.Context(), `UPDATE sessions SET recovery_attempts = 9, wake_at = now() + interval '1 hour' WHERE id = $1`, sid); err != nil {
+				t.Fatal(err)
+			}
+			last, _ := repo.SessionLastSeq(t.Context(), scope, sid)
+
+			if err := repo.Retry(t.Context(), scope, sid); err != nil {
+				t.Fatal(err)
+			}
+			if r := readRow(t, pool, sid); r.status != tc.want || r.wake != nil || r.attempt != 0 {
+				t.Fatalf("row = %+v, want %s with wake_at cleared and attempts reset", r, tc.want)
+			}
+			evs, err := repo.ListEvents(t.Context(), scope, sid, last)
+			if err != nil || len(evs) != 1 || evs[0].Type != eventlog.TypeStatusChanged {
+				t.Fatalf("events = %+v, %v", evs, err)
+			}
+			var p struct{ To, Reason string }
+			if err := json.Unmarshal(evs[0].Payload, &p); err != nil {
+				t.Fatal(err)
+			}
+			if p.To != "runnable" || p.Reason != "user_retry" {
+				t.Fatalf("status_changed = %+v", p)
+			}
+		})
+	}
+}
+
+func TestRetryIsANoOpElsewhere(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+
+	// A session that ended normally has no error to retry.
+	sid, scope := parkedWith(t, pool, true, eventlog.StatusAwaitingUser)
+	last, _ := repo.SessionLastSeq(t.Context(), scope, sid)
+	if err := repo.Retry(t.Context(), scope, sid); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventTypes(t, repo, scope, sid, last); len(got) != 0 {
+		t.Fatalf("retryable error parked as awaiting_user got events %v", got)
+	}
+
+	// A runnable session is already going.
+	runnable := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, runnable, uuid.New(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Retry(t.Context(), scope, runnable); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventTypes(t, repo, scope, runnable, 2); len(got) != 0 {
+		t.Fatalf("runnable session got events %v", got)
+	}
+
+	if err := repo.Retry(t.Context(), testdb.NewUser(t, pool).Scope(), sid); !errors.Is(err, eventlog.ErrNotFound) {
+		t.Fatalf("other tenant: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPostMessageWakesASleepingSession(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	sid, scope := sleepingSession(t, pool, time.Hour)
+
+	if _, err := repo.PostMessage(t.Context(), scope, sid, uuid.New(), "still there?"); err != nil {
+		t.Fatal(err)
+	}
+	if r := readRow(t, pool, sid); r.status != eventlog.StatusRunnable || r.wake != nil {
+		t.Fatalf("row = %+v, want runnable with wake_at cleared", r)
 	}
 }

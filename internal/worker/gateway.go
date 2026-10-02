@@ -15,6 +15,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/keyring"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/anthropic"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/retry"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 )
 
@@ -36,14 +37,33 @@ type Gateway struct {
 	Anthropic anthropic.Client
 	// Fake serves the model named Fake.Name(); nil outside dev builds.
 	Fake provider.Provider
+	// Sleep waits between quick retries; nil sleeps on a real timer.
+	Sleep func(ctx context.Context, d time.Duration) error
 }
 
 // errNoKey means the session's owner has saved no key for its Provider.
 var errNoKey = errors.New("no provider key saved")
 
-// forTurn returns the Provider for one turn of userID's session on model.
-// The key is opened here, per turn, and lives only in the returned value.
-func (g Gateway) forTurn(ctx context.Context, userID uuid.UUID, model string) (provider.Provider, error) {
+// forTurn returns the Provider for one turn of userID's session on model,
+// retrying quick failures; onRetry runs before each retry. The key is opened
+// here, per turn, and lives only in the returned value. A missing key is a
+// key_invalid provider.Error.
+func (g Gateway) forTurn(ctx context.Context, userID uuid.UUID, model string, onRetry func()) (provider.Provider, error) {
+	p, err := g.pick(ctx, userID, model)
+	if errors.Is(err, errNoKey) {
+		return nil, &provider.Error{Kind: provider.KindKeyInvalid, Err: err}
+	}
+	if err != nil {
+		return nil, err
+	}
+	sleep := g.Sleep
+	if sleep == nil {
+		sleep = retry.Sleep
+	}
+	return retry.Wrap(p, sleep, onRetry), nil
+}
+
+func (g Gateway) pick(ctx context.Context, userID uuid.UUID, model string) (provider.Provider, error) {
 	if g.Fake != nil && model == g.Fake.Name() {
 		return g.Fake, nil
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -24,7 +25,19 @@ type fakeRepo struct {
 	createSeq, postSeq, lastSeq int64
 	createErr, postErr          error
 	lastSeqErr, listErr         error
+	interruptErr, retryErr      error
+	interrupted, retried        []uuid.UUID
 	events                      []eventlog.Event
+}
+
+func (f *fakeRepo) Interrupt(_ context.Context, _ eventlog.TenantScope, sid uuid.UUID) error {
+	f.interrupted = append(f.interrupted, sid)
+	return f.interruptErr
+}
+
+func (f *fakeRepo) Retry(_ context.Context, _ eventlog.TenantScope, sid uuid.UUID) error {
+	f.retried = append(f.retried, sid)
+	return f.retryErr
 }
 
 func (f *fakeRepo) CreateSession(context.Context, eventlog.TenantScope, uuid.UUID, uuid.UUID, string) (int64, error) {
@@ -138,6 +151,42 @@ func TestPostMessageHandler(t *testing.T) {
 
 			if rr.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d (body %s)", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestInterruptAndRetryHandlers(t *testing.T) {
+	tests := []struct {
+		name       string
+		action     string
+		repo       *fakeRepo
+		wantStatus int
+	}{
+		{"interrupt", "interrupt", &fakeRepo{}, http.StatusNoContent},
+		{"interrupt of another tenant's session", "interrupt", &fakeRepo{interruptErr: eventlog.ErrNotFound}, http.StatusNotFound},
+		{"interrupt failing", "interrupt", &fakeRepo{interruptErr: errors.New("db down")}, http.StatusInternalServerError},
+		{"retry", "retry", &fakeRepo{}, http.StatusNoContent},
+		{"retry of another tenant's session", "retry", &fakeRepo{retryErr: eventlog.ErrNotFound}, http.StatusNotFound},
+		{"retry failing", "retry", &fakeRepo{retryErr: errors.New("db down")}, http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sid := uuid.New()
+			srv := newTestServer(t, tt.repo)
+			req := signIn(httptest.NewRequest(http.MethodPost, "/api/sessions/"+sid.String()+"/"+tt.action, nil))
+			rr := httptest.NewRecorder()
+			srv.Handler.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d (body %s)", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+			called := tt.repo.interrupted
+			if tt.action == "retry" {
+				called = tt.repo.retried
+			}
+			if len(called) != 1 || called[0] != sid {
+				t.Fatalf("repo called with %v, want the path's session id", called)
 			}
 		})
 	}
