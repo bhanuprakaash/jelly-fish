@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
+	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 )
 
@@ -37,7 +38,7 @@ func newTestMetrics(t *testing.T) *stream.Metrics {
 func newTestServer(t *testing.T, repo SessionRepo) *http.Server {
 	t.Helper()
 	return NewServer(":0", slog.New(slog.DiscardHandler), testWebFS(), repo, stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
-		AuthConfig{Authenticator: fakeAuthenticator{}, Mailer: &fakeMailer{}})
+		AuthConfig{Authenticator: fakeAuthenticator{}, Mailer: &fakeMailer{}, ProviderKeys: ProviderKeyConfig{Store: emptyKeyStore{}}})
 }
 
 const testToken = "test-token"
@@ -179,4 +180,17 @@ func TestSPA(t *testing.T) {
 			}
 		})
 	}
+}
+
+// emptyKeyStore is a ProviderKeyStore holding no keys.
+type emptyKeyStore struct{}
+
+func (emptyKeyStore) Upsert(context.Context, uuid.UUID, providerkeys.Sealed) (providerkeys.Info, error) {
+	return providerkeys.Info{}, nil
+}
+
+func (emptyKeyStore) List(context.Context, uuid.UUID) ([]providerkeys.Info, error) { return nil, nil }
+
+func (emptyKeyStore) Delete(context.Context, uuid.UUID, string) error {
+	return providerkeys.ErrNotFound
 }

@@ -22,6 +22,8 @@ func stateChangingRoutes() []route {
 		{http.MethodPost, "/api/auth/logout"},
 		{http.MethodPost, "/api/auth/logout-all"},
 		{http.MethodDelete, "/api/me/login-sessions/" + uuid.NewString()},
+		{http.MethodPut, "/api/provider-keys/anthropic"},
+		{http.MethodDelete, "/api/provider-keys/anthropic"},
 		{http.MethodPost, "/api/sessions"},
 		{http.MethodPost, "/api/sessions/" + uuid.NewString() + "/messages"},
 		{http.MethodPost, "/api/admin/invites"},

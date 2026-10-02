@@ -42,6 +42,8 @@ spec:
           envFrom:
             - secretRef:
                 name: postgres-secrets
+            - secretRef:
+                name: app-secrets
           env:
             - name: DATABASE_URL
               value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
@@ -108,6 +110,8 @@ spec:
           envFrom:
             - secretRef:
                 name: postgres-secrets
+            - secretRef:
+                name: app-secrets
           env:
             - name: DATABASE_URL
               value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable

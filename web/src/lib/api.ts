@@ -178,6 +178,30 @@ export async function makeAdmin(id: string): Promise<void> {
   await request(`/api/admin/users/${id}/make-admin`, { method: 'POST' })
 }
 
+export type ProviderKey = { provider: string; last4: string; updated_at: string }
+
+// getProviderKeys lists the current User's saved Provider Keys, never the keys.
+export async function getProviderKeys(): Promise<ProviderKey[]> {
+  const res = await request('/api/provider-keys')
+  return res.json() as Promise<ProviderKey[]>
+}
+
+// putProviderKey checks, seals and saves a key; it throws HttpError 422 when
+// the Provider rejects the key and 502 when the Provider can't be reached.
+export async function putProviderKey(provider: string, key: string): Promise<ProviderKey> {
+  const res = await request(`/api/provider-keys/${provider}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  })
+  return res.json() as Promise<ProviderKey>
+}
+
+// deleteProviderKey removes the User's saved key for a Provider.
+export async function deleteProviderKey(provider: string): Promise<void> {
+  await request(`/api/provider-keys/${provider}`, { method: 'DELETE' })
+}
+
 // createSession starts a session; repeating the same sessionId returns the
 // existing one instead of sending message again (event-log.md §4).
 export function createSession(sessionId: string, clientMsgId: string, message: string) {

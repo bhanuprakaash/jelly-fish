@@ -16,6 +16,9 @@ import (
 )
 
 func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	if _, err := loadKeyring(cfg); err != nil {
+		return err
+	}
 	pool, err := pg.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connect db: %w", err)

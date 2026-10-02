@@ -17,11 +17,16 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
 	"github.com/bhanuprakaash/jelly-fish/internal/mail"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
+	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/web"
 )
 
 func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	kr, err := loadKeyring(cfg)
+	if err != nil {
+		return err
+	}
 	if cfg.SMTPURL == "" || cfg.MailFrom == "" {
 		return errors.New("JF_SMTP_URL and JF_MAIL_FROM are required")
 	}
@@ -66,6 +71,11 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Mailer:         mailer,
 		PublicURL:      cfg.PublicURL,
 		InsecureCookie: cfg.DevInsecureCookie,
+		ProviderKeys: api.ProviderKeyConfig{
+			Store:  providerkeys.NewStore(pool),
+			Sealer: kr,
+			Models: api.AnthropicLister{},
+		},
 	})
 
 	g, gctx := errgroup.WithContext(ctx)

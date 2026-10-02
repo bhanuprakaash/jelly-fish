@@ -31,6 +31,9 @@ type Config struct {
 	// DevInsecureCookie sends the login cookie without Secure, for local http
 	// only.
 	DevInsecureCookie bool
+	// MasterKey is JF_MASTER_KEY, id:base64 pairs with the primary first
+	// (auth-keys.md §4.4); the api and worker roles require it.
+	MasterKey string
 }
 
 // Load reads Config from the environment.
@@ -62,6 +65,7 @@ func Load() (Config, error) {
 		MailFrom:          os.Getenv("JF_MAIL_FROM"),
 		PublicURL:         strings.TrimRight(os.Getenv("JF_PUBLIC_URL"), "/"),
 		DevInsecureCookie: os.Getenv("JF_DEV_INSECURE_COOKIE") == "1",
+		MasterKey:         os.Getenv("JF_MASTER_KEY"),
 	}, nil
 }
 

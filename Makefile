@@ -4,6 +4,7 @@ GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v
 IMAGE := localhost:5001/jelly-fish:latest
 
 infra:
+	@grep -q '^JF_MASTER_KEY=' deploy/k8s/.env.app 2>/dev/null || printf '\nJF_MASTER_KEY=m1:%s\n' "$$(openssl rand -base64 32)" >> deploy/k8s/.env.app
 	kubectl apply -k deploy/k8s
 
 db:

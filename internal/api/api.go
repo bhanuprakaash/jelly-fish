@@ -33,6 +33,7 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 		writeTimeout: writeTimeout,
 		pingInterval: pingInterval,
 	}
+	keys := &providerKeyHandlers{cfg: authCfg.ProviderKeys, logger: logger}
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/hello", handleHello)
 	protected.HandleFunc("GET /api/me", handleMe)
@@ -40,6 +41,10 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.HandleFunc("POST /api/auth/logout-all", authH.handleLogoutAll)
 	protected.HandleFunc("GET /api/me/login-sessions", authH.handleListLoginSessions)
 	protected.HandleFunc("DELETE /api/me/login-sessions/{id}", authH.handleDeleteLoginSession)
+
+	protected.HandleFunc("GET /api/provider-keys", keys.handleListKeys)
+	protected.HandleFunc("PUT /api/provider-keys/{p}", keys.handlePutKey)
+	protected.HandleFunc("DELETE /api/provider-keys/{p}", keys.handleDeleteKey)
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("POST /api/admin/invites", authH.handleCreateInvite)

@@ -55,6 +55,8 @@ type AuthConfig struct {
 	// Admin backs /api/admin/*.
 	Admin  UserAdmin
 	Mailer Mailer
+	// ProviderKeys backs /api/provider-keys.
+	ProviderKeys ProviderKeyConfig
 	// PublicURL is the app's external origin, used for links in email. It is
 	// config because the request Host is attacker-controlled.
 	PublicURL string

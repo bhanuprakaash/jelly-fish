@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 )
@@ -38,4 +39,15 @@ type Provider interface {
 	// Stream calls onDelta with each text fragment as it arrives, then
 	// returns the whole reply. It stops early with ctx's error if ctx ends.
 	Stream(ctx context.Context, req Request, onDelta func(text string)) (Response, error)
+}
+
+// ErrKeyRejected means the Provider refused the User's key (401 or 403).
+var ErrKeyRejected = errors.New("key rejected")
+
+// Model is one entry of a Provider's live models list.
+type Model struct {
+	ID             string `json:"id"`
+	DisplayName    string `json:"display_name"`
+	MaxInputTokens int64  `json:"max_input_tokens,omitempty"`
+	MaxTokens      int64  `json:"max_tokens,omitempty"`
 }
