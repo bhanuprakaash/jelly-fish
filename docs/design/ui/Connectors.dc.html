@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connectors</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#FAFAF7}button{font:inherit;cursor:pointer}</style>
+</helmet>
+<div style="min-height: 1100px; background: #FAFAF7; color: #161616; font-family: 'Manrope', system-ui, sans-serif; font-size: 14px; line-height: 1.55">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 28px 56px 0">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3E7CB1" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+    <span style="font-weight: 600; letter-spacing: -0.02em; font-size: 17px">jelly-fish</span>
+    <span style="color: #C9C6BE">/</span>
+    <button type="button" style="min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: #3A3A37; font-weight: 500">Personal ▾</button>
+    <a href="Main.dc.html" style="margin-left: auto; color: #3A3A37; font-size: 13px; text-decoration: none; min-height: 36px; display: inline-flex; align-items: center">← Back to chat</a>
+  </header>
+  <nav aria-label="Project settings" style="display: flex; gap: 36px; padding: 32px 56px 0; border-bottom: 1px solid #E8E6E0; overflow-x: auto">
+    <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="6">
+      <a href="{{tb.href}}" style="display: inline-flex; align-items: baseline; gap: 8px; padding-bottom: 16px; border-bottom: 2px solid {{tb.line}}; color: {{tb.color}}; text-decoration: none; white-space: nowrap; font-size: 15px; font-weight: 500"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #77766F">{{tb.n}}</span>{{tb.label}}</a>
+    </sc-for>
+  </nav>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 40px; padding: 40px 56px 56px">
+    <section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 28px">
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px">
+        <div style="flex: 1 1 300px">
+          <h1 style="margin: 0; font-size: 44px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.05">Connectors</h1>
+          <p style="margin: 6px 0 0; color: #6B6A65; max-width: 520px">Remote MCP servers your agents can reach. Tools appear as <code style="font-family: 'JetBrains Mono', monospace">slug__tool</code>.</p>
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #DDDAD3; background: #FFFFFF; color: #6B6A65; min-width: 220px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span style="position: absolute; left: -9999px">Search catalog</span><input type="search" placeholder="Search catalog" style="border: 0; outline: none; background: transparent; font: inherit; color: #161616; flex: 1"></label>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #6B6A65; font-weight: 600">In this project</h2>
+        <sc-for list="{{mine}}" as="c" hint-placeholder-count="3">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 20px; border-radius: 18px; background: #FFFFFF; border: 1px solid {{c.border}}">
+            <span style="width: 44px; height: 44px; border-radius: 12px; background: #161616; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px">{{c.mono}}</span>
+            <span style="flex: 1 1 200px; display: flex; flex-direction: column"><strong style="font-weight: 600; font-size: 16px">{{c.name}}</strong><span style="font-size: 13px; color: #6B6A65"><code style="font-family: 'JetBrains Mono', monospace">{{c.slug}}</code> · {{c.tools}}</span></span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 999px; background: {{c.chipBg}}; color: {{c.chipFg}}"><span style="width: 6px; height: 6px; border-radius: 50%; background: {{c.chipFg}}"></span>{{c.state}}</span>
+            <button type="button" style="{{c.btnStyle}}">{{c.action}}</button>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #6B6A65; font-weight: 600">Catalog</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px">
+          <sc-for list="{{catalog}}" as="k" hint-placeholder-count="6">
+            <button type="button" style="display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 18px; border-radius: 18px; border: 1px solid #E8E6E0; background: #FFFFFF; color: #161616; text-align: left; min-height: 132px">
+              <span style="width: 36px; height: 36px; border-radius: 10px; background: #F4F3EF; display: inline-flex; align-items: center; justify-content: center; font-weight: 700">{{k.mono}}</span>
+              <span style="display: flex; flex-direction: column"><strong style="font-weight: 600">{{k.name}}</strong><span style="font-size: 12px; color: #6B6A65">{{k.auth}}</span></span>
+            </button>
+          </sc-for>
+          <button type="button" style="display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 18px; border-radius: 18px; border: 1.5px dashed #9CC9E8; background: #F3F8FC; color: #2F6E9E; text-align: left; min-height: 132px"><span style="font-size: 26px; line-height: 1">+</span><strong style="font-weight: 600">Custom URL</strong></button>
+        </div>
+      </div>
+    </section>
+
+    <aside style="flex: 1 1 400px; max-width: 500px; display: flex; flex-direction: column; border-radius: 24px; background: #FFFFFF; border: 1px solid #E8E6E0; overflow: hidden; align-self: flex-start">
+      <div style="padding: 24px 24px 18px; display: flex; flex-direction: column; gap: 16px; border-bottom: 1px solid #E8E6E0">
+        <strong style="font-size: 20px; font-weight: 600; letter-spacing: -0.02em">Add Linear</strong>
+        <ol style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+          <sc-for list="{{steps}}" as="st" hint-placeholder-count="4">
+            <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 3px; border-radius: 3px; background: {{st.bar}}"></span><span style="font-size: 12px; color: {{st.fg}}">{{st.l}}</span></li>
+          </sc-for>
+        </ol>
+      </div>
+      <div style="padding: 18px 24px; display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px"><strong style="font-weight: 600">12 tools found</strong><span style="font-size: 13px; color: #6B6A65">Turn off what agents shouldn't use</span></div>
+        <sc-for list="{{tools}}" as="tl" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; border-top: 1px solid #F0EFEA">
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><code style="font-family: 'JetBrains Mono', monospace; font-size: 13px">{{tl.name}}</code><span style="font-size: 12px; color: {{tl.hintFg}}">{{tl.hint}}</span></span>
+            <button type="button" role="switch" aria-checked="{{tl.on}}" aria-label="Enable {{tl.name}}" style="width: 44px; height: 26px; border-radius: 999px; border: 0; padding: 3px; background: {{tl.track}}; display: flex; justify-content: {{tl.justify}}"><span style="width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,.2)"></span></button>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 8px; padding: 16px 24px 24px">
+        <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent; background: #161616; color: #FFFFFF; font-weight: 600">Save connector</button>
+        <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #3A3A37; font-weight: 600">Back</button>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var tabs = [['01', 'Agents', 'Agents.dc.html'], ['02', 'Skills', 'Skills.dc.html'], ['03', 'Connectors', 'Connectors.dc.html'], ['04', 'Permissions', 'Permissions.dc.html'], ['05', 'Memory', 'Memory.dc.html'], ['06', 'Usage', 'Usage.dc.html']];
+    var base = 'min-height: 36px; padding: 0 14px; border-radius: 10px; font-weight: 600; font-size: 13px; ';
+    var sec = base + 'border: 1px solid #DDDAD3; background: #FFFFFF; color: #161616';
+    var pri = base + 'border: 1px solid transparent; background: #161616; color: #FFFFFF';
+    var mine = [
+      { mono: 'N', name: 'Notion', slug: 'notion', tools: '9 of 11 tools on', state: 'Connected', chipBg: '#F1F5EF', chipFg: '#4F6B47', action: 'Manage', btnStyle: sec, border: '#E8E6E0' },
+      { mono: 'G', name: 'GitHub', slug: 'github', tools: '14 tools on', state: 'Needs more permission', chipBg: '#FFF7F4', chipFg: '#A32C22', action: 'Reconnect', btnStyle: pri, border: '#EBC2BB' },
+      { mono: 'S', name: 'Internal search', slug: 'docs', tools: 'custom URL · API key', state: 'Connected', chipBg: '#F1F5EF', chipFg: '#4F6B47', action: 'Manage', btnStyle: sec, border: '#E8E6E0' }
+    ];
+    var catalog = [['L', 'Linear', 'OAuth'], ['G', 'Gmail', 'OAuth'], ['S', 'Slack', 'OAuth'], ['D', 'Google Drive', 'OAuth'], ['F', 'Figma', 'OAuth'], ['S', 'Stripe', 'API key']];
+    var steps = [['URL', 1], ['Probe', 1], ['Connect', 1], ['Tools', 2]];
+    var tools = [
+      ['linear__search_issues', 'read-only', true], ['linear__get_issue', 'read-only', true], ['linear__create_issue', 'writes · asks in ask mode', true],
+      ['linear__update_issue', 'writes', true], ['linear__delete_issue', 'destructive', false]
+    ];
+    return {
+      tabs: tabs.map(function (x, i) { return { n: x[0], label: x[1], href: x[2], line: i === 2 ? '#161616' : 'transparent', color: i === 2 ? '#161616' : '#6B6A65' }; }),
+      mine: mine,
+      catalog: catalog.map(function (c) { return { mono: c[0], name: c[1], auth: c[2] }; }),
+      steps: steps.map(function (s) { return { l: s[0], bar: s[1] === 1 ? '#161616' : '#9CC9E8', fg: s[1] === 1 ? '#6B6A65' : '#2F6E9E' }; }),
+      tools: tools.map(function (x) { return { name: x[0], hint: x[1], on: x[2] ? 'true' : 'false', track: x[2] ? '#2F6E9E' : '#DDDAD3', justify: x[2] ? 'flex-end' : 'flex-start', hintFg: x[1] === 'destructive' ? '#8E3326' : '#6B6A65' }; })
+    };
+  }
+}
+</script>
+</body>
+</html>
