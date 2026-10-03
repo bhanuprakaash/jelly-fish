@@ -85,7 +85,7 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 		}); err != nil {
 			return err
 		}
-		if err := notifyAppend(ctx, tx, sessionID, scope.UserID, 2, true); err != nil {
+		if err := notifyAppend(ctx, tx, sessionID, scope.UserID, 2, true, true); err != nil {
 			return err
 		}
 		last = 2

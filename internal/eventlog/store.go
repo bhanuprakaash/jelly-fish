@@ -152,7 +152,10 @@ func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *T
 			return nil, fmt.Errorf("apply status: %w", err)
 		}
 	}
-	if err := notifyAppend(ctx, tx, sid, userID, last, next != nil && next.To == StatusRunnable); err != nil {
+	activity := slices.ContainsFunc(all, func(e NewEvent) bool {
+		return e.Type == TypeStatusChanged || e.Type == TypeSessionCreated
+	})
+	if err := notifyAppend(ctx, tx, sid, userID, last, next != nil && next.To == StatusRunnable, activity); err != nil {
 		return nil, err
 	}
 	return seqs, nil
@@ -287,7 +290,7 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 		if err := insertEvent(ctx, tx, c.SessionID, workspaceID, last, &c.Fence.Epoch, ev); err != nil {
 			return err
 		}
-		return notifyAppend(ctx, tx, c.SessionID, c.UserID, last, false)
+		return notifyAppend(ctx, tx, c.SessionID, c.UserID, last, false, true)
 	})
 	return c, found, err
 }
@@ -357,17 +360,20 @@ func (s *Store) Load(ctx context.Context, sid uuid.UUID) ([]Event, error) {
 	return evs, nil
 }
 
-// notifyAppend emits the jf_runnable (if runnable), jf_activity and jf_events
+// notifyAppend emits the jf_runnable (if runnable), jf_activity (if activity:
+// the batch holds a session.status_changed or session.created) and jf_events
 // NOTIFYs for a batch appended at seq, shared by CreateSession's insert path
-// and appendTx (event-log.md §5.1, §5.12).
-func notifyAppend(ctx context.Context, tx pgx.Tx, sid, userID uuid.UUID, seq int64, runnable bool) error {
+// and appendTx (event-log.md §5.1, §5.12; streaming.md D17).
+func notifyAppend(ctx context.Context, tx pgx.Tx, sid, userID uuid.UUID, seq int64, runnable, activity bool) error {
 	if runnable {
 		if _, err := tx.Exec(ctx, `SELECT pg_notify('jf_runnable', $1)`, sid.String()); err != nil {
 			return fmt.Errorf("notify jf_runnable: %w", err)
 		}
 	}
-	if _, err := tx.Exec(ctx, `SELECT pg_notify('jf_activity', $1)`, userID.String()+":"+sid.String()); err != nil {
-		return fmt.Errorf("notify jf_activity: %w", err)
+	if activity {
+		if _, err := tx.Exec(ctx, `SELECT pg_notify('jf_activity', $1)`, userID.String()+":"+sid.String()); err != nil {
+			return fmt.Errorf("notify jf_activity: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `SELECT pg_notify('jf_events', $1)`, fmt.Sprintf("%s:%d", sid, seq)); err != nil {
 		return fmt.Errorf("notify jf_events: %w", err)

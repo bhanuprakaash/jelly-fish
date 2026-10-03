@@ -158,7 +158,7 @@ func handleSessionAction(do func(context.Context, eventlog.TenantScope, uuid.UUI
 	}
 }
 
-// sessionStreams serves the Session stream.
+// sessionStreams serves the Session stream and the Activity stream.
 type sessionStreams struct {
 	repo    SessionRepo
 	hub     *stream.Hub
@@ -193,16 +193,11 @@ func (s *sessionStreams) handle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not open stream")
 		return
 	}
-	release, ok := s.limiter.acquire(scope.UserID)
+	end, ok := s.admit(w, scope.UserID, stream.KindSession)
 	if !ok {
-		s.metrics.Refusals.Inc()
-		writeError(w, http.StatusTooManyRequests, "too many open streams")
 		return
 	}
-	defer release()
-	open := s.metrics.OpenStreams.WithLabelValues(stream.KindSession)
-	open.Inc()
-	defer open.Dec()
+	defer end()
 	after := parseAfter(r, lastSeq)
 
 	// Subscribe before the replay query, so no hint is missed in between
@@ -212,13 +207,8 @@ func (s *sessionStreams) handle(w http.ResponseWriter, r *http.Request) {
 	deltaCh, unsubscribeDeltas := s.deltas.Subscribe(sessionID)
 	defer unsubscribeDeltas()
 
-	sw := &sseWriter{w: w, rc: http.NewResponseController(w), timeout: s.writeTimeout, deadlineCloses: s.metrics.WriteDeadlineCloses}
-	h := w.Header()
-	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-cache")
-	h.Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	if !sw.frame("retry: 2000\n\n") {
+	sw, ok := s.startSSE(w)
+	if !ok {
 		return
 	}
 
@@ -262,6 +252,36 @@ func (s *sessionStreams) handle(w http.ResponseWriter, r *http.Request) {
 			lastSent = sent
 		}
 	}
+}
+
+// admit counts a stream of kind against userID's cap. It answers 429 and
+// reports false when userID is at the cap; otherwise call end when the stream
+// closes.
+func (s *sessionStreams) admit(w http.ResponseWriter, userID uuid.UUID, kind string) (end func(), ok bool) {
+	release, ok := s.limiter.acquire(userID)
+	if !ok {
+		s.metrics.Refusals.Inc()
+		writeError(w, http.StatusTooManyRequests, "too many open streams")
+		return nil, false
+	}
+	open := s.metrics.OpenStreams.WithLabelValues(kind)
+	open.Inc()
+	return func() {
+		open.Dec()
+		release()
+	}, true
+}
+
+// startSSE sends the SSE headers and the reconnect delay. It reports false if
+// that write failed and the stream should close.
+func (s *sessionStreams) startSSE(w http.ResponseWriter) (*sseWriter, bool) {
+	sw := &sseWriter{w: w, rc: http.NewResponseController(w), timeout: s.writeTimeout, deadlineCloses: s.metrics.WriteDeadlineCloses}
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	return sw, sw.frame("retry: 2000\n\n")
 }
 
 // loginHolds reports whether the stream's Login Session is still valid and its

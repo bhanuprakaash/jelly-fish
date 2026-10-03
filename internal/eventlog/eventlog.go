@@ -30,12 +30,13 @@ const (
 
 // Session statuses this slice uses (event-log.md §3).
 const (
-	StatusRunnable     = "runnable"
-	StatusRunning      = "running"
-	StatusSleeping     = "sleeping"
-	StatusAwaitingUser = "awaiting_user"
-	StatusCompleted    = "completed"
-	StatusFailed       = "failed"
+	StatusRunnable         = "runnable"
+	StatusRunning          = "running"
+	StatusSleeping         = "sleeping"
+	StatusAwaitingUser     = "awaiting_user"
+	StatusAwaitingApproval = "awaiting_approval"
+	StatusCompleted        = "completed"
+	StatusFailed           = "failed"
 )
 
 // TriggerUserMessage is the sessions.trigger of a session a User started with

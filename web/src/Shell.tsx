@@ -14,7 +14,7 @@ type Props = {
 // Shell is the signed-in home: the Chat List beside the open chat. On a phone
 // only one of the two shows, the list at "/" and the chat at "/s/{id}".
 export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }: Props) {
-  const { chats, error, refetch } = useChatList(onUnauthorized)
+  const { chats, error, refetch, badges } = useChatList(onUnauthorized)
 
   return (
     <div className="flex min-h-svh bg-neutral-950 text-neutral-100">
@@ -24,6 +24,7 @@ export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }:
         {chats ? (
           <ChatList
             chats={chats}
+            badges={badges}
             activeId={sessionId}
             onNewChat={onNewChat}
             onOpen={(id) => navigate(`/s/${id}`)}

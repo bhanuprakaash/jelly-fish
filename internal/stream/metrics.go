@@ -10,8 +10,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// KindSession labels a Session stream in Metrics.OpenStreams.
-const KindSession = "session"
+// Stream kinds, the label values of Metrics.OpenStreams.
+const (
+	KindSession  = "session"
+	KindActivity = "activity"
+)
 
 // queueUsageTimeout bounds the pg_notification_queue_usage() query behind a
 // scrape.

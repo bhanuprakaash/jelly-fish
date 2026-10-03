@@ -81,23 +81,25 @@ func TestCrossSiteStream(t *testing.T) {
 		{"typed into the address bar", "none", http.StatusOK},
 		{"non-browser client", "", http.StatusOK},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			srv := newTestServer(t, &fakeRepo{})
-			ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-			defer cancel()
+	for _, path := range []string{"/api/sessions/" + uuid.NewString() + "/events", "/api/activity"} {
+		for _, tt := range tests {
+			t.Run(path+"/"+tt.name, func(t *testing.T) {
+				srv := newTestServer(t, &fakeRepo{})
+				ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+				defer cancel()
 
-			rr := httptest.NewRecorder()
-			req := signIn(httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/sessions/"+uuid.NewString()+"/events", nil))
-			if tt.fetchSite != "" {
-				req.Header.Set("Sec-Fetch-Site", tt.fetchSite)
-			}
-			srv.Handler.ServeHTTP(rr, req)
+				rr := httptest.NewRecorder()
+				req := signIn(httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil))
+				if tt.fetchSite != "" {
+					req.Header.Set("Sec-Fetch-Site", tt.fetchSite)
+				}
+				srv.Handler.ServeHTTP(rr, req)
 
-			if rr.Code != tt.wantStatus {
-				t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
-			}
-		})
+				if rr.Code != tt.wantStatus {
+					t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
+				}
+			})
+		}
 	}
 }
 

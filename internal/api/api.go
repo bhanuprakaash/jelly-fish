@@ -65,6 +65,7 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.HandleFunc("POST /api/sessions/{id}/interrupt", handleSessionAction(repo.Interrupt, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/retry", handleSessionAction(repo.Retry, logger))
 	protected.Handle("GET /api/sessions/{id}/events", rejectCrossSite(http.HandlerFunc(streams.handle)))
+	protected.Handle("GET /api/activity", rejectCrossSite(http.HandlerFunc(streams.handleActivity)))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/auth/code", authH.handleRequestCode)

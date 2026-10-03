@@ -20,6 +20,8 @@ type SessionRepo interface {
 	ChangeModel(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, model string) error
 	SessionModel(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) (string, error)
 	ListSessions(ctx context.Context, scope eventlog.TenantScope) ([]eventlog.SessionSummary, error)
+	ActivitySnapshot(ctx context.Context, scope eventlog.TenantScope) ([]eventlog.ActivityRow, error)
+	ActivityStatusOf(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) (eventlog.ActivityRow, bool, error)
 	ListEvents(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, after int64) ([]eventlog.Event, error)
 }
 

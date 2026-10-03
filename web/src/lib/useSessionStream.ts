@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Delta, UIEvent } from './api'
+import { onVisibilityChange } from './visibility'
 
 // useSessionStream replays a session's Session stream and keeps it live,
 // closing on tab hide and reopening with ?after=lastSeq on show
@@ -79,20 +80,19 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
       }
     }
 
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
+    open()
+    const stopWatching = onVisibilityChange(
+      () => {
         es?.close()
         setConnected(false)
-      } else {
+      },
+      () => {
         es?.close()
         open()
-      }
-    }
-
-    open()
-    document.addEventListener('visibilitychange', onVisibility)
+      },
+    )
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility)
+      stopWatching()
       es?.close()
     }
   }, [sessionId, enabled])

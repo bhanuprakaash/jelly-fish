@@ -47,7 +47,7 @@ Run before driving anything, and again after any failed drive:
 
 ## Drive
 
-See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `admin-users`, `hello-api`, `migrate`, `web-shell`, `chat-list`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
+See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `admin-users`, `hello-api`, `migrate`, `web-shell`, `chat-list`, `activity-stream`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
 
 UI flows are driven with the Playwright **library** in [`scripts/`](./scripts) (never the Playwright MCP). Install once: `cd .claude/skills/verify-jelly-fish/scripts && npm install`. `playwright` is pinned to `1.62.1` because its Chromium build (`chromium-1234`) is the one cached in `~/Library/Caches/ms-playwright`. If you bump the pin, run `npx playwright install chromium`. Browsers: desktop Chromium (1280×800) and Playwright's `Pixel 7` emulation, which is desktop Chromium with a phone viewport, UA, touch and `isMobile`. It is not a real Android browser, so a real-device or installed-PWA check stays with the user.
 
@@ -81,3 +81,4 @@ Deploy, Doctor and curl drives are plain `docker`/`kubectl`/`curl` commands. Bro
   - `psql(sql)` runs a query.
   - `adminEmail()` returns the Admin's email.
 - `node chat-list.mjs <subdir>` runs the [`chat-list`](./features/chat-list.md) drive.
+- `node activity-stream.mjs <subdir>` runs the [`activity-stream`](./features/activity-stream.md) drive. It needs `DATABASE_URL`, and the `:9090` forward for its metrics check.

@@ -65,6 +65,14 @@ func (f *fakeRepo) ListSessions(context.Context, eventlog.TenantScope) ([]eventl
 	return nil, f.listSessionsErr
 }
 
+func (f *fakeRepo) ActivitySnapshot(context.Context, eventlog.TenantScope) ([]eventlog.ActivityRow, error) {
+	return nil, nil
+}
+
+func (f *fakeRepo) ActivityStatusOf(context.Context, eventlog.TenantScope, uuid.UUID) (eventlog.ActivityRow, bool, error) {
+	return eventlog.ActivityRow{}, false, nil
+}
+
 func (f *fakeRepo) ListEvents(_ context.Context, _ eventlog.TenantScope, _ uuid.UUID, after int64) ([]eventlog.Event, error) {
 	var evs []eventlog.Event
 	for _, e := range f.events {

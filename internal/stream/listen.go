@@ -10,19 +10,21 @@ import (
 )
 
 const (
-	eventsChannel = "jf_events"
+	eventsChannel   = "jf_events"
+	activityChannel = "jf_activity"
 	// listenRetryDelay is how long Listen waits before re-LISTENing after a
 	// dropped connection (event-log.md §5.7: re-LISTEN, then poll).
 	listenRetryDelay = 3 * time.Second
 )
 
-// Listen holds one connection LISTENing on jf_events and jf_stream, routing
-// hints to hub and deltas to bus, until ctx is cancelled. One connection keeps
-// a turn's last delta ahead of its llm.response hint, since a connection
-// receives notifications in commit order. On a dropped connection it
-// reconnects and re-LISTENs; deltas sent meanwhile are lost, which the stream
-// tolerates, and hub subscribers are hinted to catch up (event-log.md §5.7).
-// Deltas a subscriber misses are counted in metrics.
+// Listen holds one connection LISTENing on jf_events, jf_activity and
+// jf_stream, routing hints to hub and deltas to bus, until ctx is cancelled.
+// One connection keeps a turn's last delta ahead of its llm.response hint,
+// since a connection receives notifications in commit order. On a dropped
+// connection it reconnects and re-LISTENs; deltas sent meanwhile are lost,
+// which the stream tolerates, and hub subscribers are hinted to catch up
+// (event-log.md §5.7), an Activity stream by a fresh snapshot. Deltas a
+// subscriber misses are counted in metrics.
 func Listen(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hub *Hub, bus *PGDeltaBus, metrics *Metrics) {
 	for ctx.Err() == nil {
 		if err := listenOnce(ctx, pool, logger, hub, bus, metrics); err != nil && ctx.Err() == nil {
@@ -42,7 +44,7 @@ func listenOnce(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hu
 	}
 	defer conn.Release()
 
-	for _, channel := range []string{eventsChannel, deltaChannel} {
+	for _, channel := range []string{eventsChannel, activityChannel, deltaChannel} {
 		if _, err := conn.Exec(ctx, "LISTEN "+channel); err != nil {
 			return fmt.Errorf("listen %s: %w", channel, err)
 		}
@@ -58,6 +60,10 @@ func listenOnce(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, hu
 		case eventsChannel:
 			if sid, ok := sessionFromPayload(notif.Payload); ok {
 				hub.Notify(sid)
+			}
+		case activityChannel:
+			if user, sid, ok := activityFromPayload(notif.Payload); ok {
+				hub.NotifyActivity(user, sid)
 			}
 		case deltaChannel:
 			dropped, err := bus.deliverPayload(notif.Payload)
