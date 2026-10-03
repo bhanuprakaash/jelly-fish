@@ -22,7 +22,8 @@ This directory is the maintained source for verifying jelly-fish's real behavior
 - [Admin: invites and Users](./admin-users.md) — invite a friend, first login, disable/enable, make admin, `/api/admin/*` is `404` to non-admins.
 - [Hello API (`/api/hello`)](./hello-api.md) — a static JSON greeting behind sign-in.
 - [Migrate role](./migrate.md) — applying goose migrations.
-- [Web shell](./web-shell.md) — the PWA rendering the hello message.
+- [Web shell](./web-shell.md) — the signed-in Shell (Chat List + chat pane), its loading/error states, login screen and routes.
 - [Chat List](./chat-list.md) — `GET /api/sessions`, desktop sidebar, phone list → chat → back, open replays from seq 0.
 - [Activity Stream and badges](./activity-stream.md) — `GET /api/activity`, live running/needs-approval/failed badges, hide/show reconnect, 20-stream cap.
 - [Rename and automatic Title](./rename-title.md) — `PUT /api/sessions/{id}/title`, the "⋯" Rename menu, header updates from `session.renamed`, the Worker's automatic Title.
+- [S5 demo](./s5-demo.md) — the whole S5 flow on desktop and Pixel 7 emulation: live badges, Title, rename, hide/show recovery.

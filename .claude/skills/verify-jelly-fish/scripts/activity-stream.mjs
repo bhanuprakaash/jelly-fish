@@ -9,21 +9,11 @@
 // Needs the :9090 forward for the metrics check (skipped without it).
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BASE, open, psql, setVisibility, sleep, streams } from './lib.mjs'
+import { BASE, badge, checker, gone, nav, open, psql, row, seen, setVisibility, sleep, streams } from './lib.mjs'
 
 const dir = process.argv[2] ?? 'activity-stream'
 const stamp = new Date().toISOString().slice(11, 19)
-const results = []
-const check = (name, ok, detail = '') => {
-  results.push({ name, ok, detail })
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`)
-}
-const nav = (page) => page.getByRole('navigation', { name: 'Chats' })
-const row = (page, title) => nav(page).getByRole('listitem').filter({ hasText: title })
-const badge = (page, title, label) => row(page, title).getByRole('img', { name: label })
-const seen = (loc, timeout = 15_000) => loc.waitFor({ timeout }).then(() => true, () => false)
-const gone = (loc, timeout = 60_000) =>
-  loc.waitFor({ state: 'detached', timeout }).then(() => true, () => false)
+const { check, exit } = checker()
 const hint = (sid) => psql(`SELECT pg_notify('jf_activity', user_id || ':' || id) FROM sessions WHERE id = '${sid}'`)
 
 const r = await open({ dir, name: 'desktop', device: 'desktop' })
@@ -35,9 +25,11 @@ await r.shot('list')
 // Tab 2 starts two slow chats through the same API the PWA uses.
 const tab2 = await context.newPage()
 await tab2.goto(BASE)
-const titles = [`/slow 25s alpha ${stamp}`, `/slow 25s beta ${stamp}`]
+// The automatic Title drops the /slow prefix, so rows are matched on the rest.
+const titles = [`alpha ${stamp}`, `beta ${stamp}`]
 const ids = []
-for (const message of titles) {
+for (const text of titles) {
+  const message = `/slow 25s ${text}`
   const id = crypto.randomUUID()
   const status = await tab2.evaluate(
     ([id, message]) =>
@@ -135,4 +127,4 @@ for (const c of held) c.abort()
 writeFileSync(join(r.out, 'test-sessions.txt'), [...ids, child].join('\n') + '\n')
 console.log('chats:', ids.join(' '), 'child:', child)
 console.log('evidence:', await r.close())
-process.exit(results.every((x) => x.ok) ? 0 : 1)
+exit()

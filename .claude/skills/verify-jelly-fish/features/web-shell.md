@@ -1,27 +1,28 @@
 # Web shell
 
-The Vite/React PWA (`web/`) that renders the hello message from the api role. One build serves desktop and iOS per `web/README.md`.
+The Vite/React PWA (`web/`), embedded in the image and served by the api role at `/`. Signed out, it shows the login screen. Signed in, it shows the Shell: the Chat List (sidebar on desktop, its own screen on a phone) beside the open chat. `/settings` and `/admin/users` are separate pages.
 
 ## Sub-features
 
-- `web-loading` — shows "Loading…" before the fetch resolves.
-- `web-hello` — shows the greeting once `/api/hello` resolves.
-- `web-error` — shows "Could not reach the API." when the fetch fails.
+- `shell`: desktop shows "New chat", the `Chats` nav, the empty pane "Select a chat or start a new one", and a "Settings" link. A phone at `/` shows only the list.
+- `loading`: the list reads "Loading…" until `GET /api/sessions` answers.
+- `errors`: a failed list load shows "Could not load chats."; a failed `/api/me` (other than 401) shows "Could not reach the server.".
+- `login`: signed out, the "Jelly-fish" heading, an `Email` field and "Email me a code".
+- `routes`: `/settings` shows the "Account" heading and `/admin/users` the "Users" heading. Any other path falls back to `index.html`, and the SPA routes it.
 
 ## How to get to it (user POV)
 
-- Open `http://localhost:8080/` in a browser: the cluster api serves the PWA embedded in the image.
+- Open `http://localhost:8080/` in a browser.
 
-## Driving it with curl / browser
+## Driving it with Playwright
 
-Preconditions:
+Preconditions: Launch done and `scripts/` installed.
 
-- The cluster api is deployed and forwarded on `:8080` per [`../SKILL.md`](../SKILL.md) Launch (the image embeds the `web/` build).
-
-- **Served shell and API contract only (no browser tool available).** Run `curl -si localhost:8080/` (status `200`, the embedded `index.html`) and `curl -si -b /tmp/jf-cj localhost:8080/api/hello` (status `200`, body `{"message":"hello"}`). This proves the page is served and the data it would render, not the rendered DOM.
-- **Rendered proof (needs a browser tool).** Not drivable in this environment — no Playwright/browser MCP is registered. When one is added: open `http://localhost:8080/`, wait for the paragraph inside the card to stop reading "Loading…", and assert it reads exactly `hello`. Screenshot the card as evidence.
-- **Error state (needs a browser tool).** Not drivable on the shared cluster without taking the api down; skip it.
+- **Whole flow.** Run `node web-shell.mjs <subdir>`. It drives the desktop Shell, both routes, the loading and both error states, and the SPA fallback. It then checks the Pixel 7 home and a signed-out context showing the login screen.
+- **Loading and error states** use `page.route` to slow down or fail one request inside the browser. Nothing on the cluster is mocked or changed, and the api still serves every other request. Say so when quoting them.
+- **Served shell (curl).** `curl -si localhost:8080/` returns `200` with the embedded `index.html`.
 
 ## Gotchas
 
-- Don't claim `web-hello` or `web-error` as verified from the curl-only drive — it only proves the API contract, not that React actually renders it. Report these two as "not drivable in this environment" until a browser tool is added, rather than marking them verified.
+- `/api/hello` (see [hello-api](./hello-api.md)) no longer has a UI consumer. The old "hello" card is gone.
+- `getByRole('heading', {name: 'Users'})` matches both the `h1` and an `h2` on `/admin/users`, so pass `level: 1`.

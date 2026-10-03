@@ -47,7 +47,7 @@ Run before driving anything, and again after any failed drive:
 
 ## Drive
 
-See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `admin-users`, `hello-api`, `migrate`, `web-shell`, `chat-list`, `activity-stream`, `rename-title`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
+See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `admin-users`, `hello-api`, `migrate`, `web-shell`, `chat-list`, `activity-stream`, `rename-title`, `s5-demo`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
 
 UI flows are driven with the Playwright **library** in [`scripts/`](./scripts) (never the Playwright MCP). Install once: `cd .claude/skills/verify-jelly-fish/scripts && npm install`. `playwright` is pinned to `1.62.1` because its Chromium build (`chromium-1234`) is the one cached in `~/Library/Caches/ms-playwright`. If you bump the pin, run `npx playwright install chromium`. Browsers: desktop Chromium (1280×800) and Playwright's `Pixel 7` emulation, which is desktop Chromium with a phone viewport, UA, touch and `isMobile`. It is not a real Android browser, so a real-device or installed-PWA check stays with the user.
 
@@ -59,7 +59,7 @@ For every feature, capture and quote in the report:
 - For `migrate`, the api pod's `migrate` init-container log (`kubectl --context jelly-fish -n jelly-fish logs deploy/api -c migrate`) and the rollout status.
 - For UI flows, every `scripts/*.mjs` drive records into `$JF_EVIDENCE/<subdir>/` (default `~/Downloads/jelly-fish-verify/`): `<flow>.webm` video, `<flow>-trace.zip` (open with `npx playwright show-trace`), numbered PNGs, and one `PASS`/`FAIL` line per check on stdout. Quote the PASS/FAIL lines and the evidence paths, and look at the key screenshots before claiming a visual result. Never commit evidence.
 - Pair a UI check with its side effect where one exists: the API response (`page.request.get`) or the DB row (`psql` via `DATABASE_URL`).
-- Every drive hits the real cluster api and the real cluster postgres. No mocks, no test-only endpoints.
+- Every drive hits the real cluster api and the real cluster postgres. No mocks, no test-only endpoints. The one exception is `page.route` fault injection inside the browser, which `web-shell` uses for its loading and error states. It changes nothing on the cluster, and the report must label it as fault injection.
 
 ## Cleanup
 
@@ -80,6 +80,9 @@ Deploy, Doctor and curl drives are plain `docker`/`kubectl`/`curl` commands. Bro
   - `setVisibility(page, 'hidden'|'visible')` fires `visibilitychange`.
   - `psql(sql)` runs a query.
   - `adminEmail()` returns the Admin's email.
+  - Drive helpers: `checker(prefix)` gives `{check, exit}` (one PASS/FAIL line per check, non-zero exit on any FAIL); `nav`/`row`/`badge`/`header` return Chat List handles; `seen`/`gone`/`until` wait on a locator or a condition; `fakeTitle(first)` gives the Fake Provider's automatic Title.
+- `node web-shell.mjs <subdir>` runs the [`web-shell`](./features/web-shell.md) drive.
 - `node chat-list.mjs <subdir>` runs the [`chat-list`](./features/chat-list.md) drive.
 - `node activity-stream.mjs <subdir>` runs the [`activity-stream`](./features/activity-stream.md) drive. It needs `DATABASE_URL`, and the `:9090` forward for its metrics check.
 - `node rename-title.mjs <subdir>` runs the [`rename-title`](./features/rename-title.md) drive.
+- `node s5-demo.mjs <desktop|pixel7> <subdir>` runs the [`s5-demo`](./features/s5-demo.md) end-to-end flow on one device profile.

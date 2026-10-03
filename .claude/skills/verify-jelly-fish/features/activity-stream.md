@@ -41,7 +41,7 @@ Preconditions: the same as [`chat-list`](./chat-list.md), plus the `:9090` forwa
 
 ## Gotchas
 
-- The `/slow Ns <text>` prefix makes the Fake Provider's reply take N seconds. The placeholder Title keeps the prefix, and the echo drops it.
+- The `/slow Ns <text>` prefix makes the Fake Provider's reply take N seconds. The echo and the automatic Title both drop it, so match rows on `<text>`; only the brief placeholder shows the prefix.
 - The page's own streams count toward the cap, so close other tabs signed in as the Admin before checking `429`.
 - A status the drive sets by SQL stays in the dev DB. The drive puts `failed` back to `awaiting_user`, and the inserted child stays `completed` (it never shows in the list). The ids are written to `test-sessions.txt` in the evidence dir.
 - Badge order in the list does not change on activity. The list re-sorts only on a refetch (D19).

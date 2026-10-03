@@ -2,19 +2,13 @@
 // Drives the Chat List (features/chat-list.md): desktop sidebar create → open
 // (replay from seq 0), then the Pixel 7 list → chat → back flow.
 // Usage: DATABASE_URL=… node chat-list.mjs [evidence-dir]   (default chat-list)
-import { adminEmail, BASE, open, psql, streams } from './lib.mjs'
+import { adminEmail, BASE, checker, nav, open, psql, streams } from './lib.mjs'
 
 const dir = process.argv[2] ?? 'chat-list'
 const stamp = new Date().toISOString().slice(11, 19)
 const long = `Chat list check ${stamp}: a long first message that runs well past the sixty character cut`
 const short = `Second chat ${stamp}`
-const results = []
-const check = (name, ok, detail = '') => {
-  results.push({ name, ok, detail })
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`)
-}
-
-const nav = (page) => page.getByRole('navigation', { name: 'Chats' })
+const { check, exit } = checker()
 
 async function send(page, text) {
   await page.getByPlaceholder('Message').fill(text)
@@ -34,10 +28,11 @@ async function send(page, text) {
   await page.waitForURL(/\/s\/[0-9a-f-]{36}$/)
   const firstId = page.url().split('/s/')[1]
   await send(page, long)
-  const cut = long.slice(0, 60) + '…'
-  const row1 = nav(page).getByRole('link', { name: cut })
+  // The row's text moves from the placeholder to the automatic Title, so
+  // rows are located by their link.
+  const row1 = nav(page).locator(`a[href="/s/${firstId}"]`)
   await row1.waitFor({ timeout: 10_000 })
-  check('create: row appears without reload, placeholder cut to 60 + …', true, JSON.stringify(cut))
+  check('create: row appears without reload', true, JSON.stringify((await row1.textContent()).trim()))
   await page.getByText(/^echo:/).first().waitFor({ timeout: 30_000 })
   await r.shot('first-chat-replied')
 
@@ -55,6 +50,16 @@ async function send(page, text) {
   const sorted = list.every((c, i) => i === 0 || list[i - 1].updated_at >= c.updated_at)
   check('GET /api/sessions ordered by updated_at desc', sorted)
   check('row JSON keys', JSON.stringify(Object.keys(list[0])) === '["id","title","titled","status","updated_at"]', Object.keys(list[0]).join(','))
+  // Placeholder: an untitled chat shows its first user message, whitespace
+  // collapsed, cut to 60 runes + "…".
+  const untitled = list.find((c) => !c.titled && c.title.endsWith('…')) ?? list.find((c) => !c.titled)
+  if (untitled && process.env.DATABASE_URL) {
+    const parts = JSON.parse(psql(`SELECT payload->'message'->'parts' FROM events WHERE session_id = '${untitled.id}' AND type = 'user.message' ORDER BY seq LIMIT 1`))
+    const text = parts.map((p) => p.text ?? '').join('').split(/\s+/).filter(Boolean).join(' ')
+    const runes = Array.from(text)
+    const want = runes.length > 60 ? runes.slice(0, 60).join('') + '…' : text
+    check('placeholder: untitled chat shows its first message cut to 60 + …', untitled.title === want, JSON.stringify(untitled.title))
+  } else console.log('SKIP placeholder: no untitled chat in the list')
   if (process.env.DATABASE_URL) {
     const want = psql(`SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE u.email = '${adminEmail()}' AND s.parent_id IS NULL AND s.trigger = 'user_message'
@@ -76,20 +81,21 @@ async function send(page, text) {
 
   console.log('chats:', firstId, secondId)
   await r.close()
-  globalThis.chats = { firstId, secondId, cut }
+  globalThis.chats = { firstId, secondId }
 }
 
 // Phone: list screen at /, tap a chat, back via "← Chats" and via browser back.
 {
-  const { firstId, cut } = globalThis.chats
+  const { firstId } = globalThis.chats
   const r = await open({ dir, name: 'pixel7', device: 'pixel7' })
   const { page } = r
+  const row1 = nav(page).locator(`a[href="/s/${firstId}"]`)
   await page.goto(BASE)
   await nav(page).waitFor()
   check('phone: / is the list, no chat pane', !(await page.getByText('Select a chat or start a new one').isVisible()))
   await r.shot('list')
 
-  await nav(page).getByRole('link', { name: cut }).tap()
+  await row1.tap()
   await page.waitForURL(new RegExp(`/s/${firstId}$`))
   await page.getByText(long, { exact: true }).waitFor()
   check('phone: tap opens /s/{id}, list hidden', !(await nav(page).isVisible()))
@@ -100,7 +106,7 @@ async function send(page, text) {
   check('phone: ← Chats returns to the list', await nav(page).isVisible())
   await r.shot('back-link')
 
-  await nav(page).getByRole('link', { name: cut }).tap()
+  await row1.tap()
   await page.waitForURL(new RegExp(`/s/${firstId}$`))
   await page.goBack()
   await page.waitForURL(`${BASE}/`)
@@ -109,4 +115,4 @@ async function send(page, text) {
   console.log('evidence:', await r.close())
 }
 
-process.exit(results.every((r) => r.ok) ? 0 : 1)
+exit()

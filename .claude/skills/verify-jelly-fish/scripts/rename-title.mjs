@@ -6,22 +6,11 @@
 // Usage: DATABASE_URL=… node rename-title.mjs [evidence-dir]
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BASE, open, psql, sleep } from './lib.mjs'
+import { BASE, checker, fakeTitle, header, nav, open, psql, row, until } from './lib.mjs'
 
 const dir = process.argv[2] ?? 'rename-title'
 const stamp = new Date().toISOString().slice(11, 19)
-const results = []
-const check = (name, ok, detail = '') => {
-  results.push({ name, ok, detail })
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`)
-}
-const nav = (page) => page.getByRole('navigation', { name: 'Chats' })
-const row = (page, text) => nav(page).getByRole('listitem').filter({ hasText: text })
-const header = (page) => page.getByRole('heading', { level: 1 })
-const until = async (fn, timeout = 20_000) => {
-  for (const end = Date.now() + timeout; Date.now() < end; await sleep(250)) if (await fn()) return true
-  return false
-}
+const { check, exit } = checker()
 const put = (page, id, title) =>
   page.evaluate(
     ([id, title]) =>
@@ -41,7 +30,7 @@ await nav(page).waitFor()
 // 1. Automatic Title on a new chat (Fake Provider: the first message,
 // whitespace collapsed, cut to 60 runes, no "…").
 const first = `Rename check ${stamp}:   please   plan a weekend trip to the hills with friends and food`
-const auto = first.split(/\s+/).join(' ').slice(0, 60)
+const auto = fakeTitle(first)
 await page.getByRole('button', { name: 'New chat' }).click()
 await page.waitForURL(/\/s\/[0-9a-f-]{36}$/)
 const id = page.url().split('/s/')[1]
@@ -104,4 +93,4 @@ writeFileSync(join(r.out, 'db-and-api.txt'), log.join('\n\n') + '\n')
 writeFileSync(join(r.out, 'test-sessions.txt'), id + '\n')
 console.log('chat:', id)
 console.log('evidence:', await r.close())
-process.exit(results.every((x) => x.ok) ? 0 : 1)
+exit()

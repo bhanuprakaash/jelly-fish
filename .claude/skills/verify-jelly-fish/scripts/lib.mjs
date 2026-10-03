@@ -90,7 +90,8 @@ function trackEventSources() {
 // 'desktop' (1280x800 Chrome) or 'pixel7' (Playwright's Pixel 7 emulation:
 // desktop Chromium with a phone viewport, UA, touch and isMobile).
 // Evidence lands in EVIDENCE_ROOT/<dir>/: <name>.webm, <name>-trace.zip, PNGs.
-export async function open({ dir, name, device = 'desktop', signedIn = true }) {
+// contextOptions are passed to browser.newContext (e.g. serviceWorkers: 'block').
+export async function open({ dir, name, device = 'desktop', signedIn = true, contextOptions = {} }) {
   const out = join(EVIDENCE_ROOT, dir)
   mkdirSync(out, { recursive: true })
   const browser = await chromium.launch({ headless: !process.env.HEADED })
@@ -102,6 +103,7 @@ export async function open({ dir, name, device = 'desktop', signedIn = true }) {
     ...profile,
     storageState,
     recordVideo: { dir: videoDir, size: profile.viewport },
+    ...contextOptions,
   })
   await context.addInitScript(trackEventSources)
   await context.tracing.start({ screenshots: true, snapshots: true, sources: false })
@@ -153,3 +155,36 @@ export function psql(sql) {
 }
 
 export { sleep }
+
+// checker collects PASS/FAIL lines; exit() ends the drive non-zero on any FAIL.
+export function checker(prefix = '') {
+  const results = []
+  return {
+    check(name, ok, detail = '') {
+      results.push(ok)
+      console.log(`${ok ? 'PASS' : 'FAIL'} ${prefix}${name}${detail ? ` — ${detail}` : ''}`)
+    },
+    exit: () => process.exit(results.every(Boolean) ? 0 : 1),
+  }
+}
+
+// Chat List handles (features/chat-list.md, activity-stream.md).
+export const nav = (page) => page.getByRole('navigation', { name: 'Chats' })
+export const row = (page, text) => nav(page).getByRole('listitem').filter({ hasText: text })
+export const badge = (page, text, label) => row(page, text).getByRole('img', { name: label })
+export const header = (page) => page.getByRole('heading', { level: 1 })
+
+// seen and gone report whether loc appears / detaches within timeout.
+export const seen = (loc, timeout = 15_000) => loc.waitFor({ timeout }).then(() => true, () => false)
+export const gone = (loc, timeout = 60_000) =>
+  loc.waitFor({ state: 'detached', timeout }).then(() => true, () => false)
+
+// until polls fn until it returns true or timeout passes.
+export async function until(fn, timeout = 20_000) {
+  for (const end = Date.now() + timeout; Date.now() < end; await sleep(250)) if (await fn()) return true
+  return false
+}
+
+// fakeTitle is the Fake Provider's automatic Title for a first message:
+// whitespace collapsed, cut to 60, trimmed (event-log.md D45).
+export const fakeTitle = (first) => first.split(/\s+/).join(' ').slice(0, 60).trim()

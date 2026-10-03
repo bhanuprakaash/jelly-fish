@@ -24,7 +24,7 @@ Preconditions: the cluster api redeployed with this build ([`../SKILL.md`](../SK
 - **Invite.** `curl -s -b admin-jar -XPOST $API/api/admin/invites -d '{"email":"…"}'` → `201`; Mailpit shows "You're invited to jelly-fish" to that address. Repeat → `200`.
 - **First login.** Request a code for the invited email, read it from Mailpit, verify → `204` + cookie; `GET /api/me` shows the email. Confirm with `psql "$DATABASE_URL"`: one `users`, `workspaces` and "Personal" `projects` row, and `invites.accepted_at` set. Invite the same email again → `409`.
 - **Expired / revoked.** `UPDATE invites SET expires_at = now() - interval '1 minute' …` for one, `DELETE …/invites/{id}` for another; `POST /api/auth/code` for each → `202`, Mailpit count unchanged.
-- **Disable with an open stream.** As the User: `POST /api/sessions` (body `session_id`, `client_msg_id`, `message`, UUIDs), then `curl -N -b jar $API/api/sessions/{id}/events &`. As the Admin: disable the User. The stream ends within 15 s, the old cookie gets `401`, a code request sends no email; `enable` and a fresh code login works again.
+- **Disable with an open stream.** As the User: `POST /api/sessions` (body `session_id`, `client_msg_id`, `message`, UUIDs), then `curl -N -b jar $API/api/sessions/{id}/events &`. As the Admin: disable the User. The stream ends within 15 s (the same ping-time login re-check closes a signed-in PWA's `GET /api/activity` stream too), the old cookie gets `401`, a code request sends no email; `enable` and a fresh code login works again.
 - **Non-admin.** With a non-admin cookie, each route in the list above → `404`.
 
 ## Gotchas

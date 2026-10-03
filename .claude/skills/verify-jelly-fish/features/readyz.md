@@ -1,6 +1,6 @@
 # Readiness (`/readyz`)
 
-Reports whether postgres is reachable and migrated, via `internal/pg.ReadinessChecker`.
+Reports whether postgres is reachable and migrated (`internal/pg.Ready`: a ping, then the goose version table exists). Both the api and the worker serve it on `:9090`. Not ready answers `503`, body `not ready`.
 
 ## Sub-features
 
@@ -19,7 +19,7 @@ Preconditions:
 - The cluster api is deployed per [`../SKILL.md`](../SKILL.md) Launch, with `kubectl --context jelly-fish -n jelly-fish port-forward svc/api 9090:9090` running.
 
 - **Ready.** The rollout already ran the migrate init container. Run `curl -si localhost:9090/readyz`. Status `200`, body `ok`.
-- **Unmigrated** and **DB down.** Not drivable on the cluster without breaking the shared dev database. Report them as skipped; the unit tests in `internal/pg` / `internal/health` cover them.
+- **Unmigrated** and **DB down.** Not drivable on the cluster without breaking the shared dev database. Report them as skipped. Only the handler's `503` path is unit-tested (`internal/health`, with a fake checker); `pg.Ready`'s own failure paths have no test.
 
 ## Gotchas
 

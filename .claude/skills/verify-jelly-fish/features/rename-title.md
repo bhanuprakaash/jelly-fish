@@ -41,6 +41,6 @@ Preconditions: the same as [`chat-list`](./chat-list.md).
 
 ## Gotchas
 
-- A rename doesn't change `updated_at`, so the row doesn't move in the list.
+- A rename (and the automatic Title) goes through `appendTx`, which sets `updated_at = now()`, so the chat moves to the top of the list on the next refetch.
 - Other tabs see a rename only on their next list refetch (D19). The Activity Stream doesn't carry Titles.
 - The rename can land while the first Turn is still streaming. This is fine: the success path doesn't re-run the Turn. Check that the event log has a single `turn.started`.

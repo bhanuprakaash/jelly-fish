@@ -8,6 +8,7 @@ An invited email gets a 6-digit code, trades it for a Login Session cookie, and 
 - `code-verify` — `POST /api/auth/code/verify` gives `204` + cookie for the right code, `401` for a wrong, used or expired one.
 - `me` — `GET /api/me` returns the signed-in User.
 - `gate` — every other `/api` route is `401` without the cookie; static assets stay public.
+- Not yet mapped here: the emailed magic link (`/auth/link?t=…` → `POST /api/auth/link`), `POST /api/auth/logout`, `logout-all`, and `GET`/`DELETE /api/me/login-sessions` (Settings → Devices). Never run `logout-all` as the Admin; it ends the user's own sessions.
 
 ## How to get to it (user POV)
 
