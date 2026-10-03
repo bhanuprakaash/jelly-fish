@@ -47,7 +47,9 @@ Run before driving anything, and again after any failed drive:
 
 ## Drive
 
-See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `admin-users`, `hello-api`, `migrate`, `web-shell`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
+See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `admin-users`, `hello-api`, `migrate`, `web-shell`, `chat-list`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
+
+UI flows are driven with the Playwright **library** in [`scripts/`](./scripts) (never the Playwright MCP). Install once: `cd .claude/skills/verify-jelly-fish/scripts && npm install`. `playwright` is pinned to `1.62.1` because its Chromium build (`chromium-1234`) is the one cached in `~/Library/Caches/ms-playwright`. If you bump the pin, run `npx playwright install chromium`. Browsers: desktop Chromium (1280×800) and Playwright's `Pixel 7` emulation, which is desktop Chromium with a phone viewport, UA, touch and `isMobile`. It is not a real Android browser, so a real-device or installed-PWA check stays with the user.
 
 ## Evidence
 
@@ -55,7 +57,8 @@ For every feature, capture and quote in the report:
 
 - The exact `curl` command, its HTTP status, and its full response body.
 - For `migrate`, the api pod's `migrate` init-container log (`kubectl --context jelly-fish -n jelly-fish logs deploy/api -c migrate`) and the rollout status.
-- For the web shell, no browser automation tool is registered in this environment as of writing. Proof is limited to `curl localhost:8080/` returning the embedded `index.html` and the API calls the page makes. Note the gap in the report rather than claiming visual proof you didn't capture.
+- For UI flows, every `scripts/*.mjs` drive records into `$JF_EVIDENCE/<subdir>/` (default `~/Downloads/jelly-fish-verify/`): `<flow>.webm` video, `<flow>-trace.zip` (open with `npx playwright show-trace`), numbered PNGs, and one `PASS`/`FAIL` line per check on stdout. Quote the PASS/FAIL lines and the evidence paths, and look at the key screenshots before claiming a visual result. Never commit evidence.
+- Pair a UI check with its side effect where one exists: the API response (`page.request.get`) or the DB row (`psql` via `DATABASE_URL`).
 - Every drive hits the real cluster api and the real cluster postgres. No mocks, no test-only endpoints.
 
 ## Cleanup
@@ -68,4 +71,13 @@ For every feature, capture and quote in the report:
 
 ## Helpers
 
-None yet. Every step above is a plain `docker`/`kubectl`/`curl` command run directly. Add a `scripts/` helper here only if a step turns out to need one.
+Deploy, Doctor and curl drives are plain `docker`/`kubectl`/`curl` commands. Browser drives use [`scripts/`](./scripts):
+
+- `node signin.mjs` signs the Admin in once and prints `/api/me`. It reuses `$TMPDIR/jf-verify-auth.json` (Playwright `storageState`) while `/api/me` still accepts it. Login codes are capped at 3 per email per 15 min, so don't delete that file between drives.
+- `lib.mjs` exports the following:
+  - `open({dir, name, device: 'desktop'|'pixel7'})` returns a signed-in, video-recorded, traced page, with `shot(label)` and `close()`.
+  - `streams(page)` returns every `EventSource` the page opened (url, readyState).
+  - `setVisibility(page, 'hidden'|'visible')` fires `visibilitychange`.
+  - `psql(sql)` runs a query.
+  - `adminEmail()` returns the Admin's email.
+- `node chat-list.mjs <subdir>` runs the [`chat-list`](./features/chat-list.md) drive.

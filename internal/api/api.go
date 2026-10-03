@@ -58,6 +58,7 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	admin.HandleFunc("POST /api/admin/users/{id}/make-admin", authH.handleMakeAdmin)
 
 	protected.Handle("/api/admin/", authH.adminOnly(admin))
+	protected.HandleFunc("GET /api/sessions", handleListSessions(repo, logger))
 	protected.HandleFunc("POST /api/sessions", handleCreateSession(repo, authCfg.Models, logger))
 	protected.HandleFunc("PUT /api/sessions/{id}/model", models.handleChangeModel(repo))
 	protected.HandleFunc("POST /api/sessions/{id}/messages", handlePostMessage(repo, logger))

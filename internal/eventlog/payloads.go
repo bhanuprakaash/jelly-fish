@@ -10,6 +10,7 @@ func sessionCreatedPayload(model string) map[string]any {
 	return map[string]any{
 		"agent_id": generalAgent(),
 		"agent":    map[string]string{"name": "General", "model": model},
+		"trigger":  TriggerUserMessage,
 	}
 }
 

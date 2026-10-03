@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AdminUsers } from './AdminUsers'
-import { Chat } from './Chat'
 import { LinkSignIn } from './LinkSignIn'
 import { Login } from './Login'
 import { Settings } from './Settings'
+import { Shell } from './Shell'
 import { getMe, UnauthorizedError } from './lib/api'
 
 const sessionPath = /^\/s\/([0-9a-f-]{36})$/i
@@ -14,6 +14,8 @@ function App() {
   const [signIn, setSignIn] = useState<SignIn>('checking')
   const [path, setPath] = useState(window.location.pathname)
   const [justCreated, setJustCreated] = useState(false)
+
+  const unauthorized = useCallback(() => setSignIn('signed-out'), [])
 
   const signedOut = useCallback(() => {
     window.history.replaceState({}, '', '/')
@@ -67,40 +69,25 @@ function App() {
   if (path === '/settings') return <Settings onSignedOut={signedOut} />
   if (path === '/admin/users') return <AdminUsers onSignedOut={signedOut} />
 
-  const match = sessionPath.exec(path)
-  if (match) {
-    return (
-      <Chat
-        key={match[1]}
-        sessionId={match[1]}
-        isNew={justCreated}
-        onUnauthorized={() => setSignIn('signed-out')}
-      />
-    )
+  const navigate = (to: string) => {
+    window.history.pushState({}, '', to)
+    setPath(to)
+    setJustCreated(false)
   }
 
   const startChat = () => {
-    const id = crypto.randomUUID()
-    window.history.pushState({}, '', `/s/${id}`)
+    navigate(`/s/${crypto.randomUUID()}`)
     setJustCreated(true)
-    setPath(`/s/${id}`)
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-neutral-950 px-4 text-neutral-100">
-      <div className="w-full max-w-sm rounded-2xl bg-neutral-900 p-8 text-center shadow-xl sm:max-w-md">
-        <h1 className="text-2xl font-semibold sm:text-3xl">Jelly-fish</h1>
-        <button
-          onClick={startChat}
-          className="mt-6 rounded-xl bg-neutral-100 px-6 py-3 font-medium text-neutral-900"
-        >
-          New chat
-        </button>
-        <a href="/settings" className="mt-4 block text-sm text-neutral-400 hover:text-neutral-200">
-          Settings
-        </a>
-      </div>
-    </main>
+    <Shell
+      sessionId={sessionPath.exec(path)?.[1] ?? null}
+      isNew={justCreated}
+      navigate={navigate}
+      onNewChat={startChat}
+      onUnauthorized={unauthorized}
+    />
   )
 }
 

@@ -21,6 +21,9 @@ type Props = {
   // the session is known not to exist yet; false when the page opened
   // directly at /s/{id} (a reopen).
   isNew: boolean
+  navigate: (to: string) => void
+  // onCreated is called once the chat's first message has created the session.
+  onCreated: () => void
   // onUnauthorized is called when the server says the Login Session is gone.
   onUnauthorized: () => void
 }
@@ -30,7 +33,7 @@ function bubbleText(payload: unknown): string {
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
 }
 
-export function Chat({ sessionId, isNew, onUnauthorized }: Props) {
+export function Chat({ sessionId, isNew, navigate, onCreated, onUnauthorized }: Props) {
   const [started, setStarted] = useState(!isNew)
   const { events, partials, connected, failed } = useSessionStream(sessionId, started)
   // A brand-new chat has a session once its first message creates one; a
@@ -77,6 +80,7 @@ export function Chat({ sessionId, isNew, onUnauthorized }: Props) {
       } else {
         await createSession(sessionId, clientMsgId, text, picked ?? undefined)
         setStarted(true)
+        onCreated()
       }
       setDraft('')
     } catch (err) {
@@ -119,10 +123,17 @@ export function Chat({ sessionId, isNew, onUnauthorized }: Props) {
   )
 
   return (
-    <div className="flex min-h-svh flex-col bg-neutral-950 text-neutral-100">
+    <div className="flex min-h-svh flex-1 flex-col">
       <header className="flex items-center justify-between gap-2 border-b border-neutral-800 px-4 py-3">
-        <a href="/" className="text-sm text-neutral-400 hover:text-neutral-200">
-          ← New chat
+        <a
+          href="/"
+          onClick={(e) => {
+            e.preventDefault()
+            navigate('/')
+          }}
+          className="text-sm text-neutral-400 hover:text-neutral-200 md:hidden"
+        >
+          ← Chats
         </a>
         {picker}
       </header>

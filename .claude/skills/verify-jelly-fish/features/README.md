@@ -10,7 +10,7 @@ This directory is the maintained source for verifying jelly-fish's real behavior
 
 ## Driving conventions
 
-- Every drive is a `curl` (or, for `migrate`, `kubectl logs`) against the real cluster api — no test-only endpoints, no mocks.
+- Every drive is a `curl` (or, for `migrate`, `kubectl logs`; for UI, a Playwright script in [`../scripts`](../scripts)) against the real cluster api — no test-only endpoints, no mocks.
 - Quote the exact command, HTTP status, and response body as proof.
 - Run [Doctor](../SKILL.md#doctor) before the first drive and again after any failure.
 
@@ -23,3 +23,4 @@ This directory is the maintained source for verifying jelly-fish's real behavior
 - [Hello API (`/api/hello`)](./hello-api.md) — a static JSON greeting behind sign-in.
 - [Migrate role](./migrate.md) — applying goose migrations.
 - [Web shell](./web-shell.md) — the PWA rendering the hello message.
+- [Chat List](./chat-list.md) — `GET /api/sessions`, desktop sidebar, phone list → chat → back, open replays from seq 0.

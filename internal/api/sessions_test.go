@@ -25,6 +25,7 @@ type fakeRepo struct {
 	createSeq, postSeq, lastSeq int64
 	createErr, postErr          error
 	lastSeqErr, listErr         error
+	listSessionsErr             error
 	interruptErr, retryErr      error
 	interrupted, retried        []uuid.UUID
 	events                      []eventlog.Event
@@ -58,6 +59,10 @@ func (f *fakeRepo) PostMessage(context.Context, eventlog.TenantScope, uuid.UUID,
 
 func (f *fakeRepo) SessionLastSeq(context.Context, eventlog.TenantScope, uuid.UUID) (int64, error) {
 	return f.lastSeq, f.lastSeqErr
+}
+
+func (f *fakeRepo) ListSessions(context.Context, eventlog.TenantScope) ([]eventlog.SessionSummary, error) {
+	return nil, f.listSessionsErr
 }
 
 func (f *fakeRepo) ListEvents(_ context.Context, _ eventlog.TenantScope, _ uuid.UUID, after int64) ([]eventlog.Event, error) {

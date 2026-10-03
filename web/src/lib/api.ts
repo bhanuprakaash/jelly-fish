@@ -237,6 +237,21 @@ export async function changeModel(sessionId: string, model: string): Promise<voi
   })
 }
 
+export type ChatSummary = {
+  id: string
+  // title is the chat's Title, else a placeholder cut from its first message.
+  title: string
+  titled: boolean
+  status: string
+  updated_at: string
+}
+
+// getSessions lists the User's chats for the Chat List, newest activity first.
+export async function getSessions(): Promise<ChatSummary[]> {
+  const res = await request('/api/sessions')
+  return res.json() as Promise<ChatSummary[]>
+}
+
 // createSession starts a session, on model if given, else the default;
 // repeating the same sessionId returns the existing one instead of sending
 // message again (event-log.md §4).

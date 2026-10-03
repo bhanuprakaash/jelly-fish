@@ -78,6 +78,30 @@ func handleCreateSession(repo SessionRepo, models ModelConfig, logger *slog.Logg
 	}
 }
 
+type chatSummary struct {
+	ID        uuid.UUID `json:"id"`
+	Title     string    `json:"title"`
+	Titled    bool      `json:"titled"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func handleListSessions(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessions, err := repo.ListSessions(r.Context(), scopeFrom(r))
+		if err != nil {
+			logger.Error("list sessions", "error", err)
+			writeError(w, http.StatusInternalServerError, "could not list sessions")
+			return
+		}
+		out := make([]chatSummary, 0, len(sessions))
+		for _, s := range sessions {
+			out = append(out, chatSummary{ID: s.ID, Title: s.Title, Titled: s.Titled, Status: s.Status, UpdatedAt: s.UpdatedAt})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
 type postMessageRequest struct {
 	ClientMsgID uuid.UUID `json:"client_msg_id"`
 	Message     string    `json:"message"`

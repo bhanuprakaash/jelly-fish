@@ -48,11 +48,11 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 		// error, which would break the fallback query below.
 		insertErr := pgx.BeginFunc(ctx, tx, func(spTx pgx.Tx) error {
 			tag, err := spTx.Exec(ctx, `
-				INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at)
-				SELECT $1, $2, p.id, $3, $4, $5, 2, now()
+				INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at, trigger)
+				SELECT $1, $2, p.id, $3, $4, $5, 2, now(), $7
 				FROM projects p
 				WHERE p.workspace_id = $2 AND p.user_id = $3 AND p.name = $6`,
-				sessionID, scope.WorkspaceID, scope.UserID, generalAgent(), StatusRunnable, PersonalProject)
+				sessionID, scope.WorkspaceID, scope.UserID, generalAgent(), StatusRunnable, PersonalProject, TriggerUserMessage)
 			if err == nil && tag.RowsAffected() == 0 {
 				return errNoPersonalProject
 			}

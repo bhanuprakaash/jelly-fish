@@ -38,6 +38,10 @@ const (
 	StatusFailed       = "failed"
 )
 
+// TriggerUserMessage is the sessions.trigger of a session a User started with
+// a message; any other trigger marks a System Session (event-log.md §3, D43).
+const TriggerUserMessage = "user_message"
+
 // ErrNotFound is returned for a session that doesn't exist, or belongs to
 // another tenant, which looks the same from the outside (event-log.md §5.15).
 var ErrNotFound = errors.New("session not found")
