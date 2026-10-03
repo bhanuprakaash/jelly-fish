@@ -51,7 +51,7 @@ export function ModelPicker({ models, current, onPick, disabled }: Props) {
       value={current}
       disabled={disabled}
       onChange={(e) => onPick(e.target.value)}
-      className="max-w-[60vw] truncate rounded-lg bg-neutral-900 px-2 py-1 text-sm text-neutral-200 disabled:opacity-50"
+      className="max-w-[40vw] truncate md:max-w-[60vw] rounded-lg bg-neutral-900 px-2 py-1 text-sm text-neutral-200 disabled:opacity-50"
     >
       {!from && <option value={current}>{current}</option>}
       {models.providers.map((g) => (

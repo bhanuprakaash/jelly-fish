@@ -94,6 +94,9 @@ func drainHints(hints <-chan uuid.UUID) {
 func (s *sessionStreams) sendSnapshot(ctx context.Context, sw *sseWriter, scope eventlog.TenantScope) bool {
 	rows, err := s.repo.ActivitySnapshot(ctx, scope)
 	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.Error("activity snapshot", "error", err, "user_id", scope.UserID)
+		}
 		return false
 	}
 	entries := make([]activityEntry, len(rows))
@@ -108,6 +111,9 @@ func (s *sessionStreams) sendSnapshot(ctx context.Context, sw *sseWriter, scope 
 func (s *sessionStreams) sendStatus(ctx context.Context, sw *sseWriter, scope eventlog.TenantScope, sid uuid.UUID) bool {
 	row, ok, err := s.repo.ActivityStatusOf(ctx, scope, sid)
 	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.Error("activity status", "error", err, "user_id", scope.UserID, "session_id", sid)
+		}
 		return false
 	}
 	if !ok {
