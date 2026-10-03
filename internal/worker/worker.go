@@ -63,6 +63,8 @@ type Worker struct {
 	id       string
 	logger   *slog.Logger
 	slots    chan struct{}
+	// titleTimeout bounds each Title call; zero or less turns Titles off.
+	titleTimeout time.Duration
 }
 
 // New builds a Worker that runs each turn on the Provider gw picks, streams
@@ -84,6 +86,8 @@ func New(pool *pgxpool.Pool, gw Gateway, deltas DeltaPublisher, lease Lease, upc
 		id:      fmt.Sprintf("%s:%d", host, os.Getpid()),
 		logger:  logger,
 		slots:   make(chan struct{}, maxSessions),
+
+		titleTimeout: defaultTitleTimeout,
 	}
 }
 
@@ -399,6 +403,8 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	if err != nil {
 		return err
 	}
+	title := w.startTitle(ctx, c, st)
+	defer title.abandon()
 
 	stopBatch := batch.Start(ctx)
 	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages}, func(d provider.Delta) {
@@ -408,7 +414,9 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	})
 	stopBatch()
 	if errors.As(err, &pe) {
-		err := w.parkOnProviderError(ctx, c, f, st, turnID, prov.Name(), seqs[0], pe)
+		// The park gives up the Lease, so the Title has to land first.
+		title.settle()
+		err := w.parkOnProviderError(ctx, c, f, st, turnID, prov.Name(), title.contiguousAfter(seqs[0]), pe)
 		if errors.Is(err, errParked) {
 			batch.Reset(ctx)
 		}
@@ -435,8 +443,12 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 		},
 	}}
 	evs = append(evs, w.usageEvents(classes, turnID, prov.Name(), st.Model)...)
-	_, err = w.store.AppendFenced(ctx, sid, f, evs, nil)
-	return err
+	if _, err := w.store.AppendFenced(ctx, sid, f, evs, nil); err != nil {
+		return err
+	}
+	// The next loop iteration parks, which gives up the Lease.
+	title.settle()
+	return nil
 }
 
 type usageClass struct {

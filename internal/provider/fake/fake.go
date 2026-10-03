@@ -21,6 +21,9 @@ const (
 	// interrupts.
 	defaultMinReply = 5 * time.Second
 	slowPrefix      = "/slow "
+	// titleRunes is how much of the first message a Title echoes
+	// (event-log.md D45).
+	titleRunes = 60
 )
 
 // Provider echoes the last user message word by word.
@@ -37,8 +40,12 @@ var _ provider.Provider = Provider{}
 func (Provider) Name() string { return Name }
 
 // Stream implements provider.Provider. A "/slow 30s" prefix on the last user
-// message stretches the reply over that duration.
+// message stretches the reply over that duration. A Title request is answered
+// at once with the cut first message.
 func (p Provider) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {
+	if first, ok := provider.TitleMessage(lastUserText(req.Messages)); ok {
+		return titleResponse(req, first), nil
+	}
 	delay := cmp.Or(p.WordDelay, defaultWordDelay)
 	total := cmp.Or(p.MinReply, defaultMinReply)
 
@@ -80,6 +87,22 @@ func (p Provider) Stream(ctx context.Context, req provider.Request, onDelta func
 			Output: int64(len(reply)),
 		},
 	}, nil
+}
+
+func titleResponse(req provider.Request, first string) provider.Response {
+	if _, rest, slow := parseSlow(first); slow {
+		first = rest
+	}
+	title := []rune(strings.Join(strings.Fields(first), " "))
+	text := strings.TrimSpace(string(title[:min(len(title), titleRunes)]))
+	return provider.Response{
+		Message:    msg.AssistantText(text),
+		StopReason: provider.StopReasonEndTurn,
+		Usage: provider.Usage{
+			Input:  wordCount(req.Messages),
+			Output: int64(len(strings.Fields(text))),
+		},
+	}
 }
 
 func lastUserText(messages []msg.Message) string {

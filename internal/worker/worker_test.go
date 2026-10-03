@@ -30,6 +30,7 @@ func startWorkerWith(t *testing.T, pool *pgxpool.Pool, upcast eventlog.Upcasters
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	w := worker.New(pool, worker.Gateway{Fake: fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}}, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, upcast, slog.New(slog.DiscardHandler))
+	worker.SetTitleTimeout(w, 0)
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })

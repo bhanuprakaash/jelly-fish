@@ -54,3 +54,36 @@ func TestStreamStopsOnCancel(t *testing.T) {
 		t.Fatal("want ctx error")
 	}
 }
+
+func TestStreamTitleRequestEchoesCutMessageInstantly(t *testing.T) {
+	p := fake.Provider{WordDelay: time.Hour, MinReply: time.Hour}
+	long := "plan   a trip to the mountains with a very long description that keeps going on and on and on"
+	start := time.Now()
+	resp, err := p.Stream(t.Context(), provider.Request{Messages: []msg.Message{msg.UserText(provider.TitlePrompt(long))}}, func(provider.Delta) {
+		t.Error("title reply streamed a delta")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) > 50*time.Millisecond {
+		t.Fatalf("title took %v", time.Since(start))
+	}
+	want := "plan a trip to the mountains with a very long description th"
+	if got := resp.Message.Text(); got != want || len([]rune(got)) != 60 {
+		t.Fatalf("title = %q (%d runes), want %q", got, len([]rune(got)), want)
+	}
+	if resp.StopReason != provider.StopReasonEndTurn || resp.Usage.Input == 0 || resp.Usage.Output != 12 {
+		t.Fatalf("stop=%q usage=%+v", resp.StopReason, resp.Usage)
+	}
+}
+
+func TestStreamTitleRequestDropsTheSlowPrefix(t *testing.T) {
+	p := fake.Provider{WordDelay: time.Hour}
+	resp, err := p.Stream(t.Context(), provider.Request{Messages: []msg.Message{msg.UserText(provider.TitlePrompt("/slow 30s hello there"))}}, func(provider.Delta) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resp.Message.Text(); got != "hello there" {
+		t.Fatalf("title = %q", got)
+	}
+}

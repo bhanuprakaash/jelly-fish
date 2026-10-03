@@ -26,6 +26,7 @@ const (
 	TypeTimerSet         = "timer.set"
 	TypeTimerFired       = "timer.fired"
 	TypeConfigChanged    = "session.config_changed"
+	TypeSessionRenamed   = "session.renamed"
 )
 
 // Session statuses this slice uses (event-log.md §3).
@@ -50,6 +51,10 @@ var ErrNotFound = errors.New("session not found")
 // ErrDuplicate is returned internally when a unique constraint (e.g. a
 // repeated client_msg_id) rejects an insert; callers translate it.
 var ErrDuplicate = errors.New("duplicate event")
+
+// ErrChildSession is returned when a rename targets a Child Session, which
+// has no Title of its own.
+var ErrChildSession = errors.New("a child session can't be renamed")
 
 // ErrStale is returned by a fenced park whose ExpectSeq no longer matches
 // last_seq: new events arrived after the fold, so the Worker must refold

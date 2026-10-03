@@ -252,6 +252,16 @@ export async function getSessions(): Promise<ChatSummary[]> {
   return res.json() as Promise<ChatSummary[]>
 }
 
+// renameSession sets a chat's Title; it throws HttpError 400 for a title that
+// is empty or over 100 characters, and 422 for a child session.
+export async function renameSession(sessionId: string, title: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/title`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+}
+
 // createSession starts a session, on model if given, else the default;
 // repeating the same sessionId returns the existing one instead of sending
 // message again (event-log.md §4).

@@ -141,7 +141,7 @@ func (c chat) params(req provider.Request) (sdk.MessageNewParams, error) {
 	for _, s := range req.System {
 		p.System = append(p.System, sdk.TextBlockParam{Text: s})
 	}
-	if known && info.Thinking == provider.ThinkingAdaptiveOnly {
+	if known && !req.NoThinking && info.Thinking == provider.ThinkingAdaptiveOnly {
 		// Newer models default display to "omitted"; summarized is the only
 		// change from the default, so the prefix stays byte-stable (D17).
 		p.Thinking = sdk.ThinkingConfigParamUnion{OfAdaptive: &sdk.ThinkingConfigAdaptiveParam{Display: sdk.ThinkingConfigAdaptiveDisplaySummarized}}

@@ -61,6 +61,7 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.HandleFunc("GET /api/sessions", handleListSessions(repo, logger))
 	protected.HandleFunc("POST /api/sessions", handleCreateSession(repo, authCfg.Models, logger))
 	protected.HandleFunc("PUT /api/sessions/{id}/model", models.handleChangeModel(repo))
+	protected.HandleFunc("PUT /api/sessions/{id}/title", handleRenameSession(repo, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/messages", handlePostMessage(repo, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/interrupt", handleSessionAction(repo.Interrupt, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/retry", handleSessionAction(repo.Retry, logger))

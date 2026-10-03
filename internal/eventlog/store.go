@@ -73,6 +73,10 @@ func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *T
 		next = nil
 	}
 
+	evs, err := dropSupersededAuto(ctx, tx, sid, evs)
+	if err != nil {
+		return nil, err
+	}
 	evs, wakeAt, err := withTimer(ctx, tx, evs, next)
 	if err != nil {
 		return nil, err
@@ -161,6 +165,32 @@ func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *T
 	return seqs, nil
 }
 
+// dropSupersededAuto removes an automatic session.renamed from evs once a
+// User rename exists, keeping the rest of the batch: the Title call's tokens
+// were spent either way. Running under the session row lock, it orders
+// against Repo.Rename, so an auto rename never lands after a user one
+// (event-log.md D44).
+func dropSupersededAuto(ctx context.Context, tx pgx.Tx, sid uuid.UUID, evs []NewEvent) ([]NewEvent, error) {
+	isAuto := func(e NewEvent) bool {
+		p, ok := e.Payload.(SessionRenamed)
+		return e.Type == TypeSessionRenamed && ok && p.By == RenamedByAuto
+	}
+	if !slices.ContainsFunc(evs, isAuto) {
+		return evs, nil
+	}
+	var userRenamed bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM events WHERE session_id = $1 AND type = $2 AND payload->>'by' = $3)`,
+		sid, TypeSessionRenamed, RenamedByUser).Scan(&userRenamed)
+	if err != nil {
+		return nil, fmt.Errorf("look up user rename: %w", err)
+	}
+	if !userRenamed {
+		return evs, nil
+	}
+	return slices.DeleteFunc(slices.Clone(evs), isAuto), nil
+}
+
 // withTimer adds the timer.set a change to sleeping with a WakeIn calls for,
 // and returns the wake time it carries (nil if none).
 func withTimer(ctx context.Context, tx pgx.Tx, evs []NewEvent, next *StatusChange) ([]NewEvent, *time.Time, error) {
@@ -204,11 +234,19 @@ func (c counters) apply(ctx context.Context, tx pgx.Tx, sid uuid.UUID) error {
 }
 
 // project applies e's effect on tables other than events (event-log.md
-// §5.1): usage rows and the budget counters.
+// §5.1): usage rows, the budget counters and the Title.
 func project(ctx context.Context, tx pgx.Tx, sid uuid.UUID, seq int64, e NewEvent, c *counters) error {
 	switch e.Type {
 	case TypeLLMResponse:
 		c.turns++
+	case TypeSessionRenamed:
+		p, ok := e.Payload.(SessionRenamed)
+		if !ok {
+			return fmt.Errorf("project %s: payload is %T", e.Type, e.Payload)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE sessions SET title = $2 WHERE id = $1`, sid, p.Title); err != nil {
+			return fmt.Errorf("project title: %w", err)
+		}
 	case TypeUsageRecorded:
 		u, ok := e.Payload.(UsageRecorded)
 		if !ok {

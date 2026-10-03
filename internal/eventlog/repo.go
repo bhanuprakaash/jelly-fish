@@ -198,6 +198,35 @@ func (r *Repo) ChangeModel(ctx context.Context, scope TenantScope, sessionID uui
 	})
 }
 
+// Rename sets the Title of a top-level session to title, which the caller has
+// already trimmed and checked. A Child Session is refused with
+// ErrChildSession. Like every API write it is unfenced, so it lands even
+// while a Worker holds the Lease.
+func (r *Repo) Rename(ctx context.Context, scope TenantScope, sessionID uuid.UUID, title string) error {
+	renamed := NewEvent{
+		Type:    TypeSessionRenamed,
+		Actor:   "user:" + scope.UserID.String(),
+		Payload: SessionRenamed{Title: title, By: RenamedByUser},
+	}
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var child bool
+		err := tx.QueryRow(ctx,
+			`SELECT parent_id IS NOT NULL FROM sessions WHERE id = $1 AND workspace_id = $2 AND user_id = $3 FOR UPDATE`,
+			sessionID, scope.WorkspaceID, scope.UserID).Scan(&child)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock session: %w", err)
+		}
+		if child {
+			return ErrChildSession
+		}
+		_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{renamed}, nil)
+		return err
+	})
+}
+
 // SessionModel returns the model the session's next turn runs on: the
 // latest session.config_changed model, else session.created's.
 func (r *Repo) SessionModel(ctx context.Context, scope TenantScope, sessionID uuid.UUID) (string, error) {

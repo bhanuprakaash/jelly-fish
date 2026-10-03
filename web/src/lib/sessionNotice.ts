@@ -11,7 +11,7 @@ type TimerSet = { wake_at: string; reason: string }
 
 // sessionNotice derives the Notice from the stream's events: the session's
 // status is its latest status change, and the cause is the last event that
-// isn't one.
+// isn't one (a rename says nothing about the session's state either).
 export function sessionNotice(events: UIEvent[]): Notice | null {
   let status = ''
   let cause: UIEvent | undefined
@@ -19,7 +19,7 @@ export function sessionNotice(events: UIEvent[]): Notice | null {
     const e = events[i]
     if (e.type === 'session.status_changed') {
       status ||= (e.payload as { to: string }).to
-    } else {
+    } else if (e.type !== 'session.renamed') {
       cause ??= e
     }
   }

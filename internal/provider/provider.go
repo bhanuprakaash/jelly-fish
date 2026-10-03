@@ -37,6 +37,8 @@ type Request struct {
 	// SummaryEnd is how many leading Messages hold the Compaction summary;
 	// the prompt cache keeps a breakpoint after them (context.md §5.2).
 	SummaryEnd int
+	// NoThinking asks for no extended thinking, for short side calls.
+	NoThinking bool
 }
 
 // DeltaKind says what a Delta carries.

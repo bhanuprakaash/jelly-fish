@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 
@@ -31,6 +32,23 @@ type State struct {
 	PendingUserSeqs []int64
 	// Messages is the conversation so far, in the neutral format.
 	Messages []msg.Message
+	// TurnsStarted counts turn.started events, so it is 0 only before the
+	// session's first Turn.
+	TurnsStarted int
+	// Renamed is set once any session.renamed exists, from either side.
+	Renamed bool
+	// Trigger is what started the session; anything but user_message marks
+	// a System Session.
+	Trigger string
+	// TopLevel is false for a Child Session.
+	TopLevel bool
+}
+
+// wantsTitle reports whether the session is a top-level chat still waiting
+// for its first Turn and a Title: the Worker then asks for one alongside
+// that Turn (event-log.md D45).
+func (st State) wantsTitle() bool {
+	return st.TurnsStarted == 0 && !st.Renamed && st.TopLevel && st.Trigger == eventlog.TriggerUserMessage && len(st.Messages) > 0
 }
 
 // Turn identifies one model call.
@@ -65,12 +83,16 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			Agent struct {
 				Model string `json:"model"`
 			} `json:"agent"`
+			Trigger  string  `json:"trigger"`
+			ParentID *string `json:"parent_id"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
 		st.Status = eventlog.StatusRunnable
 		st.Model = p.Agent.Model
+		st.Trigger = cmp.Or(p.Trigger, eventlog.TriggerUserMessage)
+		st.TopLevel = p.ParentID == nil
 	case eventlog.TypeConfigChanged:
 		var p struct {
 			Model string `json:"model"`
@@ -108,6 +130,9 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			return err
 		}
 		st.OpenTurn = &Turn{ID: p.TurnID, InputThroughSeq: p.InputThroughSeq}
+		st.TurnsStarted++
+	case eventlog.TypeSessionRenamed:
+		st.Renamed = true
 	case eventlog.TypeLLMResponse:
 		var p struct {
 			Message msg.Message `json:"message"`

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -134,6 +135,39 @@ func handlePostMessage(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"seq": seq})
+	}
+}
+
+type renameRequest struct {
+	Title string `json:"title"`
+}
+
+func handleRenameSession(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := pathUUID(w, r)
+		if !ok {
+			return
+		}
+		var req renameRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		title := strings.TrimSpace(req.Title)
+		if n := utf8.RuneCountInString(title); n < 1 || n > eventlog.MaxTitleRunes {
+			writeError(w, http.StatusBadRequest, "title must be 1-100 characters")
+			return
+		}
+		switch err := repo.Rename(r.Context(), scopeFrom(r), sessionID, title); {
+		case errors.Is(err, eventlog.ErrNotFound):
+			writeError(w, http.StatusNotFound, "session not found")
+		case errors.Is(err, eventlog.ErrChildSession):
+			writeError(w, http.StatusUnprocessableEntity, "a child session can't be renamed")
+		case err != nil:
+			logger.Error("rename session", "error", err, "session_id", sessionID)
+			writeError(w, http.StatusInternalServerError, "could not rename session")
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
 	}
 }
 

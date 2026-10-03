@@ -28,6 +28,8 @@ export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }:
             activeId={sessionId}
             onNewChat={onNewChat}
             onOpen={(id) => navigate(`/s/${id}`)}
+            onChanged={refetch}
+            onUnauthorized={onUnauthorized}
           />
         ) : (
           <p className={`p-4 text-center text-sm ${error ? 'text-red-400' : 'text-neutral-500'}`}>
@@ -43,6 +45,8 @@ export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }:
             sessionId={sessionId}
             isNew={isNew}
             navigate={navigate}
+            listTitle={chats?.find((c) => c.id === sessionId)?.title}
+            onTitleChanged={refetch}
             onCreated={refetch}
             onUnauthorized={onUnauthorized}
           />

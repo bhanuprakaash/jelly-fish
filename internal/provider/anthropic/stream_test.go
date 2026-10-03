@@ -275,3 +275,26 @@ func TestRequestGoldens(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamNoThinkingOmitsThinkingParam(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		noThinking bool
+		want       bool
+	}{{"default model thinking", false, true}, {"NoThinking", true, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, body, _ := sseServer(t, "unknown_stop.sse")
+			req := provider.Request{Model: opus, Messages: []msg.Message{msg.UserText("hi")}, NoThinking: tc.noThinking}
+			collect(t, c.Provider("key"), req)
+			var sent struct {
+				Thinking json.RawMessage `json:"thinking"`
+			}
+			if err := json.Unmarshal(*body, &sent); err != nil {
+				t.Fatal(err)
+			}
+			if (sent.Thinking != nil) != tc.want {
+				t.Fatalf("thinking = %s, want present = %v", sent.Thinking, tc.want)
+			}
+		})
+	}
+}

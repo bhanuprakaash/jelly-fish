@@ -18,6 +18,7 @@ type SessionRepo interface {
 	Interrupt(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) error
 	Retry(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) error
 	ChangeModel(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, model string) error
+	Rename(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, title string) error
 	SessionModel(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) (string, error)
 	ListSessions(ctx context.Context, scope eventlog.TenantScope) ([]eventlog.SessionSummary, error)
 	ActivitySnapshot(ctx context.Context, scope eventlog.TenantScope) ([]eventlog.ActivityRow, error)

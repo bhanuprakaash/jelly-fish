@@ -49,6 +49,10 @@ func (f *fakeRepo) ChangeModel(context.Context, eventlog.TenantScope, uuid.UUID,
 	return nil
 }
 
+func (f *fakeRepo) Rename(context.Context, eventlog.TenantScope, uuid.UUID, string) error {
+	return nil
+}
+
 func (f *fakeRepo) SessionModel(context.Context, eventlog.TenantScope, uuid.UUID) (string, error) {
 	return "", nil
 }

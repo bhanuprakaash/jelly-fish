@@ -54,6 +54,20 @@ var errNoKey = errors.New("no provider key saved")
 // a span tagged with ids. The key is opened here, per turn, and lives only in
 // the returned value. A missing key is a key_invalid provider.Error.
 func (g Gateway) forTurn(ctx context.Context, userID uuid.UUID, model string, ids tracing.IDs, onRetry func()) (provider.Provider, error) {
+	p, err := g.forSideCall(ctx, userID, model, ids)
+	if err != nil {
+		return nil, err
+	}
+	sleep := g.Sleep
+	if sleep == nil {
+		sleep = retry.Sleep
+	}
+	return retry.Wrap(p, sleep, onRetry), nil
+}
+
+// forSideCall is forTurn without the retries, for calls that must fail fast
+// and are never repeated (the Title).
+func (g Gateway) forSideCall(ctx context.Context, userID uuid.UUID, model string, ids tracing.IDs) (provider.Provider, error) {
 	p, err := g.pick(ctx, userID, model)
 	if errors.Is(err, errNoKey) {
 		return nil, &provider.Error{Kind: provider.KindKeyInvalid, Err: err}
@@ -64,11 +78,7 @@ func (g Gateway) forTurn(ctx context.Context, userID uuid.UUID, model string, id
 	if g.Tracer != nil {
 		p = tracing.Wrap(p, g.Tracer, ids)
 	}
-	sleep := g.Sleep
-	if sleep == nil {
-		sleep = retry.Sleep
-	}
-	return retry.Wrap(p, sleep, onRetry), nil
+	return p, nil
 }
 
 func (g Gateway) pick(ctx context.Context, userID uuid.UUID, model string) (provider.Provider, error) {

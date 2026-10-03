@@ -1,6 +1,8 @@
 package eventlog
 
 import (
+	"strings"
+
 	"github.com/google/uuid"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
@@ -33,3 +35,31 @@ type UsageRecorded struct {
 
 // KindLLM is the usage kind that feeds the session's budget counters.
 const KindLLM = "llm"
+
+// SessionRenamed is the payload of a session.renamed event (event-log.md §4,
+// D44).
+type SessionRenamed struct {
+	Title string `json:"title"`
+	By    string `json:"by"`
+}
+
+// Who set a Title.
+const (
+	RenamedByUser = "user"
+	RenamedByAuto = "auto"
+)
+
+// MaxTitleRunes is the longest Title, in characters.
+const MaxTitleRunes = 100
+
+const titleQuotes = "\"'“”‘’"
+
+// CleanTitle tidies a model's Title reply: surrounding whitespace and one
+// pair of quotes go, and it is cut to MaxTitleRunes (event-log.md D45).
+func CleanTitle(raw string) string {
+	r := []rune(strings.TrimSpace(raw))
+	if n := len(r); n >= 2 && strings.ContainsRune(titleQuotes, r[0]) && strings.ContainsRune(titleQuotes, r[n-1]) {
+		r = []rune(strings.TrimSpace(string(r[1 : n-1])))
+	}
+	return strings.TrimSpace(string(r[:min(len(r), MaxTitleRunes)]))
+}

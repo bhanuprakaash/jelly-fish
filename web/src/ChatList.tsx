@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import type { Badge } from './lib/activity'
-import type { ChatSummary } from './lib/api'
+import { renameSession, type ChatSummary } from './lib/api'
+import { RenameForm, RowMenu } from './RowMenu'
 
 type Props = {
   chats: ChatSummary[]
@@ -8,10 +10,15 @@ type Props = {
   activeId: string | null
   onNewChat: () => void
   onOpen: (id: string) => void
+  // onChanged is called after a rename, so the list loads again.
+  onChanged: () => void
+  onUnauthorized: () => void
 }
 
 // ChatList is the User's chats, newest activity first, with "New chat" on top.
-export function ChatList({ chats, badges, activeId, onNewChat, onOpen }: Props) {
+export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged, onUnauthorized }: Props) {
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+
   return (
     <div className="flex h-full flex-col">
       <div className="p-4">
@@ -29,23 +36,38 @@ export function ChatList({ chats, badges, activeId, onNewChat, onOpen }: Props) 
         ) : (
           <ul>
             {chats.map((c) => (
-              <li key={c.id}>
-                <a
-                  href={`/s/${c.id}`}
-                  aria-current={c.id === activeId ? 'page' : undefined}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    onOpen(c.id)
-                  }}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                    c.id === activeId
-                      ? 'bg-neutral-800 text-neutral-100'
-                      : 'text-neutral-300 hover:bg-neutral-900'
-                  }`}
-                >
-                  <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                  <ActivityBadge badge={badges[c.id]} />
-                </a>
+              <li
+                key={c.id}
+                className={`flex items-center rounded-lg ${
+                  c.id === activeId ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-300 hover:bg-neutral-900'
+                }`}
+              >
+                {renamingId === c.id ? (
+                  <RenameForm
+                    initial={c.title}
+                    onSave={async (title) => {
+                      await renameSession(c.id, title)
+                      setRenamingId(null)
+                      onChanged()
+                    }}
+                    onCancel={() => setRenamingId(null)}
+                    onUnauthorized={onUnauthorized}
+                  />
+                ) : (
+                  <a
+                    href={`/s/${c.id}`}
+                    aria-current={c.id === activeId ? 'page' : undefined}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      onOpen(c.id)
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                    <ActivityBadge badge={badges[c.id]} />
+                  </a>
+                )}
+                <RowMenu renaming={renamingId === c.id} onRename={() => setRenamingId(c.id)} />
               </li>
             ))}
           </ul>

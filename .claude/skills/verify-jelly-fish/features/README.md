@@ -25,3 +25,4 @@ This directory is the maintained source for verifying jelly-fish's real behavior
 - [Web shell](./web-shell.md) — the PWA rendering the hello message.
 - [Chat List](./chat-list.md) — `GET /api/sessions`, desktop sidebar, phone list → chat → back, open replays from seq 0.
 - [Activity Stream and badges](./activity-stream.md) — `GET /api/activity`, live running/needs-approval/failed badges, hide/show reconnect, 20-stream cap.
+- [Rename and automatic Title](./rename-title.md) — `PUT /api/sessions/{id}/title`, the "⋯" Rename menu, header updates from `session.renamed`, the Worker's automatic Title.

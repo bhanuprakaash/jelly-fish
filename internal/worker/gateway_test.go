@@ -86,6 +86,7 @@ func runWorker(t *testing.T, pool *pgxpool.Pool, gw Gateway) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	w := New(pool, gw, stream.NewPGDeltaBus(pool), Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
+	w.titleTimeout = 0
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })

@@ -11,6 +11,7 @@ import {
 } from './lib/api'
 import { sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
+import { renamedTitle } from './lib/sessionTitle'
 import { useSessionStream } from './lib/useSessionStream'
 import { ModelPicker } from './ModelPicker'
 import { SessionNotice } from './SessionNotice'
@@ -22,6 +23,12 @@ type Props = {
   // directly at /s/{id} (a reopen).
   isNew: boolean
   navigate: (to: string) => void
+  // listTitle is the chat's title in the Chat List: a placeholder until it is
+  // titled, undefined while the list doesn't have the chat.
+  listTitle: string | undefined
+  // onTitleChanged is called when the stream carries a Title the Chat List
+  // doesn't show yet, so the list loads again.
+  onTitleChanged: () => void
   // onCreated is called once the chat's first message has created the session.
   onCreated: () => void
   // onUnauthorized is called when the server says the Login Session is gone.
@@ -33,7 +40,7 @@ function bubbleText(payload: unknown): string {
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
 }
 
-export function Chat({ sessionId, isNew, navigate, onCreated, onUnauthorized }: Props) {
+export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, onCreated, onUnauthorized }: Props) {
   const [started, setStarted] = useState(!isNew)
   const { events, partials, connected, failed } = useSessionStream(sessionId, started)
   // A brand-new chat has a session once its first message creates one; a
@@ -48,6 +55,11 @@ export function Chat({ sessionId, isNew, navigate, onCreated, onUnauthorized }: 
       if (err instanceof UnauthorizedError) onUnauthorized()
     })
   }, [failed, onUnauthorized])
+
+  const renamed = renamedTitle(events)
+  useEffect(() => {
+    if (renamed !== undefined && renamed !== listTitle) onTitleChanged()
+  }, [renamed, listTitle, onTitleChanged])
 
   const [models, setModels] = useState<Models | null>(null)
   // picked is the model chosen before a new chat's first message.
@@ -135,6 +147,7 @@ export function Chat({ sessionId, isNew, navigate, onCreated, onUnauthorized }: 
         >
           ← Chats
         </a>
+        <h1 className="min-w-0 flex-1 truncate font-medium">{renamed ?? listTitle ?? 'New chat'}</h1>
         {picker}
       </header>
 

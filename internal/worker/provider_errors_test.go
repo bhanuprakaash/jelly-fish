@@ -69,6 +69,7 @@ func startScripted(t *testing.T, pool *pgxpool.Pool, p provider.Provider, heartb
 	gw := worker.Gateway{Fake: p, Sleep: func(context.Context, time.Duration) error { return nil }}
 	ctx, cancel := context.WithCancel(t.Context())
 	w := worker.New(pool, gw, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: heartbeat}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
+	worker.SetTitleTimeout(w, 0)
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
 	var once sync.Once
