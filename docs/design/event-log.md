@@ -52,6 +52,8 @@ CREATE TABLE sessions (
   lease_expires_at  timestamptz,
   cancel_requested  boolean NOT NULL DEFAULT false,
   background        boolean NOT NULL DEFAULT false, -- Background Session (projection of session.backgrounded)
+  trigger           text NOT NULL DEFAULT 'user_message', -- 'user_message' | 'memory_tidy'; System Session = not 'user_message'
+  title             text,                       -- Title (projection of session.renamed); NULL → placeholder from the first user message
   recovery_attempts int NOT NULL DEFAULT 0,     -- claims since the last successful fenced append
   tokens_used       bigint NOT NULL DEFAULT 0,  -- budget counters (projection of usage.recorded)
   cost_micros       bigint NOT NULL DEFAULT 0,
@@ -131,6 +133,7 @@ Upload the blob before appending the event that references it.
 | `user.interrupt` | reason | API | no | sets `cancel_requested` |
 | `session.backgrounded` | — (from `/background`) | API | no | sets `background = true`; wall-clock Budget starts at 0 |
 | `session.config_changed` | agent_id?, snapshot?, model?, mode? (from `/agent`, `/model`, `/mode`; [agents-skills.md](agents-skills.md) §7) | API | no | — ; `Fold` applies in order, latest wins; `agent_id` also updates `sessions.agent_id` |
+| `session.renamed` | title, by (`auto` / `user`) | API (`user`) or Worker (`auto`) | Worker: yes; API: no | — ; sets `sessions.title`; `auto` is skipped once a `user` rename exists |
 | `turn.started` | turn_id, model, provider, input_through_seq, app_version, tools_hash (full tool list stored as a blob for replay) | Worker | yes | — (intent marker for the LLM call) |
 | `llm.response` | turn_id, message (text/thinking/tool_use blocks), stop_reason, usage | Worker | yes | — |
 | `turn.interrupted` | turn_id, reason (`user_interrupt`, `worker_lost`), partial text (optional) | Worker | yes | — |
@@ -660,6 +663,12 @@ Accepted 2026-09-27 ([usage-metering.md](usage-metering.md)):
 Accepted 2026-09-27 ([notifications.md](notifications.md)):
 
 42. **Notification outbox rows** are written in the same tx as `approval.requested`, `elicitation.requested`, background `session.completed`, and → `failed`; `approval.resolved` gains optional `via`.
+
+Accepted 2026-10-03 (S5 slice grill, [streaming.md](streaming.md) D17–D21):
+
+43. **`sessions.trigger`** (`user_message` | `memory_tidy`) mirrors `trigger` in `session.created`; a System Session is any trigger other than `user_message`.
+44. **`session.renamed{title, by}`** is the only way a Title changes; `sessions.title` is its projection in the same tx. A user rename is trimmed, 1–100 chars, top-level sessions only, and always wins over `auto`.
+45. **Automatic Title**: once per top-level session, the Worker makes one side call on the session's own model, in parallel with the first Turn, from the first user message only ("Write a 3–6 word title… Reply with the title only.", no thinking). It writes `usage.recorded` and `session.renamed{by: auto}`; it is not a Turn and is not shown in the chat. On failure the placeholder stays; no retry. The Fake Provider echoes the cut first message.
 
 ## 8. Edge cases
 

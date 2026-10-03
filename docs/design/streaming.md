@@ -39,7 +39,7 @@ No new tables. One new NOTIFY channel:
 
 | Channel | Payload | Sent by | When |
 |---|---|---|---|
-| `jf_activity` | `<user_id>:<session_id>` | `Store.Append` | same tx as every `session.status_changed` (event-log.md §5.1) |
+| `jf_activity` | `<user_id>:<session_id>` | `Store.Append` | same tx as every `session.status_changed` or `session.created` (event-log.md §5.1); no other append sends it (D17) |
 
 It is a hint only, like `jf_events`: the handler always re-reads the `sessions` row.
 
@@ -196,7 +196,7 @@ No new event types. New NOTIFY `jf_activity` (§3). Stream shapes in §4.
 
 ## 8. UI
 
-- **Sidebar badges** from the Activity Stream: running (spinner), needs approval (dot, also when a child of that chat needs one), failed ("Retry?"). `awaiting_user` and `completed` show nothing.
+- **Sidebar badges** from the Activity Stream: running (spinner; also `runnable`, `sleeping`, `awaiting_children`), needs approval (dot, also when a child of that chat needs one), failed ("Retry?"; badge only, opens the chat). `awaiting_user` and `completed` show nothing (D18).
 - **Child card**: approval badge from the Activity Stream while collapsed; expanding it opens its Session stream (agents-skills.md §8).
 - **Streaming bubble**: text grows with `text` deltas; thinking and tool-args deltas in their collapsible parts; `tool_start` opens a tool card titled by `name`.
 - No "reconnecting" banner in the base version; reconnects are silent.
@@ -228,6 +228,14 @@ Accepted 2026-09-27 (open-gap round, Q14–Q15):
 13. **Stream cap**: at most 20 open streams (Session + Activity) per user per API node; the 21st gets `429`, which also stops `EventSource` retrying.
 14. **Metrics**: open streams (by kind), dropped deltas, write-deadline closes, `429` refusals; alongside `pg_notification_queue_usage()`.
 
+Accepted 2026-10-03 (S5 slice grill):
+
+17. **`jf_activity` on `session.status_changed` or `session.created` only**, so a chat started in another tab reaches the Chat List; no other append sends it.
+18. **Busy = spinner**: `runnable`, `running`, `sleeping`, `awaiting_children` all show the spinner; no separate "retrying" badge.
+19. **The Activity Stream stays status-only.** A Title change (`session.renamed`) reaches the open chat over its Session stream; other tabs see it on their next list refetch. The Chat List refetches on a `status` frame for an unknown session or one still showing its placeholder Title.
+20. **Chat List**: top-level, non-System sessions, newest `updated_at` first, no paging, no Project grouping. Desktop: sidebar. Phone: its own screen; tapping a chat opens it.
+21. **`user_presence` (§5.3 step 2) ships with Notifications** (S16), not with the Activity Stream.
+
 ## 10. Edge cases
 
 - **Reconnect mid-turn**: deltas since the last durable event are gone; the partial bubble is dropped and rebuilt from new deltas or `llm.response`.
@@ -252,7 +260,7 @@ Accepted 2026-09-27 (open-gap round, Q14–Q15):
 - With a 64-delta flood to a paused client, later deltas for that turn are not sent to it, and `llm.response` still arrives.
 - A Child Session that completes: its stream sends the terminal event and closes; a new request with `?after=last_seq` gets 204.
 - Activity Stream: on connect, `snapshot` lists exactly the user's non-System sessions not in `awaiting_user`/`completed`; a child entering `awaiting_approval` produces one `status` frame with the root's id as `root_id`; a Tidy memory session never appears.
-- Every `session.status_changed` commit is followed by one `jf_activity` NOTIFY with the session's `user_id`; a rolled-back tx sends none.
+- Every `session.status_changed` or `session.created` commit is followed by one `jf_activity` NOTIFY with the session's `user_id`; a rolled-back tx, or one with neither event, sends none.
 - No frame contains the string "jev" (case-insensitive), `lease_epoch`, or approver confidence; `usage.recorded` never appears.
 - An event type with no serializer is not sent.
 - A user's 21st open stream on one node gets `429`; closing one lets the next succeed.

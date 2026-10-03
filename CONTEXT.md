@@ -36,6 +36,10 @@ _Avoid_: Session, web session, auth session
 One conversation and its agent run, owned by a project. Plain chats and long autonomous tasks are both sessions.
 _Avoid_: Chat, task, job, thread, conversation
 
+**Title**:
+A session's one-line name, shown in the Chat List and in notifications. The platform writes one from the first user message; a rename by the user always wins.
+_Avoid_: Name, subject, label
+
 **Trigger**:
 What started a session. For now: a user message, or a system job such as Tidy memory. Schedules and webhooks come later.
 _Avoid_: Source, origin
@@ -83,6 +87,10 @@ _Avoid_: Subtask, worker agent (the term "sub-agent" is fine in conversation)
 **Activity Stream**:
 One live feed per open app tab that reports status changes (running, needs approval, failed) for all of a user's sessions, so the chat list can show badges. It carries no chat content.
 _Avoid_: Notification feed, inbox, event bus
+
+**Chat List**:
+The list of a user's top-level, non-System sessions, most recent activity first. A sidebar on desktop; its own screen on a phone.
+_Avoid_: Session list, history, inbox
 
 **Delegation**:
 A session starting a Child Session through the `delegate` tool to do part of its work. The child's result comes back to the parent.
