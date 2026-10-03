@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Element inventory</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1440px; min-height: 2160px; box-sizing: border-box; padding: 56px 64px; background: #FAFAF7; color: #161616; font-family: 'Manrope', system-ui, sans-serif; display: flex; flex-direction: column; gap: 28px">
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-family: 'Manrope', system-ui, sans-serif; font-size: 37px; font-weight: 600; letter-spacing: -0.025em">Element inventory</h1>
+    <p style="margin: 0; color: #5E5D58; font-size: 16px">Every user-facing element the docs (product.md, CONTEXT.md, docs/design, ADRs) imply, mapped to a screen and to the prototype that draws it. Rule across all: the UI says “auto mode”, never “Jev”.</p>
+  </div>
+  <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr) 210px 90px; gap: 0; border: 1px solid #E8E6E0; border-radius: 14px; overflow: hidden">
+    <div style="padding: 12px 16px; background: #EEF5FB; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #6B6A65">Doc</div>
+    <div style="padding: 12px 16px; background: #EEF5FB; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #6B6A65">Elements</div>
+    <div style="padding: 12px 16px; background: #EEF5FB; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #6B6A65">Lives in</div>
+    <div style="padding: 12px 16px; background: #EEF5FB; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #6B6A65">Proto</div>
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="14">
+      <div style="padding: 14px 16px; border-top: 1px solid #E8E6E0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: #1A1A1A">{{r.doc}}</div>
+      <div style="padding: 14px 16px; border-top: 1px solid #E8E6E0; font-size: 14px; line-height: 1.55; color: #2A2A28">{{r.el}}</div>
+      <div style="padding: 14px 16px; border-top: 1px solid #E8E6E0; font-size: 13px; color: #5E5D58">{{r.where}}</div>
+      <div style="padding: 14px 16px; border-top: 1px solid #E8E6E0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: #2F4F7F">{{r.proto}}</div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2160}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { rows: [
+      { doc: 'event-log', el: 'Session status glyph (8 states) · Title + rename · background flag · Send / steer / reopen · Interrupt (stops children) · Retry · Stop retrying · Hard delete dialog (“usage totals are kept”) · ZIP export · Crash-loop “Retry?” · interrupted-tool “outcome unknown”', where: 'Chat List, chat header, row menu', proto: 'A C1' },
+      { doc: 'agent-loop', el: 'Tool-call card: requested → started → completed / error / denied / interrupted / skipped · approved_by chip (rule, auto mode, user, mode) · parallel batch (≤4) · provider error actions: Update key, Switch model, Remove file, Internal error ID', where: 'Transcript', proto: 'A B' },
+      { doc: 'approver', el: 'Stepped approval card “1 of N”: Approve once / for this project / everywhere / Deny (+reason) / Approve all · child card labelled with Agent · rule suggestion (3× in 7 days) · “Auto mode blocked …” line · quota banner · “tool changed since you approved” · Mode switch ask / auto / full-auto · Rules list (delete-only)', where: 'Transcript, Settings → Permissions', proto: 'A C2 D' },
+      { doc: 'agents-skills', el: 'Agent roster + form (description, instructions, model, tools, Can delegate, connectors, skills, mode, budget, result cap, scope) · Skill list + import (.zip / SKILL.md) review · child card (agent, task, status, expand, Stop) · delegation errors (child limit 5, missing key)', where: 'Agents & Skills pages, transcript', proto: 'D A B' },
+      { doc: 'context', el: 'Compaction divider “Earlier messages summarized · view summary” · /compact · cleared-result placeholder · memory-flush chips', where: 'Transcript', proto: 'B' },
+      { doc: 'memory', el: 'Memory chip with Undo · tainted write Approve / Edit / Delete · Memories page (About me, Project) · stale badge (90 d) · pending review · revisions · Tidy dialog (Merge, Keep A/B, Delete) · incognito toggle · “Use what I told you about me”', where: 'Transcript, Memories page, new-session', proto: 'D' },
+      { doc: 'auth-keys', el: 'Login: email → 6-digit code, Continue with Google · link page · Not invited · Account: devices, Log out everywhere · Provider Keys rows (sk-…7f3a, Replace, Delete, Key rejected) · Admin → Users: invite, resend, revoke, disable, make admin', where: 'Login, Settings, Admin', proto: '—' },
+      { doc: 'mcp-client', el: 'Connector catalog + Add custom URL · probe → Connect (OAuth) / API key → “N tools found” with per-tool switches · reconnect banner · outdated-MCP error · elicitation (form = approval UI, URL = confirm dialog) · live progress on tool card', where: 'Project settings → Connectors, transcript', proto: 'D' },
+      { doc: 'notifications', el: 'Push texts (“‹Agent› wants approval”, “Done: ‹title›”) · Settings → Notifications (push on/off/blocked/install first, email toggle) · one-time hint banner · email approval page (Approve once / Deny, expired, done)', where: 'OS push, Settings, public page', proto: 'C2' },
+      { doc: 'provider-gateway', el: '/model picker grouped by provider, greyed “Add key”, limits, ≈ $, price unknown · Show thinking switch · thinking block · web-search citation card · sleeping notice “Provider busy, retrying at …” + Retry now', where: 'Chat header, transcript', proto: 'A' },
+      { doc: 'streaming', el: 'Growing text bubble · tool card opens on tool_start · Activity badges: spinner (busy), dot (approval, incl. child), Retry? (failed), none (your turn / done) · Chat List newest first, sidebar on desktop, own screen on phone', where: 'Chat List, transcript', proto: 'A C1' },
+      { doc: 'uploads-artifacts', el: 'Upload chips (deleted state) · type / size rejections · Artifact card with versions v1, v2 + Save to project · Session Files panel (Uploads | Artifacts) · Project Files · storage quota banner', where: 'Composer, right panel, Project settings', proto: 'A' },
+      { doc: 'usage-metering', el: 'Usage page: period, provider × model × token class, daily chart, project / chat filter, platform box (auto mode checks, web searches, storage) · /cost card with per-child roll-up + Budget left · Admin usage + quota form', where: 'Usage page, transcript', proto: 'E' },
+      { doc: 'product · CONTEXT', el: 'Project switcher (default Personal) · Slash menu: /remote /stop /model /agent /skill /mode /compact /cost /background + one per Skill · Sandbox chip (attached, idle, stopped) · Budget meter (tokens, $, turns, wall-clock) · Swarm / tree view of Delegation (depth ≤2)', where: 'Shell, composer, chat header, swarm view', proto: 'A B' }
+    ] };
+  }
+}
+</script>
+</body>
+</html>

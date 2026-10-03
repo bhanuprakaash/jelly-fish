@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chat cards and buttons</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+@keyframes jfSpin{to{transform:rotate(360deg)}}
+@keyframes jfPulse{0%,100%{box-shadow:0 0 0 0 rgba(110,168,212,.5)}50%{box-shadow:0 0 0 6px rgba(110,168,212,0)}}
+@keyframes jfBeacon{0%,100%{box-shadow:0 0 0 0 rgba(200,53,42,.45)}50%{box-shadow:0 0 0 6px rgba(200,53,42,0)}}
+.jf-spin{animation:jfSpin .9s linear infinite}
+.jf-run{animation:jfPulse 2s ease-in-out infinite}
+.jf-ask{animation:jfBeacon 1.4s ease-in-out infinite}
+button{font:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; box-sizing: border-box; padding: 72px 72px 96px; background: {{t.bg}}; color: {{t.ink}}; font-family: 'Manrope', system-ui, sans-serif; font-size: 14px; line-height: 1.55; display: flex; flex-direction: column; gap: 64px">
+
+  <div style="display: flex; align-items: flex-end; gap: 24px; border-bottom: 1px solid {{t.line}}; padding-bottom: 28px">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: {{t.muted}}">Components · {{themeName}}</span>
+      <h1 style="margin: 0; font-size: 46px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05">Chat cards &amp; buttons</h1>
+    </div>
+    <p style="margin: 0; max-width: 460px; color: {{t.muted}}">One token set, two themes. Ink is the default action, jelly blue marks what is alive, vermilion appears only when the user is needed.</p>
+  </div>
+
+  <!-- BUTTONS -->
+  <section style="display: flex; flex-direction: column; gap: 22px">
+    <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.muted}}">01</span><h2 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Buttons</h2></div>
+    <div style="display: grid; grid-template-columns: 200px repeat(6, minmax(0, 1fr)); border: 1px solid {{t.line}}; border-radius: 16px; overflow: hidden; background: {{t.surface}}">
+      <div style="padding: 12px 18px; font-size: 12px; color: {{t.muted}}; border-bottom: 1px solid {{t.line}}">Variant · use</div>
+      <sc-for list="{{stateNames}}" as="sn" hint-placeholder-count="6">
+        <div style="padding: 12px 18px; font-size: 12px; color: {{t.muted}}; border-bottom: 1px solid {{t.line}}">{{sn}}</div>
+      </sc-for>
+      <sc-for list="{{btnRows}}" as="row" hint-placeholder-count="6">
+        <div style="padding: 16px 18px; border-bottom: 1px solid {{t.line}}; display: flex; flex-direction: column; gap: 2px">
+          <strong style="font-weight: 600">{{row.name}}</strong>
+          <span style="font-size: 12px; color: {{t.muted}}">{{row.use}}</span>
+        </div>
+        <sc-for list="{{row.cells}}" as="c" hint-placeholder-count="6">
+          <div style="padding: 16px 18px; border-bottom: 1px solid {{t.line}}; display: flex; align-items: center">
+            <button type="button" style="{{c.style}}"><span class="jf-spin" style="{{c.spin}}"></span>{{row.label}}</button>
+          </div>
+        </sc-for>
+      </sc-for>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+      <div style="padding: 20px; border-radius: 16px; border: 1px solid {{t.line}}; background: {{t.surface}}; display: flex; flex-direction: column; gap: 14px">
+        <span style="font-size: 12px; color: {{t.muted}}">Sizes · 32 / 40 / 48 (mobile primary 52)</span>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+          <button type="button" style="{{sz.sm}}">Small</button>
+          <button type="button" style="{{sz.md}}">Medium</button>
+          <button type="button" style="{{sz.lg}}">Large</button>
+        </div>
+      </div>
+      <div style="padding: 20px; border-radius: 16px; border: 1px solid {{t.line}}; background: {{t.surface}}; display: flex; flex-direction: column; gap: 14px">
+        <span style="font-size: 12px; color: {{t.muted}}">Icon buttons · 40 round, always aria-labelled</span>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <button type="button" aria-label="Attach" style="{{icon.secondary}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/></svg></button>
+          <button type="button" aria-label="More" style="{{icon.ghost}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
+          <button type="button" aria-label="Send" style="{{icon.primary}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+          <button type="button" aria-label="Stop" style="{{icon.stop}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
+        </div>
+      </div>
+      <div style="padding: 20px; border-radius: 16px; border: 1px solid {{t.line}}; background: {{t.surface}}; display: flex; flex-direction: column; gap: 14px">
+        <span style="font-size: 12px; color: {{t.muted}}">Segmented · permission mode</span>
+        <div role="radiogroup" aria-label="Permission mode" style="display: inline-flex; padding: 3px; border-radius: 12px; background: {{t.sunk}}; border: 1px solid {{t.line}}; align-self: flex-start">
+          <button type="button" role="radio" aria-checked="false" style="min-height: 34px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: {{t.muted}}; font-weight: 500">Ask</button>
+          <button type="button" role="radio" aria-checked="true" style="min-height: 34px; padding: 0 14px; border: 0; border-radius: 9px; background: {{t.surface}}; color: {{t.ink}}; font-weight: 600; box-shadow: 0 1px 2px {{t.shadow}}">Auto</button>
+          <button type="button" role="radio" aria-checked="false" style="min-height: 34px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: {{t.muted}}; font-weight: 500">Full-auto</button>
+        </div>
+      </div>
+      <div style="padding: 20px; border-radius: 16px; border: 1px solid {{t.line}}; background: {{t.surface}}; display: flex; flex-direction: column; gap: 14px">
+        <span style="font-size: 12px; color: {{t.muted}}">Status chips · not buttons</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <sc-for list="{{chips}}" as="ch" hint-placeholder-count="5">
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; background: {{ch.bg}}; color: {{ch.fg}}"><span class="{{ch.anim}}" style="width: 6px; height: 6px; border-radius: 50%; background: {{ch.dot}}"></span>{{ch.label}}</span>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CARDS -->
+  <section style="display: flex; flex-direction: column; gap: 22px">
+    <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.muted}}">02</span><h2 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Cards in chat</h2><span style="margin-left: auto; font-size: 13px; color: {{t.muted}}">Anatomy: header (icon · title · meta) → body → actions, primary first. Radius 16, hairline, no shadow.</span></div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 48px; align-items: start">
+
+      <!-- column 1 -->
+      <div style="display: flex; flex-direction: column; gap: 40px">
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Messages · user bubble, assistant prose, thinking</figcaption>
+          <div style="align-self: flex-end; max-width: 82%; padding: 12px 16px; border-radius: 18px 18px 6px 18px; background: {{t.jellyTint}}; border: 1px solid {{t.jellyLine}}">Find the 2026 heat-pump subsidy in DE, FR and NL. One sub-agent per country.</div>
+          <button type="button" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid {{t.line}}; background: {{t.sunk}}; color: {{t.muted}}; font-size: 13px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>Thought for 6s
+          </button>
+          <p style="margin: 0; color: {{t.ink}}; font-size: 15px; line-height: 1.65">I'll split this into three researchers, one per country, and merge their answers into a single table.</p>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Tool calls · one turn, every state</figcaption>
+          <div style="border: 1px solid {{t.line}}; border-radius: 16px; background: {{t.surface}}; overflow: hidden">
+            <sc-for list="{{tools}}" as="tl" hint-placeholder-count="6">
+              <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-top: 1px solid {{tl.sep}}">
+                <span style="width: 20px; height: 20px; border-radius: 50%; flex: none; margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: {{tl.bg}}; color: {{tl.fg}}">
+                  <span class="{{tl.spinCls}}" style="{{tl.spin}}"></span>{{tl.icon}}
+                </span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span><code style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{t.ink}}">{{tl.name}}</code> <span style="color: {{t.muted}}">{{tl.arg}}</span></span>
+                  <span style="font-size: 12.5px; color: {{tl.noteColor}}">{{tl.note}}</span>
+                </span>
+                <span style="font-size: 11px; padding: 2px 8px; border-radius: 999px; background: {{t.sunk}}; color: {{t.muted}}; white-space: nowrap">{{tl.by}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Tool call · expanded</figcaption>
+          <div style="border: 1px solid {{t.line}}; border-radius: 16px; background: {{t.surface}}; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span style="width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: {{t.mossTint}}; color: {{t.moss}}; font-size: 11px; font-weight: 700">✓</span>
+              <code style="font-family: 'JetBrains Mono', monospace; font-size: 13px">shell</code>
+              <span style="color: {{t.muted}}">in sandbox · 3.4s</span>
+              <button type="button" style="{{bsm.ghost}}; margin-left: auto">Collapse</button>
+            </div>
+            <pre style="margin: 0; padding: 12px 14px; border-radius: 10px; background: {{t.codeBg}}; border: 1px solid {{t.line}}; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.ink2}}; white-space: pre-wrap">$ python compare.py --countries de,fr,nl
+wrote subsidies-2026.csv (3 rows)</pre>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Web search · citations</figcaption>
+          <div style="border: 1px solid {{t.line}}; border-radius: 16px; background: {{t.surface}}; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: center; gap: 8px; color: {{t.muted}}; font-size: 13px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              Searched “BEG Wärmepumpe Förderung 2026” · 4 sources
+            </div>
+            <sc-for list="{{sources}}" as="src" hint-placeholder-count="3">
+              <a href="#" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: {{t.ink}}; min-height: 32px">
+                <span style="width: 22px; height: 22px; border-radius: 6px; background: {{t.sunk}}; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: {{t.muted}}; font-family: 'JetBrains Mono', monospace">{{src.n}}</span>
+                <span style="flex: 1">{{src.title}}</span>
+                <span style="font-size: 12px; color: {{t.muted}}">{{src.domain}}</span>
+              </a>
+            </sc-for>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Child session · delegation</figcaption>
+          <div style="border: 1px solid {{t.line}}; border-radius: 16px; background: {{t.surface}}; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 12px">
+              <span class="jf-run" style="width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: {{t.jellyTint}}; color: {{t.jellyInk}}">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path fill="{{t.jellyFill}}" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+              </span>
+              <span style="flex: 1; display: flex; flex-direction: column">
+                <strong style="font-weight: 600">France</strong>
+                <span style="font-size: 13px; color: {{t.muted}}">MaPrimeRénov 2026 rates</span>
+              </span>
+              <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; background: {{t.jellyTint}}; color: {{t.jellyInk}}">Swimming · turn 4</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: {{t.sunk}}; font-size: 13px; color: {{t.ink2}}">
+              <span class="jf-spin" style="width: 12px; height: 12px; border-radius: 50%; border: 2px solid {{t.jellyLine}}; border-top-color: {{t.jellyInk}}; display: inline-block"></span>
+              web_fetch service-public.fr
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <button type="button" style="{{bsm.secondary}}">Open</button>
+              <button type="button" style="{{bsm.danger}}">Stop</button>
+              <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.muted}}">38k tok · $0.11</span>
+            </div>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Compaction divider · memory chips</figcaption>
+          <div style="display: flex; align-items: center; gap: 14px; color: {{t.muted}}; font-size: 13px">
+            <span style="flex: 1; height: 1px; background: {{t.line}}"></span>
+            Earlier messages summarized · <a href="#" style="color: {{t.jellyInk}}">View summary</a>
+            <span style="flex: 1; height: 1px; background: {{t.line}}"></span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <span style="display: inline-flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-radius: 999px; background: {{t.jellyTint}}; border: 1px solid {{t.jellyLine}}; font-size: 13px; color: {{t.ink2}}">Remembered · prefers tables over prose <button type="button" style="min-height: 26px; padding: 0 10px; border-radius: 999px; border: 0; background: {{t.surface}}; color: {{t.ink}}; font-size: 12px; font-weight: 600">Undo</button></span>
+          </div>
+          <div style="border: 1px solid {{t.shuLine}}; border-radius: 16px; background: {{t.surface}}; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+            <span style="font-size: 13px; color: {{t.ink2}}">Wants to remember something it read on a web page: <em>“Subsidy capped at €21,000.”</em></span>
+            <div style="display: flex; gap: 8px">
+              <button type="button" style="{{bsm.primary}}">Keep</button>
+              <button type="button" style="{{bsm.secondary}}">Edit</button>
+              <button type="button" style="{{bsm.danger}}">Delete</button>
+            </div>
+          </div>
+        </figure>
+      </div>
+
+      <!-- column 2 -->
+      <div style="display: flex; flex-direction: column; gap: 40px">
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Approval · stepped, the only vermilion card</figcaption>
+          <div style="border: 1px solid {{t.shuLine}}; border-radius: 16px; background: {{t.shuTint}}; padding: 18px; display: flex; flex-direction: column; gap: 14px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span class="jf-ask" style="width: 8px; height: 8px; border-radius: 50%; background: {{t.shu}}"></span>
+              <strong style="font-weight: 600; color: {{t.shuInk}}">Germany agent wants approval</strong>
+              <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.muted}}">1 of 2</span>
+            </div>
+            <div style="padding: 12px 14px; border-radius: 12px; background: {{t.surface}}; border: 1px solid {{t.line}}; display: flex; flex-direction: column; gap: 6px">
+              <code style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{t.ink}}">notion__update_page</code>
+              <pre style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.ink2}}; white-space: pre-wrap">{ "page": "Research / Subsidies", "append": "Germany — BEG 2026" }</pre>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+              <button type="button" style="{{bmd.attention}}">Approve once</button>
+              <button type="button" style="{{bmd.secondary}}">For this project</button>
+              <button type="button" style="{{bmd.secondary}}">Everywhere</button>
+              <button type="button" style="{{bmd.danger}}">Deny</button>
+              <button type="button" style="{{bmd.ghost}}; margin-left: auto">Approve all</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 1px solid {{t.shuLine}}; font-size: 13px; color: {{t.ink2}}">
+              <span style="flex: 1">Approved 3× in 7 days. Always allow in this project?</span>
+              <button type="button" style="{{bsm.secondary}}">Always allow</button>
+              <button type="button" style="{{bsm.ghost}}">Not now</button>
+            </div>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Auto mode decisions · inline lines, no card</figcaption>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+            <div style="display: flex; align-items: center; gap: 10px; color: {{t.muted}}">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.5 8-8 9-4.5-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+              Auto mode allowed <code style="font-family: 'JetBrains Mono', monospace; color: {{t.ink2}}">notion__search_pages</code>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; color: {{t.rust}}">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.5 8-8 9-4.5-1-8-4.5-8-9V6z"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+              Auto mode blocked <code style="font-family: 'JetBrains Mono', monospace">gmail__send</code>: recipient isn't in this conversation.
+            </div>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Elicitation · a connector asks</figcaption>
+          <div style="border: 1px solid {{t.line}}; border-radius: 16px; background: {{t.surface}}; padding: 18px; display: flex; flex-direction: column; gap: 14px">
+            <div style="display: flex; align-items: center; gap: 10px"><span style="width: 24px; height: 24px; border-radius: 6px; background: {{t.sunk}}; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">N</span><strong style="font-weight: 600">Notion asks</strong><span style="color: {{t.muted}}">· during notion__create_page</span></div>
+            <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: {{t.ink2}}">Which workspace?
+              <select style="min-height: 40px; border-radius: 10px; border: 1px solid {{t.line2}}; background: {{t.surface}}; color: {{t.ink}}; padding: 0 12px; font: inherit"><option>Research</option><option>Personal</option></select>
+            </label>
+            <div style="display: flex; gap: 8px">
+              <button type="button" style="{{bmd.primary}}">Send</button>
+              <button type="button" style="{{bmd.ghost}}">Decline</button>
+            </div>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Notices · resting, error, budget</figcaption>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: {{t.sunk}}; border: 1px solid {{t.line}}; font-size: 13px; color: {{t.ink2}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <span style="flex: 1">Provider busy, retrying at 14:32.</span>
+            <button type="button" style="{{bsm.secondary}}">Retry now</button>
+            <button type="button" style="{{bsm.ghost}}">Stop retrying</button>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; background: {{t.rustTint}}; border: 1px solid {{t.rustLine}}">
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><strong style="font-weight: 600; color: {{t.rust}}">Anthropic rejected your key</strong><span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{t.muted}}">req_01HX…</span></div>
+            <div style="display: flex; gap: 8px"><button type="button" style="{{bsm.primary}}">Update key</button><button type="button" style="{{bsm.secondary}}">Switch model</button></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; background: {{t.surface}}; border: 1px solid {{t.shuLine}}">
+            <div style="display: flex; align-items: center; gap: 10px"><span class="jf-ask" style="width: 8px; height: 8px; border-radius: 50%; background: {{t.shu}}"></span><strong style="font-weight: 600">Researcher reached its budget</strong><span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.muted}}">$2.00 of $2.00</span></div>
+            <span style="height: 4px; border-radius: 4px; background: {{t.shu}}; display: block"></span>
+            <div style="display: flex; gap: 8px"><button type="button" style="{{bmd.attention}}">Allow $2 more</button><button type="button" style="{{bmd.secondary}}">Stop here</button></div>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">Artifact · versions, save to project</figcaption>
+          <div style="border: 1px solid {{t.line}}; border-radius: 16px; background: {{t.surface}}; padding: 14px 16px; display: flex; align-items: center; gap: 14px">
+            <span style="width: 44px; height: 52px; border-radius: 8px; background: {{t.indigoTint}}; color: {{t.indigo}}; display: inline-flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500">CSV</span>
+            <span style="flex: 1; display: flex; flex-direction: column; gap: 4px">
+              <strong style="font-weight: 600">subsidies-2026.csv</strong>
+              <span style="display: flex; gap: 6px; font-size: 12px; color: {{t.muted}}"><span style="padding: 0 6px; border-radius: 4px; background: {{t.ink}}; color: {{t.onInk}}">v2</span><span style="padding: 0 6px; border-radius: 4px; border: 1px solid {{t.line2}}">v1</span>· 4 KB · by Germany</span>
+            </span>
+            <button type="button" aria-label="Download" style="{{icon.ghost}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
+            <button type="button" style="{{bsm.secondary}}">Save to project</button>
+          </div>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; gap: 12px">
+          <figcaption style="font-size: 12px; color: {{t.muted}}">/cost · this session</figcaption>
+          <div style="border: 1px solid {{t.line}}; border-radius: 16px; background: {{t.surface}}; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0">
+              <sc-for list="{{cost}}" as="k" hint-placeholder-count="4">
+                <div style="display: flex; flex-direction: column; padding-right: 12px"><span style="font-size: 12px; color: {{t.muted}}">{{k.l}}</span><span style="font-size: 20px; font-weight: 600; letter-spacing: -0.02em">{{k.v}}</span></div>
+              </sc-for>
+            </div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.ink2}}; display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid {{t.line}}"><span>└ Germany      41k · $0.12</span><span>└ France       38k · $0.11</span><span>└ Netherlands   9k · $0.03</span></div>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: {{t.muted}}"><span style="flex: 1; height: 4px; border-radius: 4px; background: {{t.sunk}}; display: block"><span style="display: block; width: 31%; height: 4px; border-radius: 4px; background: {{t.jelly}}"></span></span>$1.39 of $2 left</div>
+          </div>
+        </figure>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":2900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var TK = {
+      light: { bg: '#FAFAF7', surface: '#FFFFFF', sunk: '#F4F3EF', line: '#E8E6E0', line2: '#DDDAD3', ink: '#161616', ink2: '#3A3A37', muted: '#6B6A65', inkHover: '#2C2C2A', inkPress: '#000000', onInk: '#FFFFFF', jelly: '#9CC9E8', jellyInk: '#2F6E9E', jellyTint: '#EEF5FB', jellyTint2: '#E3EFF8', jellyLine: '#D6E7F4', jellyFill: 'rgba(156,201,232,.30)', shu: '#C8352A', shuHover: '#B42E24', shuPress: '#9E281F', shuTint: '#FFF7F4', shuLine: '#EBC2BB', shuInk: '#A32C22', moss: '#4F6B47', mossTint: '#F1F5EF', rust: '#8E3326', rustTint: '#FBF0EC', rustLine: '#E5C7C0', indigo: '#2F4F7F', indigoTint: '#EEF1F7', codeBg: '#F7F6F2', shadow: 'rgba(0,0,0,.08)' },
+      dark: { bg: '#0F1012', surface: '#17191C', sunk: '#1E2125', line: '#272A2F', line2: '#363A40', ink: '#F1F0EB', ink2: '#CFCEC8', muted: '#9B9A94', inkHover: '#FFFFFF', inkPress: '#DAD9D3', onInk: '#121314', jelly: '#9CC9E8', jellyInk: '#A9D2EE', jellyTint: 'rgba(156,201,232,.10)', jellyTint2: 'rgba(156,201,232,.16)', jellyLine: 'rgba(156,201,232,.28)', jellyFill: 'rgba(156,201,232,.22)', shu: '#E0503F', shuHover: '#E8604F', shuPress: '#C8412F', shuTint: 'rgba(224,80,63,.08)', shuLine: 'rgba(224,80,63,.38)', shuInk: '#F2907F', moss: '#93B88A', mossTint: 'rgba(147,184,138,.12)', rust: '#E08A7C', rustTint: 'rgba(224,138,124,.08)', rustLine: 'rgba(224,138,124,.32)', indigo: '#A3B8DE', indigoTint: 'rgba(163,184,222,.12)', codeBg: '#121417', shadow: 'rgba(0,0,0,.5)' }
+    };
+    var name = this.props.theme === 'dark' ? 'dark' : 'light';
+    var t = TK[name];
+    var SIZE = { sm: 'min-height: 32px; padding: 0 12px; font-size: 13px', md: 'min-height: 40px; padding: 0 16px; font-size: 14px', lg: 'min-height: 48px; padding: 0 20px; font-size: 15px' };
+    var V = {
+      primary: [t.ink, t.inkHover, t.inkPress, t.onInk, 'transparent'],
+      secondary: [t.surface, t.sunk, t.line, t.ink, t.line2],
+      ghost: ['transparent', t.sunk, t.line, t.ink2, 'transparent'],
+      jelly: [t.jellyTint, t.jellyTint2, t.jellyLine, t.jellyInk, t.jellyLine],
+      attention: [t.shu, t.shuHover, t.shuPress, '#FFFFFF', 'transparent'],
+      danger: ['transparent', t.rustTint, t.rustTint, t.rust, t.rustLine]
+    };
+    function btn(v, st, size) {
+      var c = V[v], bg = st === 'hover' ? c[1] : st === 'pressed' ? c[2] : c[0];
+      var s = "display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Manrope', system-ui, sans-serif; font-weight: 600; border-radius: 10px; cursor: pointer; white-space: nowrap; " + SIZE[size || 'md'] + '; background: ' + bg + '; color: ' + c[3] + '; border: 1px solid ' + c[4];
+      if (st === 'focus') s += '; box-shadow: 0 0 0 2px ' + t.bg + ', 0 0 0 4px ' + t.jelly;
+      if (st === 'disabled') s += '; opacity: .38; cursor: not-allowed';
+      return s;
+    }
+    function set(size) { var o = {}; Object.keys(V).forEach(function (k) { o[k] = btn(k, 'default', size); }); return o; }
+    function iconBtn(v) { return btn(v, 'default', 'md') + '; width: 40px; padding: 0; border-radius: 50%'; }
+    var states = ['default', 'hover', 'pressed', 'focus', 'disabled', 'loading'];
+    var spinOn = 'display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; opacity: .8';
+    var rows = [
+      ['Primary', 'Send, Save, Keep — one per card', 'primary', 'Save'],
+      ['Secondary', 'Alternatives, Open, scoped approve', 'secondary', 'Open'],
+      ['Ghost', 'Dismiss, Collapse, Not now', 'ghost', 'Not now'],
+      ['Jelly', 'Live things: Open swarm, Watch', 'jelly', 'Open swarm'],
+      ['Attention', 'Only “approve” and “allow more”', 'attention', 'Approve'],
+      ['Danger', 'Stop, Deny, Delete', 'danger', 'Stop']
+    ];
+    var S = { done: [t.mossTint, t.moss, '✓'], run: [t.jellyTint, t.jellyInk, ''], deny: [t.rustTint, t.rust, '✕'], warn: [t.shuTint, t.shuInk, '!'], unk: [t.sunk, t.muted, '?'], skip: [t.sunk, t.muted, '–'] };
+    var tools = [
+      ['done', 'web_search', '“heat pump subsidy 2026”', '4 sources · 2.1s', 'auto mode'],
+      ['run', 'web_fetch', 'bafa.de/beg', 'running · 3s', 'rule'],
+      ['deny', 'notion__create_page', 'Research / DE', 'denied by user: wrong page', 'you'],
+      ['warn', 'shell', 'pytest -q', 'timed out after 120s; the command may have partially run', 'sandbox'],
+      ['unk', 'github__merge_pr', '#42', 'outcome unknown — check before retrying', 'you'],
+      ['skip', 'notion__update_page', '', 'skipped because an earlier call was denied', '—']
+    ];
+    return {
+      t: t, themeName: name === 'dark' ? 'Dark' : 'Light',
+      stateNames: states.map(function (s) { return s[0].toUpperCase() + s.slice(1); }),
+      btnRows: rows.map(function (r) { return { name: r[0], use: r[1], label: r[3], cells: states.map(function (st) { return { style: btn(r[2], st === 'loading' ? 'default' : st, 'md') + (st === 'loading' ? '; cursor: progress' : ''), spin: st === 'loading' ? spinOn : 'display: none' }; }) }; }),
+      sz: { sm: btn('primary', 'default', 'sm'), md: btn('primary', 'default', 'md'), lg: btn('primary', 'default', 'lg') },
+      bsm: set('sm'), bmd: set('md'),
+      icon: { secondary: iconBtn('secondary'), ghost: iconBtn('ghost'), primary: iconBtn('primary'), stop: iconBtn('danger') },
+      chips: [
+        { label: 'Swimming', bg: t.jellyTint, fg: t.jellyInk, dot: t.jelly, anim: 'jf-run' },
+        { label: 'Needs you', bg: t.shuTint, fg: t.shuInk, dot: t.shu, anim: 'jf-ask' },
+        { label: 'Waiting on 3', bg: t.indigoTint, fg: t.indigo, dot: t.indigo, anim: '' },
+        { label: 'Done', bg: t.mossTint, fg: t.moss, dot: t.moss, anim: '' },
+        { label: 'Failed', bg: t.rustTint, fg: t.rust, dot: t.rust, anim: '' }
+      ],
+      tools: tools.map(function (x, i) { var s = S[x[0]]; return { bg: s[0], fg: s[1], icon: s[2], name: x[1], arg: x[2], note: x[3], by: x[4], sep: i ? t.line : 'transparent', noteColor: x[0] === 'deny' ? t.rust : x[0] === 'warn' ? t.shuInk : t.muted, spinCls: x[0] === 'run' ? 'jf-spin' : '', spin: x[0] === 'run' ? 'display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid ' + t.jellyLine + '; border-top-color: ' + t.jellyInk : 'display: none' }; }),
+      sources: [
+        { n: '1', title: 'Bundesförderung für effiziente Gebäude', domain: 'bafa.de' },
+        { n: '2', title: 'Heizungsförderung 2026 — Überblick', domain: 'kfw.de' },
+        { n: '3', title: 'Wärmepumpe: Zuschuss und Bonus', domain: 'verbraucherzentrale.de' }
+      ],
+      cost: [{ l: 'Tokens', v: '162k' }, { l: '≈ $', v: '0.61' }, { l: 'Turns', v: '14' }, { l: 'Auto checks', v: '9' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

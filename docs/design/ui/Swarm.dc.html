@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Swarm — live agent tree</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FAFAF7}
+a{color:#1A1A1A}
+button{font:inherit;cursor:pointer}
+@keyframes jfPulse{0%,100%{box-shadow:0 0 0 0 rgba(110,168,212,.5)}50%{box-shadow:0 0 0 8px rgba(110,168,212,0)}}
+@keyframes jfBeacon{0%,100%{box-shadow:0 0 0 0 rgba(200,53,42,.6)}50%{box-shadow:0 0 0 9px rgba(200,53,42,0)}}
+@keyframes jfBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes jfBreathe{0%,100%{opacity:.45}50%{opacity:1}}
+@keyframes jfDash{to{stroke-dashoffset:-24}}
+.jf-run{animation:jfPulse 2.2s ease-in-out infinite}
+.jf-ask{animation:jfBeacon 1.4s ease-in-out infinite}
+.jf-bob{animation:jfBob 3.4s ease-in-out infinite}
+.jf-sleep{animation:jfBreathe 4s ease-in-out infinite}
+.jf-flow{stroke-dasharray:4 8;animation:jfDash 1.2s linear infinite}
+</style>
+</helmet>
+<div style="min-height: 980px; background: #FAFAF7; color: #161616; font-family: 'Manrope', system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 28px; border-bottom: 1px solid #E8E6E0">
+    <h1 style="margin: 0; flex: 1 1 280px; font-family: 'Manrope', system-ui, sans-serif; font-size: 22px; font-weight: 600; letter-spacing: -0.025em">Compare EU heat-pump subsidies</h1>
+    <div role="tablist" aria-label="View" style="display: flex; padding: 4px; border-radius: 12px; background: #FFFFFF; border: 1px solid #DDDAD3">
+      <button type="button" role="tab" aria-selected="false" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 8px; background: none; color: #6B6A65">Chat</button>
+      <button type="button" role="tab" aria-selected="true" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 8px; background: #F0EFEA; color: #161616">Swarm</button>
+      <button type="button" role="tab" aria-selected="false" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 8px; background: none; color: #6B6A65">Files</button>
+    </div>
+    <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #D9C3BF; background: none; color: #7A2A20">Stop all</button>
+  </header>
+
+  <div style="flex: 1; display: flex; flex-wrap: wrap">
+    <!-- stage -->
+    <div style="flex: 999 1 640px; min-width: 0; overflow-x: auto; padding: 24px">
+      <div style="position: relative; width: 900px; height: 820px; margin: 0 auto; background-image: radial-gradient(circle, rgba(62,124,177,.16) 1px, transparent 1.5px); background-size: 46px 46px; border-radius: 28px; border: 1px solid #D6E7F4; background-color: #F3F8FC">
+        <svg width="900" height="820" viewBox="0 0 900 820" fill="none" style="position: absolute; inset: 0" aria-hidden="true">
+          <path d="M450 250 C 420 360, 220 360, 200 470" stroke="#E8B4AC" stroke-width="2" class="jf-flow"/>
+          <path d="M450 250 C 450 360, 450 380, 450 470" stroke="#9CC9E8" stroke-width="2" class="jf-flow"/>
+          <path d="M450 250 C 480 360, 680 360, 700 470" stroke="#DDDAD3" stroke-width="2"/>
+          <path d="M450 590 C 440 660, 380 690, 360 720" stroke="#9CC9E8" stroke-width="1.5" class="jf-flow"/>
+        </svg>
+
+        <!-- parent -->
+        <div style="position: absolute; left: 340px; top: 60px; width: 220px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center">
+          <span class="jf-run jf-bob" style="width: 140px; height: 140px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgba(47,79,127,.10); color: #2F4F7F; border: 1px solid rgba(47,79,127,.4)">
+            <svg width="92" height="92" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+          </span>
+          <strong style="font-size: 16px">Researcher</strong>
+          <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #2F4F7F">awaiting_children · 3</span>
+        </div>
+
+        <sc-for list="{{kids}}" as="k" hint-placeholder-count="3">
+          <div style="position: absolute; left: {{k.x}}px; top: 460px; width: 200px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center">
+            <span class="{{k.anim}}" style="width: 104px; height: 104px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: {{k.color}}; background: {{k.tint}}; border: 1px solid {{k.ring}}">
+              <svg width="66" height="66" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+            </span>
+            <strong>{{k.name}}</strong>
+            <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: {{k.color}}">{{k.status}}</span>
+            <span style="font-size: 12px; color: #6B6A65">{{k.meta}}</span>
+          </div>
+        </sc-for>
+
+        <!-- tool bubbles around France -->
+        <div style="position: absolute; left: 300px; top: 712px; display: flex; gap: 8px; flex-wrap: wrap; width: 340px">
+          <span style="padding: 6px 10px; border-radius: 999px; background: #EEF5FB; border: 1px solid #CFE2F1; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #2F6E9E">web_fetch · running</span>
+          <span style="padding: 6px 10px; border-radius: 999px; background: #F3F5F1; border: 1px solid #CFD8CB; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #4F6B47">web_search ✓ 2.1s</span>
+          <span style="padding: 6px 10px; border-radius: 999px; background: #FFFFFF; border: 1px solid #DDDAD3; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #6B6A65">memory.write · undo</span>
+        </div>
+
+        <div style="position: absolute; left: 24px; top: 24px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #6B6A65">
+          <span>depth 0 → 1 of max 2</span>
+          <span>3 of 5 children running</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- inspector -->
+    <aside style="flex: 1 1 340px; max-width: 100%; box-sizing: border-box; padding: 24px; background: #FFFFFF; border-left: 1px solid #E8E6E0; display: flex; flex-direction: column; gap: 16px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span class="jf-ask" style="width: 12px; height: 12px; border-radius: 50%; background: #C8352A"></span>
+        <h2 style="margin: 0; font-family: 'Manrope', system-ui, sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.025em">Germany</h2>
+        <span style="margin-left: auto; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #6B6A65">child · blocking</span>
+      </div>
+      <p style="margin: 0; color: #3A3A37">Task: BEG Förderung, 2026 rates for air-source heat pumps.</p>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <div style="padding: 10px; border-radius: 10px; background: #FFFFFF; display: flex; flex-direction: column"><span style="font-size: 11px; color: #6B6A65">Turns</span><span style="font-family: 'JetBrains Mono', ui-monospace, monospace">6 / 50</span></div>
+        <div style="padding: 10px; border-radius: 10px; background: #FFFFFF; display: flex; flex-direction: column"><span style="font-size: 11px; color: #6B6A65">Tokens</span><span style="font-family: 'JetBrains Mono', ui-monospace, monospace">41k</span></div>
+        <div style="padding: 10px; border-radius: 10px; background: #FFFFFF; display: flex; flex-direction: column"><span style="font-size: 11px; color: #6B6A65">≈ $</span><span style="font-family: 'JetBrains Mono', ui-monospace, monospace">0.12</span></div>
+      </div>
+      <div style="padding: 14px; border-radius: 14px; background: #FFF7F4; border: 1px solid #E8B4AC; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #C8352A; font-weight: 600">Germany wants approval</span>
+        <code style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: #A32C22">notion__update_page</code>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 0; background: #C8352A; color: #FFFFFF; font-weight: 600">Approve once</button>
+          <button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #D9C3BF; background: none; color: #7A2A20">Deny</button>
+        </div>
+      </div>
+      <h3 style="margin: 6px 0 0; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #6B6A65">Trail</h3>
+      <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+        <li style="display: flex; gap: 10px"><span style="color: #4F6B47">✓</span>web_search “BEG 2026 Wärmepumpe Förderung” · 4 sources</li>
+        <li style="display: flex; gap: 10px"><span style="color: #4F6B47">✓</span>web_fetch bafa.de · 2.4s</li>
+        <li style="display: flex; gap: 10px; color: #6B6A65; border-top: 1px dashed #C9C6BE; padding-top: 10px">Earlier messages summarized · <a href="#">view summary</a></li>
+        <li style="display: flex; gap: 10px"><span style="color: #C8352A">●</span>notion__update_page · awaiting approval</li>
+      </ol>
+      <div style="display: flex; gap: 8px; margin-top: auto">
+        <a href="#" style="flex: 1; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #DDDAD3; text-decoration: none">Open full chat</a>
+        <button type="button" style="flex: 1; min-height: 44px; border-radius: 10px; border: 1px solid #D9C3BF; background: none; color: #7A2A20">Stop child</button>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { kids: [
+      { name: 'Germany', x: 100, status: 'awaiting_approval', meta: 'turn 6 · notion', color: '#C8352A', tint: 'rgba(200,53,42,.12)', ring: 'rgba(200,53,42,.5)', anim: 'jf-ask' },
+      { name: 'France', x: 350, status: 'running', meta: 'turn 4 · 2 tools live', color: '#2F6E9E', tint: 'rgba(110,168,212,.10)', ring: 'rgba(110,168,212,.45)', anim: 'jf-run jf-bob' },
+      { name: 'Netherlands', x: 600, status: 'sleeping', meta: 'retrying at 14:32', color: '#9A9893', tint: 'rgba(154,152,147,.10)', ring: 'rgba(154,152,147,.35)', anim: 'jf-sleep' }
+    ] };
+  }
+}
+</script>
+</body>
+</html>

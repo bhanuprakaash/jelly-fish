@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Reef — chat workspace</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FAFAF7}
+a{color:#1A1A1A}a:hover{color:#555552}
+@keyframes jfPulse{0%,100%{box-shadow:0 0 0 0 rgba(110,168,212,.55)}50%{box-shadow:0 0 0 6px rgba(110,168,212,0)}}
+@keyframes jfBeacon{0%,100%{box-shadow:0 0 0 0 rgba(200,53,42,.6)}50%{box-shadow:0 0 0 8px rgba(200,53,42,0)}}
+@keyframes jfBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.jf-run{animation:jfPulse 2s ease-in-out infinite}
+.jf-ask{animation:jfBeacon 1.4s ease-in-out infinite}
+.jf-bob{animation:jfBob 3s ease-in-out infinite}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="min-height: 980px; display: flex; flex-wrap: wrap; background: #FAFAF7; color: #161616; font-family: 'Manrope', system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+
+  <!-- Chat list -->
+  <aside style="flex: 1 1 260px; max-width: 100%; display: flex; flex-direction: column; gap: 4px; padding: 20px 14px; background: #FFFFFF; border-right: 1px solid #E8E6E0; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 6px 16px">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#3E7CB1" stroke-width="1.6" stroke-linecap="round" class="jf-bob" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+      <span style="font-family: 'Manrope', system-ui, sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.025em">jelly-fish</span>
+    </div>
+    <button type="button" style="display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 12px; border: 1px solid #C9C6BE; background: #FFFFFF; color: #161616; font-weight: 600; margin-bottom: 12px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      New session
+    </button>
+    <label style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px 10px; font-size: 12px; color: #6B6A65">Project
+      <select style="min-height: 40px; border-radius: 10px; border: 1px solid #DDDAD3; background: #FFFFFF; color: #161616; padding: 0 10px; font: inherit"><option>Personal</option><option>Thesis research</option></select>
+    </label>
+    <div style="display: flex; align-items: center; gap: 10px; margin: 0 4px 14px; padding: 12px 14px; border-radius: 14px; background: #EEF5FB; border: 1px solid #D6E7F4; font-size: 13px; color: #2F6E9E"><span class="jf-run" style="width: 8px; height: 8px; border-radius: 50%; background: #6EA8D4; flex: none"></span><span style="flex: 1">3 swimming</span><strong style="color: #C8352A; font-weight: 500">1 needs you</strong></div>
+    <div style="font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #8A8984; padding: 6px 10px">Today</div>
+    <sc-for list="{{chats}}" as="c" hint-placeholder-count="6">
+      <a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border-radius: 10px; text-decoration: none; color: #161616; {{c.rowStyle}}">
+        <span class="{{c.anim}}" style="display: inline-flex; width: 26px; height: 26px; border-radius: 50%; align-items: center; justify-content: center; flex: none; color: {{c.color}}; background: {{c.tint}}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+        </span>
+        <span style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.title}}</span>
+          <span style="font-size: 12px; color: {{c.color}}">{{c.status}}</span>
+        </span>
+      </a>
+    </sc-for>
+    <div style="margin-top: auto; padding: 14px 8px 0; border-top: 1px solid #E8E6E0; display: flex; align-items: center; gap: 10px; color: #6B6A65; font-size: 13px">
+      <span style="width: 30px; height: 30px; border-radius: 50%; background: #DDDAD3; display: inline-flex; align-items: center; justify-content: center; color: #161616; font-weight: 600">B</span>
+      <span style="flex: 1">[your name]</span>
+      <a href="#" aria-label="Settings" style="color: #6B6A65; display: inline-flex; padding: 10px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></a>
+    </div>
+  </aside>
+
+  <!-- Session -->
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; background: #FAFAF7">
+    <header style="display: flex; flex-direction: column; gap: 10px; padding: 22px 40px 18px; border-bottom: 1px solid #E8E6E0; background: #FFFFFF">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <h1 style="margin: 0; flex: 1 1 280px; font-family: 'Manrope', system-ui, sans-serif; font-size: 23px; line-height: 1.1; font-weight: 600; letter-spacing: -0.025em">Compare EU heat-pump subsidies</h1>
+        <span style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #EEF5FB; color: #2F6E9E; font-size: 13px"><span class="jf-run" style="width: 7px; height: 7px; border-radius: 50%; background: #6EA8D4"></span>Swimming · 3 sub-agents</span>
+        <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #DDDAD3; background: #FFFFFF; color: #1A1A1A; font-size: 13px">Interrupt</button>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; font-size: 13px; color: #6B6A65">
+        <button type="button" style="min-height: 32px; padding: 0; border: 0; background: none; color: #3A3A37">Researcher</button>
+        <span aria-hidden="true" style="color: #C9C6BE">·</span>
+        <button type="button" style="min-height: 32px; padding: 0; border: 0; background: none; color: #3A3A37; font-family: 'JetBrains Mono', ui-monospace, monospace">sonnet-5.5</button>
+        <span aria-hidden="true" style="color: #C9C6BE">·</span>
+        <button type="button" style="min-height: 32px; padding: 0; border: 0; background: none; color: #2F6E9E">Mode auto</button>
+        <span aria-hidden="true" style="color: #C9C6BE">·</span>
+        <button type="button" style="min-height: 32px; padding: 0; border: 0; background: none; color: #3A3A37">Sandbox idle</button>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 180px" title="Session budget">
+          <span style="flex: 1; height: 3px; border-radius: 3px; background: #E8E6E0; display: block"><span style="display: block; width: 21%; height: 3px; border-radius: 3px; background: #6EA8D4"></span></span>
+          <span style="font-size: 12px; color: #6B6A65; font-family: 'JetBrains Mono', ui-monospace, monospace">$0.42 / $2</span>
+        </div>
+      </div>
+    </header>
+
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 26px; padding: 40px 40px 28px; max-width: 780px; width: 100%; margin: 0 auto; box-sizing: border-box">
+      <!-- user -->
+      <div style="align-self: flex-end; max-width: 80%; background: #EEF5FB; border: 1px solid #D6E7F4; border-radius: 20px 20px 6px 20px; padding: 14px 18px; color: #1A1A1A">Find the 2026 heat-pump subsidy in Germany, France and the Netherlands and put it in a table. Use a sub-agent per country.</div>
+
+      <!-- step card collapsed -->
+      <div style="display: flex; align-items: center; gap: 10px; color: #6B6A65; font-size: 13px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
+        Searched the web · 3 sources · ran by auto mode — then delegated to 3 agents
+        <button type="button" style="margin-left: auto; min-height: 32px; background: none; border: 0; color: #1A1A1A; font-size: 13px">Details</button>
+      </div>
+
+      <!-- child sessions as tethered jellies -->
+      <div style="border: 1px solid #DDDAD3; border-radius: 16px; background: #FFFFFF; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #2F4F7F">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 6h7M6 8.5v4a5.5 5.5 0 0 0 5.5 5.5h4"/></svg>
+          Awaiting 3 child sessions
+        </div>
+        <sc-for list="{{children}}" as="k" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 14px; border-left: 2px dotted #C9D1DE; margin-left: 6px">
+            <span class="{{k.anim}}" style="width: 10px; height: 10px; border-radius: 50%; flex: none; background: {{k.color}}"></span>
+            <span style="flex: 1; min-width: 0"><strong style="font-weight: 600">{{k.agent}}</strong> <span style="color: #6B6A65">— {{k.task}}</span></span>
+            <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: {{k.color}}">{{k.status}}</span>
+            <a href="#" style="font-size: 13px; min-height: 32px; display: inline-flex; align-items: center">Open</a>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- approval card -->
+      <section aria-label="Approval needed" class="jf-ask" style="border: 1px solid #E8B4AC; border-radius: 16px; background: #FFF7F4; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #C8352A; font-weight: 600">Needs your OK</span>
+          <span style="margin-left: auto; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #8C5A52">{{stepLabel}}</span>
+        </div>
+        <sc-if value="{{onFirst}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="font-size: 15px"><strong>France agent</strong> wants to call <code style="font-family: 'JetBrains Mono', ui-monospace, monospace; color: #A32C22">notion__create_page</code></div>
+            <pre style="margin: 0; padding: 10px 12px; border-radius: 10px; background: #FBF0EC; color: #3A3A37; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; white-space: pre-wrap">{ "parent": "Research / Subsidies", "title": "France — MaPrimeRénov 2026" }</pre>
+          </div>
+        </sc-if>
+        <sc-if value="{{onSecond}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="font-size: 15px"><strong>Germany agent</strong> wants to call <code style="font-family: 'JetBrains Mono', ui-monospace, monospace; color: #A32C22">notion__update_page</code></div>
+            <pre style="margin: 0; padding: 10px 12px; border-radius: 10px; background: #FBF0EC; color: #3A3A37; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; white-space: pre-wrap">{ "page": "Research / Subsidies", "append": "Germany — BEG 2026" }</pre>
+            <div style="font-size: 13px; color: #8C5A52">You approved this 3× in 7 days. Always allow in this project?</div>
+          </div>
+        </sc-if>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" onClick="{{next}}" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: #C8352A; color: #FFFFFF; font-weight: 600">Approve once</button>
+          <button type="button" onClick="{{next}}" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #E8B4AC; background: transparent; color: #A32C22">For this project</button>
+          <button type="button" onClick="{{next}}" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #E8B4AC; background: transparent; color: #A32C22">Everywhere</button>
+          <button type="button" onClick="{{next}}" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #D9C3BF; background: transparent; color: #7A2A20">Deny</button>
+          <button type="button" onClick="{{next}}" style="min-height: 44px; margin-left: auto; padding: 0 12px; border: 0; background: none; color: #8C5A52; text-decoration: underline">Approve all</button>
+        </div>
+      </section>
+
+      <!-- notice -->
+      <div role="status" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: #F4F3EF; border: 1px solid #DDDAD3; color: #5E5D58; font-size: 13px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>
+        Netherlands agent is resting — provider busy, retrying at 14:32.
+        <button type="button" style="margin-left: auto; min-height: 32px; border: 0; background: none; color: #1A1A1A">Retry now</button>
+        <button type="button" style="min-height: 32px; border: 0; background: none; color: #6B6A65">Stop retrying</button>
+      </div>
+    </div>
+
+    <!-- composer -->
+    <div style="padding: 0 40px 28px; max-width: 780px; width: 100%; margin: 0 auto; box-sizing: border-box">
+      <div style="display: flex; flex-direction: column; border-radius: 22px; background: #FFFFFF; border: 1px solid #CFE2F1; box-shadow: 0 0 0 5px rgba(156,201,232,.16), 0 10px 30px rgba(47,110,158,.06); overflow: hidden">
+        <sc-if value="{{slash}}" hint-placeholder-val="{{ true }}">
+          <div role="listbox" aria-label="Slash commands" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 2px; padding: 8px; border-bottom: 1px solid #E8E6E0; background: #FAFAF7">
+            <sc-for list="{{commands}}" as="cmd" hint-placeholder-count="8">
+              <div role="option" aria-selected="{{cmd.sel}}" style="display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; border-radius: 10px; background: {{cmd.bg}}">
+                <code style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: #161616">{{cmd.name}}</code>
+                <span style="color: #6B6A65; font-size: 12px">{{cmd.hint}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div style="display: flex; align-items: flex-end; gap: 8px; padding: 10px 10px 10px 12px">
+          <button type="button" aria-label="Attach file" style="width: 40px; height: 40px; border-radius: 50%; border: 0; background: none; color: #6B6A65"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/></svg></button>
+          <label style="flex: 1; display: flex"><span style="position: absolute; left: -9999px">Message</span>
+            <textarea rows="1" placeholder="Steer the swarm, or type / for commands" style="flex: 1; resize: none; border: 0; outline: none; background: transparent; color: #161616; font: inherit; padding: 10px 0">{{draft}}</textarea>
+          </label>
+          <button type="button" onClick="{{toggleSlash}}" aria-label="Commands" aria-pressed="{{slashPressed}}" style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid {{slashBorder}}; background: {{slashBg}}; color: #2F6E9E; font-family: 'JetBrains Mono', ui-monospace, monospace">/</button>
+          <button type="button" aria-label="Send" style="width: 40px; height: 40px; border-radius: 50%; border: 0; background: #161616; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+        </div>
+      </div>
+      <div style="font-size: 12px; color: #8A8984; padding: 8px 4px 0">Running · a message now steers at the next tool result. <a href="#">Interrupt</a></div>
+    </div>
+  </main>
+
+  <!-- artifacts / tide panel -->
+  <aside style="flex: 1 1 280px; max-width: 100%; padding: 20px 18px; background: #FFFFFF; border-left: 1px solid #E8E6E0; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box">
+    <h2 style="margin: 0; font-family: 'Manrope', system-ui, sans-serif; font-size: 16px; font-weight: 600; letter-spacing: -0.025em">Artifacts</h2>
+    <sc-for list="{{artifacts}}" as="f" hint-placeholder-count="3">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E8E6E0">
+        <span style="width: 34px; height: 34px; border-radius: 8px; background: #F0EFEA; display: inline-flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: #2F4F7F">{{f.ext}}</span>
+        <span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span>{{f.name}}</span><span style="font-size: 12px; color: #6B6A65">{{f.meta}}</span></span>
+        <button type="button" aria-label="Download" style="min-width: 36px; min-height: 36px; border: 0; background: none; color: #6B6A65"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
+      </div>
+    </sc-for>
+    <h2 style="margin: 10px 0 0; font-family: 'Manrope', system-ui, sans-serif; font-size: 16px; font-weight: 600; letter-spacing: -0.025em">Tide · live events</h2>
+    <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px">
+      <sc-for list="{{events}}" as="e" hint-placeholder-count="6">
+        <li style="display: flex; gap: 8px"><span style="color: #A3A19B">{{e.t}}</span><span style="color: {{e.color}}">{{e.kind}}</span></li>
+      </sc-for>
+    </ol>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { step: 0, slash: true }; }
+  renderVals() {
+    var S = {
+      running: { color: '#2F6E9E', tint: 'rgba(110,168,212,.12)', anim: 'jf-run', label: 'Running' },
+      approval: { color: '#C8352A', tint: 'rgba(200,53,42,.14)', anim: 'jf-ask', label: 'Needs approval' },
+      failed: { color: '#7A2A20', tint: 'rgba(122,42,32,.12)', anim: '', label: 'Failed' },
+      sleeping: { color: '#9A9893', tint: 'rgba(154,152,147,.12)', anim: '', label: 'Resting · retry 14:32' },
+      bg: { color: '#2F4F7F', tint: 'rgba(47,79,127,.12)', anim: 'jf-run', label: 'Background · 3 children' },
+      idle: { color: '#8A8984', tint: 'rgba(160,158,152,.10)', anim: '', label: 'Your turn' },
+      done: { color: '#4F6B47', tint: 'rgba(79,107,71,.12)', anim: '', label: 'Finished in background' }
+    };
+    var rows = [
+      ['Compare EU heat-pump subsidies', 'approval', true],
+      ['Nightly repo dependency audit', 'running'],
+      ['Thesis lit review — chapter 2', 'bg'],
+      ['Translate menu to Spanish', 'done'],
+      ['Scrape conference talks', 'failed'],
+      ['Gemini vs Claude on my evals', 'sleeping'],
+      ['Weekend trip to Lisbon', 'idle']
+    ];
+    var self = this;
+    return {
+      chats: rows.map(function (r) { var s = S[r[1]]; return { title: r[0], status: s.label, color: s.color, tint: s.tint, anim: s.anim, rowStyle: r[2] ? 'background: #EEF5FB' : '' }; }),
+      children: [
+        { agent: 'Germany', task: 'BEG Förderung, 2026 rates', status: 'awaiting_approval', color: '#C8352A', anim: 'jf-ask' },
+        { agent: 'France', task: 'MaPrimeRénov 2026', status: 'running · turn 4', color: '#2F6E9E', anim: 'jf-run' },
+        { agent: 'Netherlands', task: 'ISDE subsidy', status: 'sleeping', color: '#9A9893', anim: '' }
+      ],
+      stepLabel: (this.state.step + 1 > 2 ? 2 : this.state.step + 1) + ' of 2',
+      onFirst: this.state.step === 0,
+      onSecond: this.state.step >= 1,
+      next: function () { self.setState({ step: self.state.step >= 1 ? 0 : 1 }); },
+      slash: this.state.slash,
+      draft: this.state.slash ? '/' : '',
+      slashPressed: this.state.slash ? 'true' : 'false',
+      slashBg: this.state.slash ? '#EEF5FB' : '#FFFFFF',
+      slashBorder: this.state.slash ? '#D6E7F4' : '#DDDAD3',
+      toggleSlash: function () { self.setState({ slash: !self.state.slash }); },
+      commands: [
+        { name: '/background', sel: 'true', bg: '#EEF5FB', hint: 'let it swim on its own' },
+        { name: '/remote', sel: 'false', bg: 'transparent', hint: 'attach a sandbox' },
+        { name: '/agent', sel: 'false', bg: 'transparent', hint: 'switch agent' },
+        { name: '/model', sel: 'false', bg: 'transparent', hint: 'switch model mid-session' },
+        { name: '/mode', sel: 'false', bg: 'transparent', hint: 'ask · auto · full-auto' },
+        { name: '/compact', sel: 'false', bg: 'transparent', hint: 'summarize older context' },
+        { name: '/cost', sel: 'false', bg: 'transparent', hint: 'tokens and $ so far' },
+        { name: '/stop', sel: 'false', bg: 'transparent', hint: 'interrupt now' }
+      ],
+      artifacts: [
+        { ext: 'CSV', name: 'subsidies-2026.csv', meta: 'from Germany agent · 4 KB' },
+        { ext: 'MD', name: 'comparison.md', meta: 'draft · 2 KB' },
+        { ext: 'PDF', name: 'beg-merkblatt.pdf', meta: 'upload · 1.2 MB' }
+      ],
+      events: [
+        { t: '14:30:02', kind: 'session.status_changed → awaiting_children', color: '#2F4F7F' },
+        { t: '14:30:05', kind: 'llm.response · France', color: '#2F6E9E' },
+        { t: '14:30:06', kind: 'approval.requested · Germany', color: '#C8352A' },
+        { t: '14:30:09', kind: 'timer.set · Netherlands', color: '#9A9893' },
+        { t: '14:30:11', kind: 'tool.call.completed · web_search', color: '#4F6B47' },
+        { t: '14:30:12', kind: 'artifact.saved · subsidies-2026.csv', color: '#3A3A37' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

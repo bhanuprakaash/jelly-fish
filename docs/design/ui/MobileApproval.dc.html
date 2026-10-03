@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mobile approval</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font:inherit;cursor:pointer}
+@keyframes jfBeacon{0%,100%{box-shadow:0 0 0 0 rgba(200,53,42,.6)}50%{box-shadow:0 0 0 10px rgba(200,53,42,0)}}
+@keyframes jfBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.jf-ask{animation:jfBeacon 1.6s ease-in-out infinite}
+.jf-bob{animation:jfBob 3s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FAFAF7; color: #161616; font-family: 'Manrope', system-ui, sans-serif; font-size: 15px; display: flex; flex-direction: column; padding: 56px 20px 34px; gap: 18px">
+  <a href="#" style="color: #6B6A65; text-decoration: none; font-size: 14px; min-height: 44px; display: inline-flex; align-items: center">‹ Compare EU heat-pump subsidies</a>
+
+  <sc-if value="{{pending}}" hint-placeholder-val="{{ true }}">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 10px; text-align: center">
+        <span class="jf-ask jf-bob" style="width: 96px; height: 96px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgba(200,53,42,.12); color: #C8352A; border: 1px solid rgba(200,53,42,.45)">
+          <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+        </span>
+        <h1 style="margin: 0; font-family: 'Manrope', system-ui, sans-serif; font-size: 26px; line-height: 1.15; font-weight: 600; letter-spacing: -0.025em">Germany agent wants approval</h1>
+        <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #8C5A52">1 of 2</span>
+      </div>
+      <div style="padding: 16px; border-radius: 16px; background: #FFF7F4; border: 1px solid #E8B4AC; display: flex; flex-direction: column; gap: 8px">
+        <code style="font-family: 'JetBrains Mono', ui-monospace, monospace; color: #A32C22; font-size: 14px">notion__update_page</code>
+        <pre style="margin: 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #3A3A37; white-space: pre-wrap">{ "page": "Research / Subsidies",
+  "append": "Germany — BEG 2026" }</pre>
+        <span style="font-size: 13px; color: #8C5A52">Approved 3× in 7 days · always allow in this project?</span>
+      </div>
+      <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+        <button type="button" onClick="{{approve}}" style="min-height: 54px; border-radius: 16px; border: 0; background: #C8352A; color: #FFFFFF; font-weight: 600; font-size: 16px">Approve once</button>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+          <button type="button" onClick="{{approve}}" style="min-height: 48px; border-radius: 14px; border: 1px solid #E8B4AC; background: none; color: #A32C22">For this project</button>
+          <button type="button" onClick="{{approve}}" style="min-height: 48px; border-radius: 14px; border: 1px solid #E8B4AC; background: none; color: #A32C22">Everywhere</button>
+        </div>
+        <button type="button" onClick="{{deny}}" style="min-height: 48px; border-radius: 14px; border: 1px solid #D9C3BF; background: none; color: #7A2A20">Deny…</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{resolved}}" hint-placeholder-val="{{ false }}">
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center">
+      <span style="width: 96px; height: 96px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: {{doneTint}}; color: {{doneColor}}">
+        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+      </span>
+      <h1 style="margin: 0; font-family: 'Manrope', system-ui, sans-serif; font-size: 26px; font-weight: 600; letter-spacing: -0.025em">{{doneTitle}}</h1>
+      <p style="margin: 0; color: #5E5D58">{{doneBody}}</p>
+      <button type="button" onClick="{{reset}}" style="min-height: 48px; padding: 0 20px; border-radius: 14px; border: 1px solid #DDDAD3; background: #FFFFFF; color: #161616">Replay</button>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { result: null }; }
+  renderVals() {
+    var self = this, r = this.state.result;
+    return {
+      pending: !r, resolved: !!r,
+      approve: function () { self.setState({ result: 'allow' }); },
+      deny: function () { self.setState({ result: 'deny' }); },
+      reset: function () { self.setState({ result: null }); },
+      doneTitle: r === 'deny' ? 'Denied' : 'Done. The chat is continuing.',
+      doneBody: r === 'deny' ? 'The next call in the batch was skipped. Germany agent will tell the parent.' : 'Next up: France agent wants approval (2 of 2).',
+      doneColor: r === 'deny' ? '#7A2A20' : '#4F6B47',
+      doneTint: r === 'deny' ? 'rgba(122,42,32,.12)' : 'rgba(79,107,71,.12)'
+    };
+  }
+}
+</script>
+</body>
+</html>

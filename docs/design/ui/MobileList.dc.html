@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mobile chat list</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font:inherit;cursor:pointer}
+@keyframes jfPulse{0%,100%{box-shadow:0 0 0 0 rgba(110,168,212,.5)}50%{box-shadow:0 0 0 6px rgba(110,168,212,0)}}
+@keyframes jfBeacon{0%,100%{box-shadow:0 0 0 0 rgba(200,53,42,.6)}50%{box-shadow:0 0 0 8px rgba(200,53,42,0)}}
+@keyframes jfDrift{0%,100%{transform:translate(0,0)}50%{transform:translate(6px,-8px)}}
+.jf-run{animation:jfPulse 2s ease-in-out infinite}
+.jf-ask{animation:jfBeacon 1.4s ease-in-out infinite}
+.jf-drift{animation:jfDrift 5s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FAFAF7; color: #161616; font-family: 'Manrope', system-ui, sans-serif; font-size: 15px; display: flex; flex-direction: column; overflow: hidden">
+  <header style="padding: 56px 20px 12px; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <h1 style="margin: 0; font-family: 'Manrope', system-ui, sans-serif; font-size: 30px; font-weight: 600; letter-spacing: -0.025em">Your swarm</h1>
+      <button type="button" aria-label="Settings" style="width: 44px; height: 44px; border-radius: 50%; border: 1px solid #DDDAD3; background: #FFFFFF; color: #6B6A65; display: inline-flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
+    </div>
+    <!-- swarm strip: one jelly per live session -->
+    <div style="display: flex; gap: 10px; padding: 14px; border-radius: 18px; background: #EEF5FB; border: 1px solid #D6E7F4; align-items: center">
+      <span class="jf-ask jf-drift" style="width: 34px; height: 34px; border-radius: 50%; background: rgba(200,53,42,.16); display: inline-flex; align-items: center; justify-content: center; color: #C8352A"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg></span>
+      <span class="jf-run jf-drift" style="width: 28px; height: 28px; border-radius: 50%; background: rgba(110,168,212,.14); display: inline-flex; align-items: center; justify-content: center; color: #1A1A1A"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg></span>
+      <span class="jf-run jf-drift" style="width: 28px; height: 28px; border-radius: 50%; background: rgba(47,79,127,.14); display: inline-flex; align-items: center; justify-content: center; color: #2F4F7F"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg></span>
+      <span style="flex: 1; font-size: 13px; color: #5E5D58; line-height: 1.35">3 swimming · <strong style="color: #C8352A">1 needs you</strong></span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: hidden; padding: 0 12px; display: flex; flex-direction: column; gap: 2px">
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+      <a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 10px; border-radius: 14px; text-decoration: none; color: #161616">
+        <span class="{{r.anim}}" style="width: 36px; height: 36px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; color: {{r.color}}; background: {{r.tint}}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+        </span>
+        <span style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500">{{r.title}}</span>
+          <span style="font-size: 13px; color: {{r.color}}">{{r.status}}</span>
+        </span>
+        <span style="font-size: 12px; color: #8A8984">{{r.when}}</span>
+      </a>
+    </sc-for>
+  </div>
+
+  <div style="padding: 12px 20px 34px">
+    <button type="button" style="width: 100%; min-height: 54px; border-radius: 16px; border: 0; background: #1A1A1A; color: #FFFFFF; font-weight: 600; font-size: 16px">New session</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var S = {
+      approval: ['#C8352A', 'rgba(200,53,42,.14)', 'jf-ask', 'Germany agent wants approval'],
+      running: ['#2F6E9E', 'rgba(110,168,212,.12)', 'jf-run', 'Swimming · turn 12'],
+      bg: ['#2F4F7F', 'rgba(47,79,127,.12)', 'jf-run', 'Background · 3 children'],
+      done: ['#4F6B47', 'rgba(79,107,71,.12)', '', 'Done in background'],
+      failed: ['#7A2A20', 'rgba(122,42,32,.12)', '', 'Hit an error · Retry?'],
+      idle: ['#8A8984', 'rgba(160,158,152,.10)', '', 'Your turn']
+    };
+    var rows = [
+      ['Compare EU heat-pump subsidies', 'approval', 'now'],
+      ['Nightly repo dependency audit', 'running', '2m'],
+      ['Thesis lit review — chapter 2', 'bg', '9m'],
+      ['Translate menu to Spanish', 'done', '1h'],
+      ['Scrape conference talks', 'failed', '3h'],
+      ['Weekend trip to Lisbon', 'idle', 'Tue'],
+      ['Refactor budget spreadsheet', 'idle', 'Mon']
+    ];
+    return { rows: rows.map(function (r) { var s = S[r[1]]; return { title: r[0], color: s[0], tint: s[1], anim: s[2], status: s[3], when: r[2] }; }) };
+  }
+}
+</script>
+</body>
+</html>
