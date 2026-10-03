@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: jaeger
-          image: jaegertracing/jaeger:v2.21.0
+          image: jaegertracing/jaeger:2.21.0
           ports:
             - containerPort: 16686
             - containerPort: 4318
