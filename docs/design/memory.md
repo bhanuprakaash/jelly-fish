@@ -61,6 +61,8 @@ CREATE TABLE memories (
 CREATE TABLE memory_revisions (           -- history; hard-deleted with the memory
   memory_id  uuid REFERENCES memories ON DELETE CASCADE,
   version    int,
+  path       text,                        -- path and title at this version; the frozen index renders from them
+  title      text,
   content    text,
   written_by text,
   session_id uuid,                        -- NULL for Memories page edits (written_by='user')
@@ -69,7 +71,8 @@ CREATE TABLE memory_revisions (           -- history; hard-deleted with the memo
 );
 
 ALTER TABLE projects ADD COLUMN use_user_memory bool NOT NULL DEFAULT true;
-ALTER TABLE sessions ADD COLUMN incognito       bool NOT NULL DEFAULT false;
+ALTER TABLE sessions ADD COLUMN incognito       bool NOT NULL DEFAULT false; -- fixed at create
+ALTER TABLE sessions ADD COLUMN memory_index    jsonb;  -- frozen index: [{memory_id, version}], set at the first turn
 ```
 
 **Content format**: markdown, with optional `**Why:**` / `**How to apply:**` lines.
@@ -82,7 +85,7 @@ Prefers trains over flights for trips under 8 hours.
 **How to apply:** default to train options; show flights only if asked.
 ```
 
-**Revisions**: every write appends a `memory_revisions` row and bumps `memories.version`. Undo writes a new version with the old content.
+**Revisions**: every write appends a `memory_revisions` row and bumps `memories.version`. Undo writes a new version with the old content. Undo of a `create` hard-deletes the memory.
 
 | version | content | written_by | session |
 |---|---|---|---|
@@ -104,7 +107,7 @@ One function-schema tool named `memory`, sent identically to every Provider. One
 **Tool instructions must say**: `user` = facts about the person, true everywhere; `project` = facts about this Project. The agent picks the scope.
 
 **Command behavior**
-- `view /memories`: returns the same index as the prompt (§5.1).
+- `view /memories`: returns the live index in the prompt's format (§5.1). It includes this session's writes, so after a mid-session write it differs from the frozen prompt index.
 - `view <path>`: returns full content; bumps `last_read_at` and `read_count`. A `pending_review` entry is treated as nonexistent (same not-found error as a missing path; no counters bumped) until it is approved.
 - `create` / `str_replace` / `insert` / `delete` / `rename`: mutate the row, append a revision, bump `version`, emit `memory.written`.
 - `create` at a path already held by a `pending_review` entry: succeeds, overwriting that entry's content (see §5.2); the agent gets a plain success, never learning a hidden entry existed at that path.
@@ -116,7 +119,7 @@ One function-schema tool named `memory`, sent identically to every Provider. One
 **Caps and errors**
 - Caps: 4 KB per memory; max 200 memories per scope (User Memory; each Project's Project Memory); prompt index max 200 lines or 25 KB.
 - A write that would exceed a cap fails with an error telling the agent to consolidate (merge or delete entries).
-- A write whose content contains a secret (key-like string) is rejected with an error telling the agent not to store secrets. Nothing is masked or written.
+- A write whose content contains a secret is rejected. A secret = a known key prefix (`sk-ant-`, `sk-`, `AIza`, `AKIA`, `ghp_`, `xox`) or a PEM `-----BEGIN … PRIVATE KEY-----` header; no entropy check. It is rejected with an error telling the agent not to store secrets. Nothing is masked or written.
 - A `..` path is rejected with an error.
 
 **Availability**
@@ -151,6 +154,8 @@ Steps:
 
 Refresh only at session start and after a Compaction. Never rewrite the index mid-session; the model already sees its own write in the tool result, and the cached prefix must survive.
 
+**Freezing**: at the first turn (and after a Compaction) the loaded entries are saved as `sessions.memory_index = [{memory_id, version}]`. Every turn, on any Worker, renders the blocks from those `memory_revisions` rows (`path`, `title`), never from live `memories`. A hard-deleted entry has no revision left, so its line drops out (one cache miss in that session).
+
 ### 5.2 Write path
 1. Validate command, scope, kind; normalize path; reject `..`.
 2. Refuse if the session is a Child Session (write commands) or incognito (no tool).
@@ -158,7 +163,7 @@ Refresh only at session start and after a Compaction. Never rewrite the index mi
 4. Check caps; on overflow return the consolidate error.
 5. Compute taint: tainted if untrusted tool output arrived since the last user message. Untrusted = all tool output except the `memory` tool's own results and the user's own messages. That includes web tools, shell/files, and every Connector, local or remote.
 6. Write the row: `status = tainted ? 'pending_review' : 'active'`, `tainted`, `written_by='agent'`, `source_session_id` = this session. Append a revision, bump `version`. Same transaction.
-7. Emit `memory.written {memory_id, path, op, version}`. In the stored tool-call event, redact the `content` input (keep path and op).
+7. Emit `memory.written {memory_id, path, op, version}`. The stored tool-call events never hold memory text: write inputs keep `path` and `op` and replace `content` with `{memory_id, version}`; `view <path>` results are stored as `{memory_id, version}` too. The prompt projection resolves these refs from `memory_revisions`; a hard-deleted one renders `(this memory was deleted)`.
 8. Render a chip in chat (undoable; tainted writes show [Approve] [Edit] [Delete]).
 
 **Contradiction mid-chat**: when the agent notices one, it updates the memory itself through this path. Shown as an undoable chip.
@@ -211,12 +216,12 @@ Before Tier 2 Compaction the agent gets one turn to save durable facts with this
 - Never use a vendor-native or server-side memory feature; the same `memory` tool on every Provider.
 - `project_id IS NULL` iff `scope='user'`.
 - Every write appends a revision and bumps `version`, in the same transaction as the row change.
-- `memory.written` carries only `{memory_id, path, op, version}`. Memory content must never be stored in the Event Log; tool-call input `content` is redacted.
+- `memory.written` carries only `{memory_id, path, op, version}`. Memory content must never be stored in the Event Log: `memory` tool inputs and `view` results are stored as `{memory_id, version}` refs and resolved at projection time.
 - `pending_review` entries never appear in the prompt index, and the agent's `view` treats them as nonexistent.
 - `<user_memory>` never appears when the Project's `use_user_memory` is false.
 - Incognito sessions never read or write memory (no tool, no index).
 - Child Sessions may only `view`. They report findings to the parent; the parent decides what to save.
-- The index is never rewritten mid-session; only at session start and after Compaction.
+- The index is never rewritten mid-session; only at session start and after Compaction. It is frozen as `sessions.memory_index` refs, so a Worker change or crash doesn't change it; only a hard delete drops a line.
 - Memory must never create Approval Rules or change the Permission Mode (ADR 0004).
 - Provider Keys never enter the prompt. A write containing a secret is rejected, never masked.
 - Every memory tool call is shown as a visible chip, even though it skips the Approver.
@@ -232,7 +237,7 @@ Before Tier 2 Compaction the agent gets one turn to save durable facts with this
 
 ## 7. Event types emitted
 
-- `memory.written {memory_id, path, op, version}`: on every successful write from a session, including Tidy-applied writes (in the Tidy run's session or System Session). Not emitted for Memories page edits, approvals, or deletes. `op` is the command. The stored `memory` tool-call event keeps `path` and `op` but redacts `content`.
+- `memory.written {memory_id, path, op, version}`: on every successful write from a session, including Tidy-applied writes (in the Tidy run's session or System Session). Not emitted for Memories page edits, approvals, or deletes. `op` is the command. The stored `memory` tool-call events keep `path` and `op`; `content` and `view` results are `{memory_id, version}` refs (Decision 28).
 
 ## 8. UI touchpoints
 
@@ -273,6 +278,13 @@ All decided 2026-09-24.
 24. **Tidy writes emit `memory.written` into the Tidy run's session** (2026-09-24, confirmed). The System Session when started from the Memories page.
 25. **`create` onto a `pending_review` path overwrites it** (2026-09-26). The row's content is replaced, revisioned and version-bumped; it stays `pending_review`/tainted; the agent gets a plain success, never learning a hidden entry existed.
 
+26. **Frozen index storage** (2026-10-03, S6 grill). `sessions.memory_index = [{memory_id, version}]`, set at the first turn and after Compaction; rendered from `memory_revisions`, which gain `path` and `title`. Why: survives Worker changes, and a hard delete really removes the line (Decision 8).
+27. **`view /memories` is live** (2026-10-03). It returns the current index incl. this session's writes; only the prompt index is frozen.
+28. **No memory text in the Event Log at all** (2026-10-03). `view` results and write inputs are stored as `{memory_id, version}` refs, resolved at projection time; deleted → `(this memory was deleted)`. Extends Decision 8, which missed `view` results.
+29. **Chip undo** (2026-10-03). Undo of `create` = hard delete; undo of any other op = new revision with the previous content, `written_by='user'`, no event.
+30. **Secret check** (2026-10-03). Known key prefixes plus PEM private key headers; no entropy check.
+31. **Incognito is fixed at session create** (2026-10-03).
+
 ## 10. Edge cases
 
 - **Session deleted**: its memories stay; `source_session_id` → NULL; the UI stops showing a source link.
@@ -290,7 +302,8 @@ All decided 2026-09-24.
 - **Same path in two scopes / two Projects**: allowed; uniqueness is `(user_id, scope, project_id, path)`, NULL project treated as equal for user scope.
 - **Child Session write attempt**: refused; it should report to the parent instead.
 - **Memory flush turn in incognito or Child Session**: skipped (see [context.md](context.md) §5.4).
-- **Undo**: writes a new version with the previous content; it does not delete revisions.
+- **Undo**: writes a new version with the previous content; it does not delete revisions. Undo of a `create` hard-deletes the memory.
+- **Hard delete while an old session references it**: that session's index drops the line on its next turn, and its earlier `view` results project as `(this memory was deleted)`.
 - **Any non-`memory` tool output then a write, no user message in between**: tainted → `pending_review`.
 - **`create` at a path held by a `pending_review` entry**: overwrites its content (new revision, version bump), stays `pending_review`/tainted; the agent gets a plain success.
 
@@ -299,8 +312,9 @@ All decided 2026-09-24.
 - Schema: inserting `scope='user'` with a `project_id`, or `scope='project'` without one, fails the CHECK. Duplicate `(user_id, scope, project_id, path)` fails, including for user scope with NULL project.
 - Tool schema sent to Anthropic, OpenAI and Gemini adapters is byte-identical and never uses `memory_20250818`.
 - Each write command creates exactly one `memory_revisions` row and increments `version` by 1.
-- `view <path>` increments `read_count` and sets `last_read_at`; `view /memories` output equals the prompt index.
-- Stored Event Log for a `create` contains `memory.written {memory_id, path, op, version}` and no memory content anywhere (tool-call input redacted).
+- `view <path>` increments `read_count` and sets `last_read_at`; at session start `view /memories` output equals the prompt index.
+- Stored Event Log for a `create` and a `view` contains `memory.written {memory_id, path, op, version}` and `{memory_id, version}` refs, and no memory content anywhere.
+- A Worker crash and re-claim mid-session renders the same index bytes; a hard delete drops that line on the next turn.
 - Hard-deleting a memory leaves no row in `memories` or `memory_revisions` and no content in the Event Log.
 - A write after a web fetch (no user message since) is `tainted=true, status='pending_review'` and absent from the next session's index; after Approve it appears.
 - Incognito session: no `memory` tool in the tool list, no memory blocks in the prompt.

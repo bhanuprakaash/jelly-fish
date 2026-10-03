@@ -164,6 +164,7 @@ Payload rules:
 - Neutral message format only (ADR 0002). Raw provider JSON may be kept only as an optional debug blob.
 - Secrets never enter payloads. Provider Keys stay in the Worker; tool args are scrubbed for known secret header names.
 - A denied tool call becomes `tool.call.completed{is_error: true, denied: true}`.
+- Memory text never enters payloads: `memory` tool inputs and `view` results hold `{memory_id, version}` refs, resolved at projection time ([memory.md](memory.md) Decision 28).
 - `turn.started`'s tool list is always stored as a blob, regardless of size; the inline payload keeps only `tools_hash`.
 - `usage.recorded`: one event per non-zero token class (input, cache read, cache write 5m/1h, output, reasoning, server tools), appended in the same tx as `llm.response`; `cost_micros` comes from the price catalog at record time.
 

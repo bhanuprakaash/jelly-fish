@@ -235,7 +235,7 @@ Inside a parallel batch: sibling calls finish and their `tool.call.completed` ev
 - After a Compaction clear or summary, drop every thinking block after the first edited spot; do not send the `drop_block` beta (Decision 5).
 - After `/model` to a different provider, drop foreign thinking, keep only text and tool calls; on Gemini, add the dummy signature to old function calls (Decision 6).
 - SDK-level retries are disabled; the loop owns retries per §5.3 (Decision 7). No automatic model fallback (Decision 8).
-- `max_tokens` cutoff: drop any incomplete `tool_use`, retry once at the model's max output; still cut off → keep the text, `Park(awaiting_user)` (Decision 9).
+- `max_tokens` cutoff: drop any incomplete `tool_use`, keep the text, `Park(awaiting_user)`; no retry, since every request already asks for the model's max output (Decision 9, amended 2026-10-03).
 - Hooks never write to storage and keep no state between calls; only `exec` appends (Decision 0).
 - Decorators wrap only `Provider`/`Tool`, never the step loop (Decision 0, §4.5).
 - Hooks cannot rewrite tool arguments in the base version (Decision 13).
@@ -280,7 +280,7 @@ All accepted 2026-09-26.
 6. **Foreign-provider thinking after `/model`.** Drop it, keep only text and tool calls. On Gemini, add the dummy signature to old function calls. Never paste another model's reasoning in as text.
 7. **LLM retries are ours.** SDK retries = 0. Neutral error classes (§5.3, research §3.6, [provider-gateway.md](provider-gateway.md) §8.2): `rate_limited` → up to 4 in-process attempts honoring `retry-after` (≤60s). `long_wait` → `timer.set` → `sleeping`. `provider_down` → quick retries, then the Layering below. `key_invalid`/`billing`/`model_unavailable`/`too_large`/`bug` → stop → `session.error{retryable:false}` → `awaiting_user`, each with its own UI action (§5.3). Context window full → Compaction Tier 2, then retry once: Anthropic reports it as `StopReason` `context_exceeded` on a successful response; OpenAI as a `context_length_exceeded` 400, treated the same. **Layering**: if the 4 quick attempts all fail → `session.error{retryable:true}`, the session sleeps and retries after 1 min, 5 min, 15 min; then `failed` and notify the user on their Channels.
 8. **No automatic model fallback** (BYOK). Show the error, suggest `/model`.
-9. **`max_tokens` cut-off.** Drop any incomplete `tool_use`, retry once at the model's max output. Still cut off → keep the text, `awaiting_user`.
+9. **`max_tokens` cut-off.** Drop any incomplete `tool_use`, keep the text, `awaiting_user`. No retry: every request already asks for the model's max output, so a retry would hit the same cap (amended 2026-10-03, S6 grill; was: retry once at max output).
 10. **After an Interrupt**, don't auto-send queued Steering. Go to `awaiting_user`; queued text becomes the next normal message. Mid-stream: `turn.interrupted` (partial text omitted from the prompt; marker `[Previous turn interrupted by user]` merged into the next user message). Started tools: `tool.call.interrupted`. Requested but not started: `tool.call.completed{is_error, "not run: interrupted by user"}`. Also decided: Interrupt when the session is waiting does nothing, EXCEPT `awaiting_children`, which stops all children and moves the parent to `awaiting_user`. Interrupting a parent always propagates to its Child Sessions.
 11. **Tool timeout**: 120s default. Shell up to the Sandbox wall-clock cap; `ToolDef.Timeout` overrides. On timeout the Sandbox kills the process group itself (Docker can't kill an exec, moby#35703): TERM, grace, KILL. The model gets a readable error ("timed out after Ns; the command may have partially run"). Never auto-retry. (Kill mechanics belong to the future sandbox spec; referenced only here.)
 12. **Loop detection: later.** The Budget turn limit covers it now. Later idea (deferred): Gemini-CLI style — sha256 hash of each tool call's name+args, 5 repeats in a row → warn, then pause (`loopDetectionService.ts`).
@@ -309,7 +309,7 @@ All accepted 2026-09-26.
 - **Refusal stop reason**: record it, `Park(awaiting_user)`, no auto-retry.
 - **Malformed tool call** (e.g. Gemini `MALFORMED_FUNCTION_CALL`): retry once, then `session.error`.
 - **Empty `end_turn` right after tool results**: append a continuation nudge as the next user-role message rather than retrying the identical request.
-- **`max_tokens` cut off twice**: keep the (still-truncated) text, `Park(awaiting_user)`; no third attempt.
+- **`max_tokens` cut off**: keep the truncated text, drop the cut-off `tool_use`, `Park(awaiting_user)`; no retry.
 - **Context window full mid-batch**: force Compaction Tier 2 before the retried `StartTurn`; in-flight tool results are unaffected (they're already appended).
 - **Interrupt lands mid-parallel-batch**: started calls → `tool.call.interrupted`; not-yet-started calls in the same batch → `tool.call.completed{is_error, "not run"}` (§5.4).
 - **Tool-list change mid-turn**: ignored until the next user message; `turn.started.tools_hash` and the blob make replay consistent even if the live registry has since changed.
@@ -329,7 +329,7 @@ All accepted 2026-09-26.
 - A fake Provider returning `Overloaded` 4 times then success: exactly 4 retry attempts recorded, honoring a scripted `retry-after`, before the successful `llm.response`.
 - A fake Provider returning `Overloaded` on all 4 attempts: `session.error{retryable:true}` is appended, and a scripted clock shows the next claim eligible at `wake_at` = now+1min (then +5min, +15min on repeat failure), ending `failed` with a Channels notification.
 - A fake Provider returning a 401: `session.error{retryable:false}` appended immediately (no retries), status `awaiting_user`.
-- A fake Provider returning a truncated tool_use (`max_tokens`): the drop-and-retry-once path runs; a second truncation keeps the text and parks `awaiting_user`.
+- A fake Provider returning a truncated tool_use (`max_tokens`): the tool_use is dropped, the text kept, status `awaiting_user`, and no second Provider call.
 - A fake Tool that sleeps past its `ToolDef.Timeout`: `tool.call.completed{is_error, "timed out after Ns…"}`, and the call is never retried automatically.
 - Interrupt fired mid-batch (fake Tool `BlockUntilCancel` for `A`, `B` already completed, `C` not yet started): log ends with `tool.call.interrupted{A}`, `tool.call.completed{C, is_error, "not run: interrupted by user"}`, `turn.interrupted` or `Park(awaiting_user)` per §5.4.
 - Tool-list change fixture: a Connector's `tools_hash` differs mid-turn; the turn in progress uses the frozen blob; a new turn (after the next `user.message`) uses the updated `Defs()`.
