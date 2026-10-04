@@ -82,7 +82,7 @@ func build(t *testing.T) string {
 	return bin
 }
 
-func spawn(t *testing.T, bin string, pool *pgxpool.Pool) *proc {
+func spawn(t *testing.T, bin string, pool *pgxpool.Pool, env ...string) *proc {
 	t.Helper()
 	log := &syncBuf{}
 	cmd := exec.CommandContext(context.WithoutCancel(t.Context()), bin, "worker")
@@ -93,6 +93,7 @@ func spawn(t *testing.T, bin string, pool *pgxpool.Pool) *proc {
 		"JF_HEARTBEAT="+heartbeat.String(),
 		"JF_MASTER_KEY=m1:"+base64.StdEncoding.EncodeToString(make([]byte, 32)),
 	)
+	cmd.Env = append(cmd.Env, env...)
 	cmd.Stdout, cmd.Stderr = log, log
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start worker: %v", err)
@@ -272,5 +273,50 @@ func TestCrashLoopFailsOnSixthClaim(t *testing.T) {
 	}
 	if got := count(t, pool, `SELECT count(*) FROM events WHERE session_id = $1 AND type = 'session.error' AND payload->>'code' = 'crash_loop'`, sid); got != 1 {
 		t.Fatalf("crash_loop errors = %d, want 1", got)
+	}
+}
+
+func TestKillDuringToolCallInterruptsIt(t *testing.T) {
+	pool := testdb.NewPool(t)
+	bin := build(t)
+	sideEffects := filepath.Join(t.TempDir(), "side-effects.log")
+	env := "JF_FAKE_TOOL_LOG=" + sideEffects
+	sid := newSession(t, pool, "/tool slow_side_effect 60s")
+
+	a := spawn(t, bin, pool, env)
+	waitFor(t, "tool.call.started", rescueWithin, func() bool { return hasEvent(t, pool, sid, eventlog.TypeToolStarted) })
+	waitFor(t, "the side effect", rescueWithin, func() bool {
+		b, _ := os.ReadFile(sideEffects)
+		return bytes.Count(b, []byte("\n")) == 1
+	})
+	a.kill(t)
+	killed := time.Now()
+
+	spawn(t, bin, pool, env)
+	waitFor(t, "tool.call.interrupted", rescueWithin, func() bool { return hasEvent(t, pool, sid, eventlog.TypeToolInterrupted) })
+	t.Logf("takeover took %s", time.Since(killed).Round(time.Millisecond))
+	waitSettled(t, pool, sid, eventlog.StatusAwaitingUser)
+
+	all := types(t, pool, sid)
+	at := slices.Index(all, eventlog.TypeToolInterrupted)
+	if got := all[at : at+2]; !slices.Equal(got, []string{eventlog.TypeToolInterrupted, eventlog.TypeTurnStarted}) {
+		t.Fatalf("events from the interrupt = %v, want tool.call.interrupted then turn.started", all[at:])
+	}
+	var payload struct {
+		Reason string `json:"reason"`
+	}
+	var raw []byte
+	if err := pool.QueryRow(t.Context(), `SELECT payload FROM events WHERE session_id = $1 AND type = $2`, sid, eventlog.TypeToolInterrupted).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil || payload.Reason != "worker_lost" {
+		t.Fatalf("tool.call.interrupted payload = %s (err %v), want reason worker_lost", raw, err)
+	}
+	b, err := os.ReadFile(sideEffects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := bytes.Count(b, []byte("\n")); n != 1 {
+		t.Fatalf("side effect ran %d times, want 1", n)
 	}
 }

@@ -184,3 +184,15 @@ func (m Message) Text() string {
 	}
 	return b.String()
 }
+
+// ToolResultText joins the text of the tool results in m with "; ", in
+// order. It is empty when m holds none.
+func (m Message) ToolResultText() string {
+	var texts []string
+	for _, p := range m.Parts {
+		if p.Kind == KindToolResult {
+			texts = append(texts, Message{Parts: p.ToolResult.Parts}.Text())
+		}
+	}
+	return strings.Join(texts, "; ")
+}

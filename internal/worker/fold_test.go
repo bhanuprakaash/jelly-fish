@@ -1,6 +1,7 @@
 package worker_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
@@ -111,5 +112,46 @@ func TestFoldTitleInputs(t *testing.T) {
 				t.Fatalf("Trigger=%q TopLevel=%v TurnsStarted=%d Renamed=%v", st.Trigger, st.TopLevel, st.TurnsStarted, st.Renamed)
 			}
 		})
+	}
+}
+
+func TestFoldSendsToolResultsInCallOrder(t *testing.T) {
+	m := msg.AssistantText("checking")
+	for _, id := range []string{"a", "b"} {
+		m.Parts = append(m.Parts, msg.Part{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: id, Name: "sleep", Args: json.RawMessage(`{}`)}})
+	}
+	result := func(id, text string) msg.Message {
+		return msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleUser, Parts: []msg.Part{
+			{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{CallID: id, Parts: []msg.Part{{Kind: msg.KindText, Text: text}}}},
+		}}
+	}
+	evs := []eventlog.Event{
+		ev(t, 1, eventlog.TypeSessionCreated, map[string]any{"agent": map[string]string{"model": "fake"}}),
+		ev(t, 2, eventlog.TypeUserMessage, map[string]any{"message": msg.UserText("hi")}),
+		ev(t, 3, eventlog.TypeTurnStarted, map[string]any{"turn_id": "t1", "input_through_seq": 2}),
+		ev(t, 4, eventlog.TypeLLMResponse, map[string]any{"turn_id": "t1", "message": m, "stop_reason": "tool_use"}),
+		ev(t, 5, eventlog.TypeToolRequested, map[string]any{"tool_call_id": "a", "tool": "sleep", "args": json.RawMessage(`{}`)}),
+		ev(t, 6, eventlog.TypeToolRequested, map[string]any{"tool_call_id": "b", "tool": "sleep", "args": json.RawMessage(`{}`)}),
+		ev(t, 7, eventlog.TypeToolStarted, map[string]any{"tool_call_id": "a"}),
+		ev(t, 8, eventlog.TypeToolStarted, map[string]any{"tool_call_id": "b"}),
+		ev(t, 9, eventlog.TypeToolCompleted, map[string]any{"tool_call_id": "b", "result": result("b", "B done")}),
+		// Steering sent while the tools ran.
+		ev(t, 10, eventlog.TypeUserMessage, map[string]any{"message": msg.UserText("also this")}),
+		ev(t, 11, eventlog.TypeToolInterrupted, map[string]any{"tool_call_id": "a", "reason": "worker_lost", "note": "outcome unknown; check before retrying"}),
+	}
+	st, err := worker.Fold(evs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.Marshal(st.Messages[2:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"msg_v":2,"role":"user","parts":[` +
+		`{"k":"tool_result","tr":{"call_id":"a","parts":[{"k":"text","text":"outcome unknown; check before retrying"}],"is_error":true}},` +
+		`{"k":"tool_result","tr":{"call_id":"b","parts":[{"k":"text","text":"B done"}]}}]},` +
+		`{"msg_v":2,"role":"user","parts":[{"k":"text","text":"also this"}]}]`
+	if string(got) != want {
+		t.Fatalf("messages after the reply =\n%s\nwant\n%s", got, want)
 	}
 }

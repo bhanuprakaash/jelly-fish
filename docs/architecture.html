@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>jelly-fish · architecture canvas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --bg: #0d1016; --region: #151a24; --card: #1c2230; --card2: #232a3a; --line: #2b3346;
+  --fg: #e6e9ef; --dim: #9aa4b6; --faint: #6b7487;
+  --http: #4ea1ff; --sql: #3fcf8e; --notify: #f5b942; --sse: #b48cff; --llm: #ff7aa8; --otel: #ff9f43; --int: #8b95a7; --key: #5ad1d1;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+code, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .9em; }
+code { background: #0e121a; border: 1px solid #252c3c; border-radius: 5px; padding: 0 5px; color: #cfd6e4; }
+#viewport { position: fixed; inset: 0; cursor: grab; touch-action: none;
+  background-image: radial-gradient(circle, #252c3a 1.2px, transparent 1.3px); }
+#viewport.dragging { cursor: grabbing; }
+#world { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; }
+#world.anim, #viewport.anim { transition: transform .55s cubic-bezier(.3,.7,.2,1), background-size .55s, background-position .55s; }
+
+/* regions */
+.region { position: absolute; background: var(--region); border: 1px solid var(--line); border-radius: 22px; padding: 34px 40px 40px; }
+.region > h2 { margin: 0 0 6px; font-size: 40px; letter-spacing: -.5px; }
+.region > h2 .n { color: var(--faint); margin-right: 10px; }
+.region > .sub { color: var(--dim); font-size: 18px; margin: 0 0 26px; max-width: 1100px; }
+.big { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 150px; font-weight: 700; line-height: 1.05; letter-spacing: -3px; color: #e6e9ef; padding: 60px;
+  background: rgba(21,26,36,.94); border-radius: 22px; z-index: 5; opacity: 0; pointer-events: none; transition: opacity .25s; }
+body.far .big { opacity: 1; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+.card h3 { margin: 0 0 8px; font-size: 19px; }
+.card h4 { margin: 12px 0 4px; font-size: 15px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; }
+.card p { margin: 6px 0; }
+.card ul, .card ol { margin: 6px 0; padding-left: 20px; }
+.card li { margin: 3px 0; }
+.ref { color: var(--faint); font-size: 12.5px; font-family: ui-monospace, Menlo, monospace; }
+.dim { color: var(--dim); }
+.grid { display: grid; gap: 18px; }
+.pill { display: inline-block; padding: 1px 9px; border-radius: 99px; font-size: 12.5px; font-weight: 600; border: 1px solid currentColor; }
+.c-http { color: var(--http); } .c-sql { color: var(--sql); } .c-notify { color: var(--notify); }
+.c-sse { color: var(--sse); } .c-llm { color: var(--llm); } .c-otel { color: var(--otel); } .c-int { color: var(--int); } .c-key { color: var(--key); }
+
+/* positioned diagrams */
+.diagram { position: relative; }
+.diagram > svg.links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.node { position: absolute; background: var(--card); border: 1.5px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.node > .t { font-weight: 700; font-size: 20px; margin-bottom: 4px; }
+.node > .k { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--faint); }
+.node .box { background: var(--card2); border: 1px solid #323b50; border-radius: 10px; padding: 9px 12px; margin-top: 9px; }
+.node .box b { display: block; font-size: 15px; }
+.node .box span { color: var(--dim); font-size: 13.5px; }
+.node.pod { border-style: dashed; background: #171d29; }
+.node.ext { border-color: #4a3550; }
+.node.pg { border-color: #2f5f4c; }
+.node.ghost { opacity: .45; }
+.lbl { position: absolute; transform: translate(-50%, -50%); background: #0f131b; border: 1px solid; border-radius: 8px;
+  padding: 3px 8px; font-size: 12.5px; white-space: nowrap; line-height: 1.3; text-align: center; }
+
+/* sequence diagram */
+.seq { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); column-gap: 0; row-gap: 4px; }
+.lifeline { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed #2c3445; }
+.lane { text-align: center; padding: 12px 8px; margin: 0 10px 14px; background: var(--card2); border: 1px solid #36405a;
+  border-radius: 12px; font-weight: 700; font-size: 17px; position: relative; z-index: 1; }
+.lane small { display: block; color: var(--dim); font-weight: 400; font-size: 12.5px; }
+.phase { grid-column: 1 / -1; margin: 22px 0 8px; padding: 10px 16px; background: #10141c; border-left: 4px solid var(--fg);
+  border-radius: 6px; font-size: 21px; font-weight: 700; position: relative; z-index: 1; }
+.phase span { font-weight: 400; color: var(--dim); font-size: 15px; margin-left: 10px; }
+.step { position: relative; z-index: 1; padding: 6px 0 10px; border-radius: 10px; transition: background .2s, box-shadow .2s; }
+.step:hover, .step.active { background: rgba(255,255,255,.04); }
+.step.active { box-shadow: 0 0 0 2px var(--fg); }
+.step .inner { margin: 0 var(--half); }
+.step .arrow { height: 2.5px; background: var(--c); position: relative; margin: 8px 0 6px; }
+.step .arrow::after { content: ""; position: absolute; top: -6px; border: 7px solid transparent; }
+.step.ltr .arrow::after { right: -4px; border-left: 11px solid var(--c); border-right: 0; }
+.step.rtl .arrow::after { left: -4px; border-right: 11px solid var(--c); border-left: 0; }
+.step.dashed .arrow { background: repeating-linear-gradient(90deg, var(--c) 0 10px, transparent 10px 16px); }
+.step .label { font-weight: 650; font-size: 15px; }
+.step .num { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 22px; border-radius: 11px;
+  background: var(--c); color: #0d1016; font-size: 12.5px; font-weight: 800; margin-right: 7px; padding: 0 6px; }
+.step .detail { color: var(--dim); font-size: 13.5px; margin-top: 3px; }
+.step .detail code { font-size: 12px; }
+.step.self .inner { margin: 0 10px; background: var(--card); border: 1.5px solid var(--c); border-radius: 10px; padding: 8px 10px; }
+.step .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--c); font-weight: 700; margin-left: 4px; }
+
+/* tables */
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th { text-align: left; color: var(--dim); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .6px;
+  border-bottom: 1px solid var(--line); padding: 8px 10px; }
+td { border-bottom: 1px solid #222a39; padding: 8px 10px; vertical-align: top; }
+tr.grp td { background: #10141c; color: var(--dim); font-weight: 600; }
+.yes { color: var(--sql); font-weight: 700; } .no { color: var(--faint); }
+
+/* state machine */
+.state { position: absolute; padding: 14px 20px; border-radius: 40px; font-weight: 700; font-size: 20px; border: 2px solid; background: var(--card); text-align: center; }
+.state small { display: block; font-weight: 400; font-size: 12.5px; color: var(--dim); }
+
+/* flow */
+.flow { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.flow .f { background: var(--card2); border: 1px solid #36405a; border-radius: 10px; padding: 9px 13px; }
+.flow .f b { font-size: 15.5px; }
+.flow .f span { color: var(--dim); font-size: 13.5px; display: block; }
+.flow .down { text-align: center; color: var(--faint); font-size: 18px; line-height: 22px; }
+
+/* UI chrome */
+#nav { position: fixed; left: 14px; top: 14px; z-index: 10; background: rgba(16,20,28,.92); border: 1px solid var(--line);
+  border-radius: 14px; padding: 12px; width: 268px; backdrop-filter: blur(8px); }
+#nav h1 { font-size: 15px; margin: 0 0 8px; }
+#nav button, #player button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg); padding: 5px 8px;
+  border-radius: 7px; font: inherit; font-size: 13.5px; cursor: pointer; }
+#nav button:hover, #player button:hover { background: #222a3a; }
+#nav .play { background: #23314a; margin-top: 8px; font-weight: 650; }
+#nav .help { color: var(--faint); font-size: 12px; margin-top: 10px; line-height: 1.5; }
+#zoom { position: fixed; right: 14px; top: 14px; z-index: 10; background: rgba(16,20,28,.92); border: 1px solid var(--line);
+  border-radius: 10px; padding: 6px 10px; font-size: 13px; color: var(--dim); }
+#player { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10; width: min(980px, calc(100vw - 320px));
+  background: rgba(16,20,28,.96); border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px; display: none; }
+#player.on { display: block; }
+#player .row { display: flex; gap: 10px; align-items: center; }
+#player .row button { width: auto; background: #222a3a; padding: 6px 14px; }
+#player .pos { color: var(--dim); font-size: 13px; margin-left: auto; }
+#player .pl { font-weight: 700; font-size: 17px; margin: 8px 0 4px; }
+#player .pd { color: var(--dim); font-size: 14.5px; }
+#player .pp { font-size: 12.5px; color: var(--faint); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="viewport"><div id="world">
+
+<!-- ============================================================ 0. READ ME -->
+<section class="region" data-row="0" style="width:760px" id="r-readme" data-title="Read me">
+  <h2>jelly-fish, on one canvas</h2>
+  <p class="sub">Pan by dragging or two-finger scrolling. Pinch, or hold ⌘/ctrl and scroll, to zoom. Use the panel on the left to jump around, or press <b>Play</b> to walk through a chat step by step.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Five rules that explain everything</h3>
+      <ol>
+        <li><b>Postgres is the only thing <code>api</code> and <code>worker</code> share.</b> There's no Redis, no queue and no RPC. They never talk to each other directly.</li>
+        <li><b>The <code>events</code> table is the source of truth.</b> The <code>sessions</code> row (status, last_seq, title, tokens) is a projection of it, updated in the <i>same</i> transaction.</li>
+        <li><b>A NOTIFY is a hint, not data.</b> Whoever receives <code>jf_events</code>, <code>jf_activity</code> or <code>jf_runnable</code> re-reads Postgres. Lost hints are covered by polls and pings.</li>
+        <li><b>Token deltas are ephemeral.</b> They travel over <code>jf_stream</code> and are never stored. The durable reply is the <code>llm.response</code> event.</li>
+        <li><b>Only one Worker advances a session at a time.</b> A Lease plus an epoch fence enforce this: every Worker write checks <code>lease_owner + lease_epoch + lease_expires_at</code>.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Colour legend</h3>
+      <p><span class="pill c-http">HTTP</span> browser → api JSON calls &nbsp; <span class="pill c-sse">SSE</span> api → browser streams</p>
+      <p><span class="pill c-sql">SQL</span> reads and transactional writes &nbsp; <span class="pill c-notify">NOTIFY</span> Postgres LISTEN/NOTIFY</p>
+      <p><span class="pill c-llm">LLM</span> Anthropic calls &nbsp; <span class="pill c-otel">OTel</span> traces &nbsp; <span class="pill c-key">KEYS</span> crypto &nbsp; <span class="pill c-int">internal</span> in-process</p>
+      <p class="dim">A dashed arrow means best-effort, async or background.</p>
+    </div>
+    <div class="card">
+      <h3>Where things live</h3>
+      <ul>
+        <li><code>cmd/jelly-fish</code>: one binary with roles <code>api</code> · <code>worker</code> · <code>migrate</code> · <code>keys rotate</code></li>
+        <li><code>internal/eventlog</code>: Store (append, claim, lease) and Repo (tenant-scoped API view)</li>
+        <li><code>internal/stream</code>: Hub, PGDeltaBus, Listen loop, UI serializer, metrics</li>
+        <li><code>internal/worker</code>: claim loop, drive, fold/decide, gateway, title, rotate</li>
+        <li><code>internal/provider/*</code>: Anthropic adapter, retry, tracing, catalog, fake</li>
+        <li><code>web/src/lib/use*Stream.ts</code>: the two EventSource clients</li>
+      </ul>
+    </div>
+  </div>
+  <div class="big">Read me</div>
+</section>
+
+<!-- ============================================================ 1. BIG PICTURE -->
+<section class="region" data-row="0" style="width:3720px" id="r-map" data-title="1 · The big picture">
+  <h2><span class="n">1</span>The big picture: processes &amp; wires</h2>
+  <p class="sub">This is the k8s namespace <code>jelly-fish</code>. It runs one <code>api</code> pod (with <code>migrate</code> as its init container) and two <code>worker</code> pods, all from the same image. They coordinate only through Postgres.</p>
+  <div class="diagram" id="d-map" style="height:1300px">
+
+    <div class="node ext" id="m-browser" style="left:0;top:330px;width:380px">
+      <div class="k">client</div><div class="t">Browser (React PWA)</div>
+      <div class="box"><b>Chat.tsx + useSessionStream</b><span>One EventSource per open chat: <code>GET /api/sessions/{id}/events</code>. It renders durable frames plus live <code>delta</code> text.</span></div>
+      <div class="box"><b>ChatList + useActivityStream</b><span>One EventSource per tab: <code>GET /api/activity</code>. It drives the busy, failed and approval badges, and refetches <code>GET /api/sessions</code> when a chat is new or untitled.</span></div>
+      <div class="box"><b>Mints its own ids</b><span><code>session_id</code> and <code>client_msg_id</code> come from <code>crypto.randomUUID()</code>, so a retried POST is idempotent.</span></div>
+      <div class="box"><b>Tab hidden ⇒ streams closed</b><span>On show it reopens with <code>?after=lastSeq</code>. The activity stream gets a fresh snapshot.</span></div>
+    </div>
+
+    <div class="node pod" id="m-api" style="left:660px;top:0;width:660px">
+      <div class="k">Deployment api · 1 replica · :8080 http · :9090 health</div><div class="t">api pod</div>
+      <div class="box" id="m-migrate" style="border-style:dashed"><b>initContainer: migrate</b><span>Runs goose migrations from <code>migrations/*.sql</code> and bootstraps <code>JF_ADMIN_EMAIL</code> before api starts.</span></div>
+      <div class="box"><b>HTTP mux</b><span>CrossOriginProtection → <code>authn</code> (cookie <code>__Host-jf_login</code> → sha256 → <code>login_sessions</code>) → handlers. SSE routes also <code>rejectCrossSite</code>.</span></div>
+      <div class="box"><b>eventlog.Repo</b><span>Tenant-scoped writes: CreateSession, PostMessage, Interrupt, Retry, ChangeModel, Rename. All of them are <b>unfenced</b> appends.</span></div>
+      <div class="box" id="m-listen"><b>stream.Listen</b><span>A single PG connection LISTENs on <code>jf_events</code>, <code>jf_activity</code> and <code>jf_stream</code>. One connection means notifications arrive in commit order.</span></div>
+      <div class="box" id="m-hub"><b>stream.Hub</b><span>In-memory fan-out: <code>sessions[sid] → chan(cap 1)</code> and <code>activity[user] → hints(64)+resync</code>.</span></div>
+      <div class="box" id="m-bus"><b>stream.PGDeltaBus</b><span><code>subs[sid] → chan Delta(64)</code>. A slow subscriber loses the rest of that turn's deltas ("gapped").</span></div>
+      <div class="box"><b>streamLimiter</b><span>At most 20 open SSE streams per user per node. Past that the request gets 429.</span></div>
+      <div class="box" id="m-metrics"><b>:9090 /metrics, /healthz, /readyz</b><span>Prometheus: <code>jf_streams_open</code>, dropped deltas, deadline closes, 429s, NOTIFY queue usage.</span></div>
+    </div>
+
+    <div class="node pg" id="m-pg" style="left:1680px;top:180px;width:520px">
+      <div class="k">StatefulSet postgres · :5432</div><div class="t">Postgres</div>
+      <div class="box"><b>sessions</b><span>status, last_seq, lease_owner, lease_epoch, lease_expires_at, ready_at, wake_at, cancel_requested, recovery_attempts, title, tokens_used, cost_micros, turns</span></div>
+      <div class="box"><b>events</b><span>PK (session_id, seq), gapless. Columns: type, actor, correlation_id, lease_epoch, payload jsonb. Unique index on <code>payload-&gt;&gt;'client_msg_id'</code> for <code>user.message</code>.</span></div>
+      <div class="box"><b>usage</b><span>One row per <code>usage.recorded</code>, unique (session_id, seq)</span></div>
+      <div class="box"><b>provider_keys</b><span>(user_id, provider) → ciphertext, key_id, last4, models jsonb</span></div>
+      <div class="box"><b>users · workspaces · projects · invites · login_codes · login_sessions</b><span>Auth and tenancy. Every Repo query filters on (workspace_id, user_id).</span></div>
+      <div class="box" style="border-color:#6b5520"><b class="c-notify">NOTIFY channels</b><span><code>jf_runnable</code> · <code>jf_events</code> · <code>jf_activity</code> · <code>jf_stream</code>. See region 2.</span></div>
+    </div>
+
+    <div class="node pod" id="m-worker" style="left:2540px;top:0;width:560px">
+      <div class="k">Deployment worker · 2 replicas · :9090 health</div><div class="t">worker pods (×2)</div>
+      <div class="box" id="m-wlisten"><b>listen jf_runnable</b><span>Wakes the claim loop. It also polls every 3s, which is what fires timers and rescues expired leases.</span></div>
+      <div class="box"><b>Run → claimAll</b><span>Up to 50 sessions at once (slots). <code>Claim</code> uses <code>FOR UPDATE SKIP LOCKED</code>, so the two pods never take the same row.</span></div>
+      <div class="box"><b>drive(session) goroutine</b><span>Load → upcast → Fold → Decide → exec, looping until it parks. A <b>heartbeat</b> goroutine renews the lease every 10s (TTL 30s) and picks up interrupts.</span></div>
+      <div class="box" id="m-gw"><b>Gateway</b><span>Per turn: catalog → provider, open the user's key with the keyring, build the client. Wrapped as <code>retry( tracing( anthropic ) )</code>.</span></div>
+      <div class="box"><b>stream.Batcher</b><span>Coalesces token text and calls <code>pg_notify('jf_stream')</code> every 50ms.</span></div>
+      <div class="box"><b>Title side call</b><span>On the first turn, runs in parallel, has no retry and a 10s timeout, and writes <code>session.renamed{by:auto}</code>.</span></div>
+      <div class="box"><b>RunModelRefresh</b><span>At start and then every 24h, re-lists models for every saved key.</span></div>
+      <div class="box" id="m-otel"><b>telemetry.Setup</b><span>OTLP/HTTP exporter, configured from <code>OTEL_*</code> env. Without an endpoint it's a no-op.</span></div>
+    </div>
+
+    <div class="node ext" id="m-anthropic" style="left:3360px;top:120px;width:260px">
+      <div class="k">external</div><div class="t">Anthropic API</div>
+      <span class="dim">Streaming Messages API, called with the <b>user's own key</b> (BYOK). In dev builds a Fake Provider can stand in.</span>
+    </div>
+    <div class="node ext" id="m-jaeger" style="left:3360px;top:620px;width:260px">
+      <div class="k">Deployment jaeger</div><div class="t">Jaeger</div>
+      <span class="dim">OTLP in on <code>:4318</code>, UI on <code>:16686</code> (<code>make serve</code>).</span>
+    </div>
+    <div class="node ext" id="m-mail" style="left:680px;top:1100px;width:300px">
+      <div class="k">Deployment mailpit</div><div class="t">Mailpit (SMTP)</div>
+      <span class="dim">Delivers login codes and links. UI on :8025.</span>
+    </div>
+    <div class="node ext ghost" id="m-minio" style="left:1680px;top:1120px;width:300px">
+      <div class="k">Deployment minio</div><div class="t">MinIO</div>
+      <span class="dim">Deployed but not used by code yet (uploads/artifacts later).</span>
+    </div>
+    <div class="node" id="m-env" style="left:2540px;top:1010px;width:560px">
+      <div class="k">config (env)</div>
+      <span class="dim"><code>DATABASE_URL</code> · <code>JF_MASTER_KEY</code> (api+worker) · <code>JF_LEASE_TTL</code>=30s · <code>JF_HEARTBEAT</code>=10s · <code>JF_DEFAULT_MODEL</code> · <code>JF_SMTP_URL</code> · <code>JF_PUBLIC_URL</code> · <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> (worker only)</span>
+    </div>
+  </div>
+  <div class="big">The big picture</div>
+</section>
+
+<!-- ============================================================ 2. PG BUS -->
+<section class="region" data-row="0" style="width:1500px" id="r-bus" data-title="2 · Postgres as message bus">
+  <h2><span class="n">2</span>Postgres as the message bus</h2>
+  <p class="sub">There are four LISTEN/NOTIFY channels. A NOTIFY sent inside a transaction is delivered only <b>after commit</b>, so a hint can never point at a row you can't read yet.</p>
+  <div class="grid">
+    <div class="card">
+      <table>
+        <tr><th>channel</th><th>payload</th><th>sent by</th><th>listened by</th><th>what the listener does</th></tr>
+        <tr><td><b class="c-notify">jf_runnable</b></td><td><code>&lt;session_id&gt;</code></td>
+          <td>CreateSession; any append whose status change goes <b>to runnable</b> (user message, retry, model change); <code>Store.Release</code></td>
+          <td>every <b>worker</b> (<code>worker.listen</code>)</td>
+          <td>Pokes the claim loop: <code>wake &lt;- struct{}{}</code> → <code>claimAll</code>. The hint carries no ownership. The <code>Claim</code> SQL decides who gets the session.</td></tr>
+        <tr><td><b class="c-notify">jf_events</b></td><td><code>&lt;session_id&gt;:&lt;seq&gt;</code></td>
+          <td><b>every</b> append (api or worker) and every Claim, via <code>notifyAppend</code></td>
+          <td>every <b>api</b> pod (<code>stream.Listen</code>)</td>
+          <td><code>hub.Notify(sid)</code> → each open Session stream for that sid runs <code>ListEvents(seq &gt; lastSent)</code> and writes SSE frames.</td></tr>
+        <tr><td><b class="c-notify">jf_activity</b></td><td><code>&lt;user_id&gt;:&lt;session_id&gt;</code></td>
+          <td>appends containing <code>session.status_changed</code> or <code>session.created</code> (Claim included)</td>
+          <td>every <b>api</b> pod</td>
+          <td><code>hub.NotifyActivity(user, sid)</code> → the Activity stream runs <code>ActivityStatusOf(sid)</code> and writes <code>event: status</code>. If the queue is full it resyncs with a snapshot instead.</td></tr>
+        <tr><td><b class="c-notify">jf_stream</b></td><td>JSON <code>Delta</code> (under 7900 B; longer text is split)</td>
+          <td><b>worker</b> Batcher, every 50ms, <b>outside</b> any tx (<code>pool.Exec</code>)</td>
+          <td>every <b>api</b> pod</td>
+          <td><code>bus.deliverPayload</code> → subscriber channels → <code>event: delta</code> frame. Deltas are never stored, so a missed one is gone.</td></tr>
+      </table>
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card">
+        <h3>Why one LISTEN connection in api matters</h3>
+        <p>A connection receives notifications in commit order. Before appending <code>llm.response</code>, the worker calls <code>stopBatch()</code>, which flushes the last delta. So the api sees the turn's last delta <b>before</b> the <code>jf_events</code> hint for the final reply. The Session stream also drains queued deltas (<code>pendingDeltas</code>) before writing durable frames.</p>
+        <p class="ref">internal/stream/listen.go · internal/api/sessions.go</p>
+      </div>
+      <div class="card">
+        <h3>Lost hints are fine</h3>
+        <ul>
+          <li><b>worker:</b> polls <code>Claim</code> every 3s anyway. Timers (<code>wake_at</code>) and expired leases are <i>only</i> found by this poll.</li>
+          <li><b>api Listen drop:</b> re-LISTENs after 3s, then <code>hub.hintAll()</code>. Every session stream re-queries and every activity stream gets a fresh snapshot.</li>
+          <li><b>Session stream:</b> a 15s ping also re-queries <code>seq &gt; lastSent</code> and re-checks the Login Session.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Multiple api pods</h3>
+        <p>Each api pod runs its own Listen and gets <i>every</i> notification, then routes it only to the streams it holds. Scaling api out needs no coordination. The per-user cap of 20 streams is counted per node.</p>
+      </div>
+      <div class="card">
+        <h3>Watch it</h3>
+        <p><code>jf_pg_notification_queue_usage</code> is the fraction of Postgres's NOTIFY queue in use. It grows if some listener stops reading. <code>jf_stream_deltas_dropped_total</code> counts deltas dropped for slow browsers.</p>
+      </div>
+    </div>
+  </div>
+  <div class="big">Postgres as the message bus</div>
+</section>
+
+<!-- ============================================================ 3. SEQUENCE -->
+<section class="region" data-row="1" style="width:3300px" id="r-seq" data-title="3 · Scenario: user starts a chat">
+  <h2><span class="n">3</span>Scenario: a user starts a new chat</h2>
+  <p class="sub">This is everything from pressing Enter to the reply settling and the sidebar badge clearing. Press <b>Play</b> in the left panel to step through it with ←/→. The step numbers match the event-log table in region 4.</p>
+  <div class="seq" id="seq"></div>
+  <div class="big">Scenario:<br>user starts a chat</div>
+</section>
+
+<!-- ============================================================ 4. EVENT LOG -->
+<section class="region" data-row="1" style="width:1250px" id="r-log" data-title="4 · The event log of that chat">
+  <h2><span class="n">4</span>The event log of that chat</h2>
+  <p class="sub">These are the rows in <code>events</code> for one session after its first exchange. <b>Browser?</b> means the event passes the <code>stream.ToUI</code> allowlist; filtered fields are noted.</p>
+  <div class="card">
+    <table>
+      <tr><th>seq</th><th>type</th><th>actor · tx</th><th>browser?</th><th>notifies</th></tr>
+      <tr class="grp"><td colspan="5">POST /api/sessions: api, one tx (step 3)</td></tr>
+      <tr><td>1</td><td><b>session.created</b><br><span class="dim">agent {General, model}, trigger user_message</span></td><td>user:… · api</td><td class="yes">yes</td><td rowspan="2" class="dim">runnable · activity · events</td></tr>
+      <tr><td>2</td><td><b>user.message</b><br><span class="dim">client_msg_id, message (neutral format)</span></td><td>user:… · api</td><td class="yes">yes</td></tr>
+      <tr class="grp"><td colspan="5">Claim: worker, one tx (step 10). The sessions row was inserted with status runnable, so no event records that.</td></tr>
+      <tr><td>3</td><td><b>session.status_changed</b><br><span class="dim">runnable → running, reason claimed, lease_epoch 1</span></td><td>system · worker</td><td class="yes">yes</td><td class="dim">activity · events</td></tr>
+      <tr class="grp"><td colspan="5">AppendFenced (step 15)</td></tr>
+      <tr><td>4</td><td><b>turn.started</b><br><span class="dim">turn_id, model, provider, input_through_seq 3, tools_hash</span></td><td>worker:host:pid</td><td class="no">no</td><td class="dim">events</td></tr>
+      <tr class="grp"><td colspan="5">Title side call, fenced without ExpectSeq (step 22). Its position varies and it can land after llm.response.</td></tr>
+      <tr><td>5–6</td><td><b>usage.recorded</b> ×N<br><span class="dim">title tokens, no correlation_id</span></td><td>worker</td><td class="no">no</td><td rowspan="2" class="dim">events</td></tr>
+      <tr><td>7</td><td><b>session.renamed</b> {title, by: auto}<br><span class="dim">projects sessions.title; dropped if a user rename exists</span></td><td>worker</td><td class="yes">yes</td></tr>
+      <tr class="grp"><td colspan="5">AppendFenced after the stream ends (step 25)</td></tr>
+      <tr><td>8</td><td><b>llm.response</b><br><span class="dim">turn_id, message, stop_reason, usage → sessions.turns++</span></td><td>worker</td><td class="yes">yes <span class="dim">(usage stripped)</span></td><td rowspan="2" class="dim">events</td></tr>
+      <tr><td>9–10</td><td><b>usage.recorded</b> per non-zero class<br><span class="dim">input / cache_read / cache_write_5m / cache_write_1h / output. Each inserts a usage row and bumps tokens_used and cost_micros.</span></td><td>worker</td><td class="no">no</td></tr>
+      <tr class="grp"><td colspan="5">Park: AppendFenced with ExpectSeq = last_seq (step 29)</td></tr>
+      <tr><td>11</td><td><b>session.completed</b> {outcome end_turn}</td><td>worker</td><td class="no">no</td><td rowspan="2" class="dim">activity · events</td></tr>
+      <tr><td>12</td><td><b>session.status_changed</b><br><span class="dim">running → awaiting_user. Lease cleared.</span></td><td>system · worker</td><td class="yes">yes</td></tr>
+      <tr class="grp"><td colspan="5">Follow-up: POST /api/sessions/{id}/messages</td></tr>
+      <tr><td>13</td><td><b>user.message</b></td><td>user:… · api</td><td class="yes">yes</td><td rowspan="2" class="dim">runnable · activity · events</td></tr>
+      <tr><td>14</td><td><b>session.status_changed</b> awaiting_user → runnable</td><td>system · api</td><td class="yes">yes</td></tr>
+      <tr><td>15…</td><td colspan="4" class="dim">Claim (running) → turn.started → llm.response → … → park again. No title this time, because TurnsStarted &gt; 0.</td></tr>
+    </table>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:18px">
+    <div class="card"><h3>Never sent to the browser</h3><p><code>turn.started</code>, <code>usage.recorded</code>, <code>session.completed</code>, <code>user.interrupt</code> and <code>timer.fired</code> are skipped. <code>session.error</code> only sends code, retryable, request_id and turn_id. <code>config_changed</code> only sends model. <code>timer.set</code> only sends wake_at and reason.</p><p class="ref">internal/stream/serializer.go</p></div>
+    <div class="card"><h3>Gapless seq, one writer at a time</h3><p>Every append locks the session row (<code>SELECT … FOR UPDATE</code>), bumps <code>last_seq</code> by n and inserts seqs <code>last-n+1…last</code>. The api and the worker can both append, and the row lock serializes them.</p><p class="ref">eventlog/store.go appendTx</p></div>
+  </div>
+  <div class="big">The event log</div>
+</section>
+
+<!-- ============================================================ 5. API FANOUT -->
+<section class="region" data-row="2" style="width:2050px" id="r-fan" data-title="5 · Inside api: Hub & DeltaBus">
+  <h2><span class="n">5</span>Inside the api pod: Listen → Hub / DeltaBus → SSE</h2>
+  <p class="sub">This is how one Postgres connection feeds every open browser stream on the node. The handlers always <b>subscribe before they query</b>, so nothing can slip between the replay and going live.</p>
+  <div class="diagram" id="d-fan" style="height:1000px">
+    <div class="node pg" id="f-pg" style="left:0;top:330px;width:260px"><div class="k">postgres</div><div class="t">NOTIFY</div>
+      <div class="box"><b class="c-notify">jf_events</b><span>sid:seq</span></div>
+      <div class="box"><b class="c-notify">jf_activity</b><span>user:sid</span></div>
+      <div class="box"><b class="c-notify">jf_stream</b><span>Delta JSON</span></div></div>
+    <div class="node" id="f-listen" style="left:380px;top:360px;width:300px"><div class="k">goroutine</div><div class="t">stream.Listen</div>
+      <span class="dim">One pooled conn runs <code>LISTEN</code> ×3, then <code>WaitForNotification</code> in a loop and switches on the channel. If the conn drops it waits 3s, re-LISTENs, and calls <code>hintAll()</code>.</span></div>
+
+    <div class="node" id="f-hubs" style="left:900px;top:20px;width:380px"><div class="k">Hub.sessions</div><div class="t">map[sid] → set of chan struct{} (cap 1)</div>
+      <span class="dim"><code>Notify(sid)</code> does a non-blocking send. A hint already pending means "re-query", so hints coalesce and the sender never blocks.</span></div>
+    <div class="node" id="f-huba" style="left:900px;top:350px;width:380px"><div class="k">Hub.activity</div><div class="t">map[user] → activityClient</div>
+      <span class="dim"><code>hints chan uuid (64)</code> + <code>resync chan (1)</code>. When hints is full, the client gets a resync instead and then a fresh snapshot.</span></div>
+    <div class="node" id="f-bus" style="left:900px;top:680px;width:380px"><div class="k">PGDeltaBus.subs</div><div class="t">map[sid] → subscriber</div>
+      <span class="dim"><code>ch chan Delta (64)</code> + <code>gapped[turn_id]</code>. When ch is full, that subscriber skips the rest of the turn, so a reply never shows a hole mid-text. Dropped deltas are counted in metrics.</span></div>
+
+    <div class="node" id="f-ss" style="left:1470px;top:120px;width:440px"><div class="k">handler · GET /api/sessions/{id}/events</div><div class="t">Session stream</div>
+      <ol style="margin:4px 0;padding-left:18px;color:var(--dim);font-size:13.5px">
+        <li>SessionLastSeq (404 if not yours), admit (20/user, else 429)</li>
+        <li><b>Subscribe hub + deltas first</b></li>
+        <li><code>retry: 2000</code>, replay <code>ListEvents(seq &gt; after)</code>. <code>after</code> comes from Last-Event-ID or <code>?after</code>.</li>
+        <li>Loop: <b>hint</b> → drain deltas, then send events · <b>delta</b> → <code>event: delta</code> (no id) · <b>15s tick</b> → LoginActive?, ping, re-query</li>
+      </ol>
+      <span class="dim">Durable frames carry <code>id: seq</code>, so a reconnect resumes exactly where it left off. Every write has a 10s deadline, so a stalled client closes itself.</span></div>
+    <div class="node" id="f-as" style="left:1470px;top:600px;width:440px"><div class="k">handler · GET /api/activity</div><div class="t">Activity stream</div>
+      <ol style="margin:4px 0;padding-left:18px;color:var(--dim);font-size:13.5px">
+        <li>admit, then <b>SubscribeActivity(user) first</b></li>
+        <li><code>event: snapshot</code>: sessions not in awaiting_user or completed, whose root has trigger user_message</li>
+        <li>hint → <code>ActivityStatusOf(sid)</code> → <code>event: status</code> · resync → drain, snapshot · 15s → LoginActive?, ping</li>
+      </ol>
+      <span class="dim">It carries no chat content. Frames have no id, so a reconnect starts with a snapshot.</span></div>
+  </div>
+  <div class="big">Inside api:<br>Hub &amp; DeltaBus</div>
+</section>
+
+<!-- ============================================================ 6. WORKER -->
+<section class="region" data-row="2" style="width:1700px" id="r-worker" data-title="6 · Worker: drive loop, lease & fence">
+  <h2><span class="n">6</span>Worker: drive loop, lease &amp; fence</h2>
+  <p class="sub">This is durable execution on Postgres (ADR 0001). A drive is a pure function of the event log plus side effects, and every side effect is written back as events through a fence.</p>
+  <div class="grid" style="grid-template-columns: 560px 1fr">
+    <div class="card">
+      <h3>The loop</h3>
+      <div class="flow">
+        <div class="f"><b>Run(ctx)</b><span>Starts <code>listen(jf_runnable)</code>, then loops: <code>claimAll</code>, then waits for a wake, 3s, or shutdown.</span></div><div class="down">↓</div>
+        <div class="f"><b>claimAll</b><span>While a slot is free (50 max): <code>Store.Claim(owner=host:pid, ttl, skip=released)</code>. Each claim gets its own goroutine.</span></div><div class="down">↓</div>
+        <div class="f"><b>drive(claim)</b><span>Starts a <b>heartbeat</b> goroutine. If <code>recovery_attempts &gt; 5</code>, it fails the session with <code>crash_loop</code>.</span></div><div class="down">↓</div>
+        <div class="f"><b>Load</b><span><code>SELECT … FROM events WHERE session_id ORDER BY seq</code>, the whole log</span></div><div class="down">↓</div>
+        <div class="f"><b>Upcast</b><span>Brings old schema_versions forward. If a version is too new, the worker <b>Releases</b> the session (no event) and skips it for 1 min.</span></div><div class="down">↓</div>
+        <div class="f"><b>Fold → State</b> <span>Pure: Status, Model, Messages, OpenTurn, PendingUserSeqs, RetryStep, TurnsStarted, Renamed…</span></div><div class="down">↓</div>
+        <div class="f"><b>Decide(State) → Step</b><span>1. OpenTurn ≠ nil → <b>MarkInterrupted</b> (a dead worker left it open)<br>2. Pending user msgs → <b>StartTurn</b><br>3. Otherwise → <b>Complete</b> (park)</span></div><div class="down">↓</div>
+        <div class="f"><b>exec(step)</b><span><code>ErrStale</code> → loop (re-fold) · <code>errParked</code>/Complete → return · <code>ErrLeaseLost</code> → stop silently · other error → <code>session.error</code> + failed</span></div>
+      </div>
+      <p class="ref">internal/worker/worker.go · fold.go · decide.go</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h3>Claim (one tx)</h3>
+<pre class="mono" style="margin:0;font-size:12.5px;color:#cfd6e4;white-space:pre-wrap">WITH c AS (SELECT id, status FROM sessions
+  WHERE status='runnable'
+     OR (status='sleeping' AND wake_at &lt;= now())
+     OR (status='running'  AND lease_expires_at &lt; now())
+  ORDER BY ready_at NULLS LAST
+  FOR UPDATE SKIP LOCKED LIMIT 1)
+UPDATE sessions SET status='running', lease_owner=$me,
+  lease_epoch = lease_epoch+1, lease_expires_at = now()+30s,
+  recovery_attempts = recovery_attempts+1, wake_at=NULL, last_seq += 1|2</pre>
+        <p>The same tx inserts <code>timer.fired</code> (if the session was sleeping) and <code>status_changed → running</code>, then NOTIFYs activity and events.</p>
+      </div>
+      <div class="card">
+        <h3>Fence: every worker write</h3>
+        <p><code>AppendFenced</code> adds this to the <code>UPDATE sessions SET last_seq…</code>:</p>
+        <p><code>WHERE lease_owner=$me AND lease_epoch=$epoch AND lease_expires_at &gt; now()</code> and, for parks, <code>AND last_seq = $expectSeq</code></p>
+        <ul>
+          <li>0 rows and the fence still holds → <b class="c-notify">ErrStale</b>: new events arrived (e.g. a user message mid-turn), so re-fold and go again.</li>
+          <li>0 rows otherwise → <b class="c-llm">ErrLeaseLost</b>: someone else owns it, so write nothing more.</li>
+          <li>Success resets <code>recovery_attempts = 0</code>.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Heartbeat (every <code>JF_HEARTBEAT</code>=10s)</h3>
+        <p><code>UPDATE … SET lease_expires_at = now()+TTL WHERE fence RETURNING cancel_requested</code></p>
+        <ul><li>Lease lost → <code>cancel(ErrLeaseLost)</code>. The in-flight LLM call dies.</li>
+        <li><code>cancel_requested</code> → <code>cancel(errInterrupted)</code> → <code>finishInterrupt</code>: turn.interrupted + awaiting_user.</li></ul>
+      </div>
+      <div class="card">
+        <h3>Parking clears the lease</h3>
+        <p>Any status change away from <code>running</code> also sets <code>lease_owner = NULL</code>, <code>lease_expires_at = NULL</code> and <code>cancel_requested = false</code>. Only a Claim sets a lease.</p>
+      </div>
+      <div class="card">
+        <h3>The database is the clock</h3>
+        <p>Lease expiry, <code>wake_at</code> (<code>now() + interval</code>) and <code>timer.set</code> all use Postgres <code>now()</code>, so workers don't need to agree on the time.</p>
+      </div>
+    </div>
+  </div>
+  <div class="big">Worker:<br>drive loop &amp; lease</div>
+</section>
+
+<!-- ============================================================ 7. STATE MACHINE -->
+<section class="region" data-row="2" style="width:1500px" id="r-states" data-title="7 · Session status machine">
+  <h2><span class="n">7</span>Session status machine</h2>
+  <p class="sub"><code>sessions.status</code> changes only through <code>session.status_changed</code> events, plus the Claim. <code>awaiting_approval</code>, <code>awaiting_children</code> and <code>completed</code> exist in the schema, but nothing writes them yet.</p>
+  <div class="diagram" id="d-states" style="height:1020px">
+    <div class="state" id="s-start" style="left:0;top:395px;border-color:var(--faint);color:var(--dim)">●<small>POST /api/sessions</small></div>
+    <div class="state" id="s-runnable" style="left:220px;top:380px;border-color:var(--http)">runnable<small>ready_at set, jf_runnable</small></div>
+    <div class="state" id="s-running" style="left:640px;top:380px;border-color:var(--sql)">running<small>leased to one worker</small></div>
+    <div class="state" id="s-await" style="left:1060px;top:120px;border-color:var(--sse)">awaiting_user<small>idle; no badge</small></div>
+    <div class="state" id="s-sleep" style="left:1080px;top:640px;border-color:var(--notify)">sleeping<small>wake_at set</small></div>
+    <div class="state" id="s-failed" style="left:640px;top:800px;border-color:var(--llm)">failed<small>red badge</small></div>
+    <div class="card" style="position:absolute;left:0;top:0;width:430px;font-size:13.5px">
+      <b>running → running (rescue):</b> if a worker dies, its lease expires after 30s. Another worker's 3s poll claims the session with epoch+1. The first fold then sees an open turn → <code>turn.interrupted{worker_lost}</code> → the turn is re-run. The dead worker's late writes fail with ErrLeaseLost.
+    </div>
+  </div>
+  <div class="big">Status machine</div>
+</section>
+
+<!-- ============================================================ 8. KEYS -->
+<section class="region" data-row="3" style="width:1500px" id="r-keys" data-title="8 · Keys: secrets, ids & auth">
+  <h2><span class="n">8</span>Keys: provider keys, master keys, ids &amp; login</h2>
+  <p class="sub">BYOK means the user's Anthropic key is sealed at rest. The api only seals and the worker only opens. Plaintext lives just long enough to build one turn's client.</p>
+  <div class="diagram" id="d-keys" style="height:610px">
+    <div class="node" id="k-env" style="left:0;top:0;width:330px"><div class="k">env · both api &amp; worker</div><div class="t c-key">JF_MASTER_KEY</div>
+      <span class="dim"><code>m2:&lt;b64 32B&gt;,m1:&lt;b64&gt;</code>. The first entry is the <b>primary</b>. It's parsed into a <code>keyring.Keyring</code> of AES-256-GCM AEADs. A role refuses to start without it.</span></div>
+    <div class="node" id="k-put" style="left:0;top:250px;width:330px"><div class="k">api</div><div class="t">PUT /api/provider-keys/anthropic</div>
+      <span class="dim">1. Calls Anthropic ListModels with the key (validates it and gets the live list)<br>2. <code>Seal(key, AAD = "user_id|anthropic")</code> → <code>nonce‖ciphertext</code>, key_id = primary<br>3. Upserts the row with last4 and models</span></div>
+    <div class="node pg" id="k-row" style="left:500px;top:150px;width:320px"><div class="k">postgres</div><div class="t">provider_keys</div>
+      <span class="dim">(user_id, provider) → <b>ciphertext</b>, <b>key_id</b>, last4, models jsonb, models_fetched_at. The AAD ties the ciphertext to its owner, so a row copied to another user won't open.</span></div>
+    <div class="node" id="k-turn" style="left:1000px;top:0;width:420px"><div class="k">worker · every turn &amp; title call</div><div class="t">Gateway.pick</div>
+      <span class="dim">catalog → provider · <code>Sealed(user, prov)</code> · <code>keyring.Open(ct, key_id, AAD)</code> → <code>anthropic.Provider(key)</code> → <code>clear(key)</code>. A missing key becomes a <code>key_invalid</code> error → session.error → awaiting_user.</span></div>
+    <div class="node" id="k-refresh" style="left:1000px;top:230px;width:420px"><div class="k">worker · at start, then every 24h</div><div class="t">RunModelRefresh</div>
+      <span class="dim">Opens each key, calls ListModels, and updates <code>models</code> only <code>WHERE ciphertext</code> is unchanged (so a key replaced meanwhile keeps its own list).</span></div>
+    <div class="node" id="k-rot" style="left:500px;top:420px;width:420px"><div class="k">cli · jelly-fish keys rotate</div><div class="t">RotateKeys</div>
+      <span class="dim">For rows where <code>key_id ≠ primary</code>, one tx per row: lock it, open with the old key, seal with the new one. Steps: put the new key first in JF_MASTER_KEY, run rotate, then drop the old key.</span></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card"><h3>Idempotency keys</h3><ul>
+      <li><code>session_id</code> is minted by the client. Repeating the create returns the existing last_seq, and a unique-violation falls back to the existing row.</li>
+      <li><code>client_msg_id</code> has a unique index on <code>events(session_id, payload-&gt;&gt;'client_msg_id') WHERE type='user.message'</code>. A duplicate POST returns the original seq.</li>
+      <li><code>turn_id</code> is set as <code>correlation_id</code> on turn.started, llm.response, usage and session.error.</li></ul></div>
+    <div class="card"><h3>Login (passwordless)</h3><ul>
+      <li><code>POST /api/auth/code</code> always answers 202. Invited users get a code and a link by SMTP. Only sha256 hashes are stored in <code>login_codes</code>.</li>
+      <li>Verifying creates a <code>login_sessions</code> row (token_hash) and sets the HttpOnly cookie <code>__Host-jf_login</code> (SameSite Lax).</li>
+      <li><code>authn</code> on every <code>/api</code> request has a sliding expiry. Open streams re-check <code>LoginActive</code> every 15s, so "log out everywhere" also kills SSE.</li></ul></div>
+    <div class="card"><h3>Tenancy</h3><p>Every <code>Repo</code> method takes a <code>TenantScope{WorkspaceID, UserID}</code> (enforced by a test). Another tenant's session looks exactly like a missing one: <code>ErrNotFound</code>, 404. The worker's <code>Store</code> isn't scoped, because the claim and the fence already authorize it.</p></div>
+  </div>
+  <div class="big">Keys &amp; auth</div>
+</section>
+
+<!-- ============================================================ 9. OBSERVABILITY -->
+<section class="region" data-row="3" style="width:1500px" id="r-otel" data-title="9 · Observability: OTel, metrics, logs">
+  <h2><span class="n">9</span>Observability: OTel traces, metrics, logs</h2>
+  <p class="sub">Traces come from the <b>worker only</b> and cover LLM calls. Metrics come from the <b>api only</b> and cover streams. Logs are JSON slog on stdout from every role.</p>
+  <div class="diagram" id="d-otel" style="height:520px">
+    <div class="node" id="o-retry" style="left:0;top:0;width:360px"><div class="k">provider stack, built per turn</div><div class="t">retry.Wrap</div>
+      <span class="dim">Retries rate_limited and provider_down up to 4× (1, 2, 4, 8s, or the provider's retry-after). It sums usage across attempts and calls <code>onRetry</code> → <code>Batcher.Reset</code> → a <code>reset</code> delta.</span></div>
+    <div class="node" id="o-trace" style="left:0;top:210px;width:360px"><div class="k">wrapped by retry</div><div class="t">tracing.Wrap</div>
+      <span class="dim">Sits <b>below</b> retry, so each attempt gets its own span.</span></div>
+    <div class="node ext" id="o-anth" style="left:0;top:350px;width:360px"><div class="k">wrapped by tracing</div><div class="t">anthropic.Client</div></div>
+    <div class="node" id="o-span" style="left:480px;top:0;width:520px"><div class="k">one span per attempt</div><div class="t c-otel">span "llm.call"</div>
+      <span class="dim"><code>gen_ai.provider.name</code> · <code>gen_ai.request.model</code> · <code>jf.session_id</code> · <code>jf.turn_id</code> (empty for the title call) · <code>jf.request_id</code> · <code>gen_ai.usage.{input, cache_read, cache_write_5m, cache_write_1h, output, reasoning}_tokens</code> · <code>gen_ai.response.finish_reasons</code> · on error: <code>jf.error_class</code> and status Error.<br><b>Never</b> message content or keys. Spans are <b>root spans</b>: filter by <code>jf.session_id</code> in Jaeger to see a session's calls.</span></div>
+    <div class="node" id="o-setup" style="left:480px;top:310px;width:520px"><div class="k">worker main</div><div class="t">telemetry.Setup</div>
+      <span class="dim">It's enabled if <code>OTEL_EXPORTER_OTLP_(TRACES_)ENDPOINT</code> is set, and off if <code>OTEL_SDK_DISABLED=true</code> or <code>OTEL_TRACES_EXPORTER=none</code>. It uses a BatchSpanProcessor, which is flushed with a 5s budget on shutdown. In k8s: <code>http://jaeger:4318</code>, service <code>jelly-fish-worker</code>.</span></div>
+    <div class="node ext" id="o-jaeger" style="left:1120px;top:310px;width:260px"><div class="k">jaeger</div><div class="t">Jaeger</div><span class="dim">UI at localhost:16686 (via <code>make serve</code>)</span></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card"><h3>Prometheus (api :9090/metrics)</h3><ul>
+      <li><code>jf_streams_open{kind=session|activity}</code></li>
+      <li><code>jf_stream_deltas_dropped_total</code>: slow subscribers</li>
+      <li><code>jf_stream_write_deadline_closes_total</code>: stalled clients (10s write)</li>
+      <li><code>jf_stream_refusals_total</code>: 429s from the 20-stream cap</li>
+      <li><code>jf_pg_notification_queue_usage</code>: <code>pg_notification_queue_usage()</code> on scrape</li></ul>
+      <p class="dim">The worker exposes only /healthz and /readyz (readyz pings Postgres).</p></div>
+    <div class="card"><h3>Logs worth grepping</h3><ul>
+      <li><code>session claimed</code> (session_id, epoch) · <code>session parked</code> · <code>lease lost</code></li>
+      <li><code>provider call failed</code> (code, request_id, status)</li>
+      <li><code>interrupt requested, cancelling session</code></li>
+      <li><code>session needs a newer worker, releasing lease</code></li>
+      <li><code>listen dropped</code> (api) · <code>publish delta</code> warnings</li></ul></div>
+  </div>
+  <div class="big">Observability</div>
+</section>
+
+<!-- ============================================================ 10. FAILURES -->
+<section class="region" data-row="3" style="width:2100px" id="r-fail" data-title="10 · What happens when…">
+  <h2><span class="n">10</span>What happens when…</h2>
+  <p class="sub">The same machinery covers the failure paths: write events through the fence, change status, and let the NOTIFY hints update the UI.</p>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card"><h3 class="c-notify">…Anthropic is flaky (429/5xx)</h3><ol>
+      <li><b>In-process:</b> retry.Wrap retries up to 4× (1, 2, 4, 8s). Each retry sends a <code>reset</code> delta and the browser drops the partial bubble. Each attempt gets a span.</li>
+      <li><b>Still failing → the session sleeps:</b> one tx with usage + <code>session.error{retryable:true}</code> + <code>status → sleeping</code> + <code>timer.set{wake_at}</code>. Backoff by RetryStep: 1m → 5m → 15m.</li>
+      <li>The worker's 3s poll claims it when <code>wake_at ≤ now()</code> → <code>timer.fired</code> + running → the turn re-runs.</li>
+      <li>After the third sleep → <code>status → failed</code> (retries_exhausted). A user message resets RetryStep.</li></ol></div>
+    <div class="card"><h3 class="c-llm">…the error isn't retryable</h3><p><code>key_invalid</code>, <code>billing</code>, <code>model_unavailable</code>, <code>too_large</code> and <code>bug</code> each write <code>session.error{retryable:false}</code> with a fixed message (provider text is never stored) → <b>awaiting_user</b>.</p>
+      <p><b>Retry</b> (<code>POST /retry</code>) works only if the last non-status event is that stop error. <b>Changing the model</b> resumes on its own after model_unavailable or billing.</p>
+      <p><code>long_wait</code> (the provider asked for a pause) writes <code>turn.interrupted{provider_wait}</code> → sleeping for retry-after, with no error.</p></div>
+    <div class="card"><h3 class="c-sse">…the user hits Stop</h3><p><code>POST /interrupt</code> appends <code>user.interrupt</code>.</p><ul>
+      <li><b>running:</b> sets <code>cancel_requested = true</code>. The worker's next heartbeat (≤10s) cancels the context, the stream aborts, and <code>finishInterrupt</code> writes <code>turn.interrupted{user_interrupt}</code> + awaiting_user.</li>
+      <li><b>sleeping</b> ("Stop retrying"): goes straight to awaiting_user.</li>
+      <li>Any other status: nothing happens.</li></ul></div>
+    <div class="card"><h3>…a worker pod dies mid-turn</h3><p>Heartbeats stop and the lease expires after 30s. The other pod's poll claims the session (epoch+1). Decide sees an OpenTurn → <code>turn.interrupted{worker_lost}</code> → a new turn re-runs from the same input. If a session's claims die 5 times in a row without one fenced write → <code>failed{crash_loop}</code>. <code>make chaos</code> tests this.</p></div>
+    <div class="card"><h3>…the user sends a message mid-turn</h3><p><code>POST /messages</code> appends <code>user.message</code>. The status change has <code>From: awaiting_user|sleeping|completed|failed</code>, so a running session stays running (no jf_runnable). The turn finishes, the park's <code>ExpectSeq</code> no longer matches → <b>ErrStale</b> → re-fold → <code>PendingUserSeqs</code> → another turn.</p></div>
+    <div class="card"><h3>…a deploy ships a new event schema</h3><p>An old worker that loads an event with a schema_version it can't upcast <b>Releases</b> the lease (expires it now and NOTIFYs jf_runnable) and writes nothing. It skips that session for 1 min, and a newer worker claims it. Releasing doesn't count toward crash_loop.</p></div>
+    <div class="card"><h3>…the api loses its LISTEN connection</h3><p>Deltas sent meanwhile are lost (the UI tolerates this, and the final llm.response is durable). After 3s it re-LISTENs and calls <code>hintAll()</code>: session streams re-query, and activity streams get a resync snapshot.</p></div>
+    <div class="card"><h3>…the browser is slow or hidden</h3><p>A full delta buffer marks that turn as gapped for that tab only. A write over 10s closes the stream, and EventSource reconnects with Last-Event-ID. A hidden tab closes both streams. On show it reopens with <code>?after=lastSeq</code> and a fresh activity snapshot.</p></div>
+    <div class="card"><h3>…the user renames during the auto-title</h3><p><code>PUT /title</code> appends <code>session.renamed{by:user}</code>, unfenced and under the row lock. When the title call's append arrives, <code>dropSupersededAuto</code> removes its rename but keeps its usage. <b>The user's rename always wins.</b></p></div>
+  </div>
+  <div class="big">What happens when…</div>
+</section>
+
+</div></div>
+
+<div id="nav">
+  <h1>🪼 jelly-fish architecture</h1>
+  <div id="navlist"></div>
+  <button class="play" id="playbtn">▶ Play: user starts a chat</button>
+  <button id="fitbtn">⤢ Fit everything (0)</button>
+  <div class="help">Drag or scroll to pan · pinch or ⌘/ctrl+scroll to zoom · double-click to zoom in · <b>0</b> fit · <b>+/−</b> zoom · <b>←/→</b> step when playing · <b>esc</b> stop</div>
+</div>
+<div id="zoom">100%</div>
+<div id="player">
+  <div class="row"><button id="pprev">← prev</button><button id="pnext">next →</button><button id="pstop">✕ stop</button><span class="pos" id="ppos"></span></div>
+  <div class="pl" id="plabel"></div><div class="pd" id="pdetail"></div><div class="pp" id="pref"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------- sequence data
+const LANES = [
+  ['Browser', 'React PWA'], ['api handlers', 'internal/api'], ['Listen · Hub · DeltaBus', 'api pod, in-memory'],
+  ['Postgres', 'tables + NOTIFY'], ['Worker', 'drive goroutine'], ['Anthropic', 'user\'s key'], ['Jaeger', 'OTLP :4318'],
+];
+const B = 0, A = 1, H = 2, P = 3, W = 4, L = 5, J = 6;
+// [from, to, kind, label, detail, ref, dashed]
+const SEQ = [
+  { phase: 'A · Before anything', note: 'the app is already open' },
+  [B, A, 'sse', 'GET /api/activity: Activity stream is open', 'Opened by ChatList on app load: <code>hub.SubscribeActivity(user)</code>, then a <code>snapshot</code> of busy sessions. It stays open the whole time.', 'web/src/lib/useActivityStream.ts · api/activity.go'],
+
+  { phase: 'B · Send', note: 'user types and presses Enter' },
+  [B, A, 'http', 'POST /api/sessions {session_id, client_msg_id, message, model?}', 'Both ids come from <code>crypto.randomUUID()</code> in the browser. CrossOriginProtection → <code>authn</code> (cookie → sha256 → login_sessions → User) → <code>handleCreateSession</code>. A non-default model is checked against <code>/api/models</code>.', 'web/src/Chat.tsx · api/sessions.go'],
+  [A, P, 'sql', 'One tx: INSERT sessions + events seq 1 & 2', 'Inserts a <code>sessions</code> row (Personal project, status <b>runnable</b>, last_seq 2, ready_at now). Then <code>session.created</code> (General agent + model snapshot) and <code>user.message</code>, then <code>pg_notify</code> on <b>jf_runnable</b>, <b>jf_activity</b> and <b>jf_events</b>. They fire on COMMIT.', 'eventlog/repo.go CreateSession · store.go notifyAppend'],
+  [A, B, 'http', '200 {session_id, last_seq: 2}', 'The browser flips <code>started=true</code>, which enables <code>useSessionStream</code>.', 'Chat.tsx'],
+  [B, A, 'sse', 'GET /api/sessions/{id}/events?after=0', 'Opens an EventSource. The handler checks ownership (SessionLastSeq), then admits the stream (20/user, else 429).', 'api/sessions.go handle'],
+  [A, H, 'int', 'Subscribe to Hub(sid) and DeltaBus(sid) first', 'This happens <b>before</b> the replay query, so a hint that fires mid-replay is still caught.', 'event-log.md §5.12'],
+  [A, P, 'sql', 'Replay: ListEvents(seq > 0)', 'A tenant-scoped SELECT. Each event goes through <code>stream.ToUI</code> (allowlist + field filtering).', 'stream/serializer.go'],
+  [A, B, 'sse', 'frames  id:1 session.created · id:2 user.message', 'The user bubble renders from the durable event. lastSeq = 2.', 'useSessionStream.ts'],
+
+  { phase: 'C · Wake & claim', note: 'a worker picks it up' },
+  [P, W, 'notify', 'NOTIFY jf_runnable "<sid>"', 'Each worker pod has <code>listen()</code> waiting on its own connection, which pokes the <code>wake</code> chan. Without the NOTIFY, the 3s poll would still catch it.', 'worker/worker.go listen', true],
+  [W, P, 'sql', 'Claim: FOR UPDATE SKIP LOCKED → running, lease epoch+1', 'Sets <code>lease_owner=host:pid</code>, <code>lease_expires_at=now()+30s</code> and <code>recovery_attempts+1</code>. It inserts <b>seq 3</b> <code>status_changed runnable→running</code> and NOTIFYs jf_activity + jf_events. The other pod skips the locked row.', 'eventlog/store.go Claim'],
+  [P, H, 'notify', 'jf_activity "<user>:<sid>" + jf_events "<sid>:3"', 'Listen routes them: <code>hub.NotifyActivity</code> → the Activity handler runs <code>ActivityStatusOf</code> → <code>event: status {running}</code> → the sidebar shows a <b>busy</b> badge. <code>hub.Notify</code> → the Session handler sends seq 3.', 'stream/listen.go', true],
+  [W, W, 'int', 'heartbeat goroutine starts', 'Every 10s: extends <code>lease_expires_at</code> under the fence and reads <code>cancel_requested</code> (interrupts).', 'worker.go heartbeat'],
+  [W, P, 'sql', 'Load all events → Upcast → Fold → Decide', 'Fold is pure, with no clock and no I/O. State has 1 pending user message and no open turn, so Decide returns <b>StartTurn</b>.', 'fold.go · decide.go'],
+
+  { phase: 'D · The turn streams', note: 'tokens flow worker → Postgres → api → browser' },
+  [W, P, 'key', 'Gateway: SELECT provider_keys, keyring.Open', 'Looks up the model in the catalog → anthropic. Reads the sealed key, opens it with AES-GCM using AAD <code>user_id|anthropic</code>, builds the client and clears the plaintext. Stack: <code>retry(tracing(anthropic))</code>.', 'worker/gateway.go'],
+  [W, P, 'sql', 'AppendFenced seq 4 turn.started', 'Writes turn_id, model, provider, <code>input_through_seq: 3</code> and tools_hash. The UPDATE is guarded by lease_owner, epoch and expiry. It NOTIFYs jf_events, but turn.started isn\'t sent to the browser.', 'worker.go startTurn'],
+  [W, L, 'llm', 'Messages stream (SSE) with the user\'s key', 'The tracing wrapper opens the span <b>llm.call</b>. The Batcher flusher starts (50ms ticker).', 'provider/anthropic/chat.go'],
+  [L, W, 'llm', 'token deltas', 'Only text deltas go to <code>batch.Add(text)</code>. Thinking and tool deltas aren\'t forwarded yet.', 'worker.go startTurn', true],
+  [W, P, 'notify', 'every 50ms: pg_notify(\'jf_stream\', Delta JSON)', '<code>{session_id, turn_id, kind:"text", text}</code>, split to stay under 7900 B. It runs <b>outside</b> any tx and nothing is stored.', 'stream/delta.go Batcher · Publish', true],
+  [P, H, 'notify', 'jf_stream → PGDeltaBus.deliverPayload', 'Fans out to each subscriber\'s <code>chan Delta (64)</code>. A full chan marks the turn <b>gapped</b> for that subscriber, which then gets no more of that turn.', 'stream/delta.go', true],
+  [A, B, 'sse', 'event: delta {turn_id, kind:"text", text}', 'The frame has no <code>id</code>, so it never moves Last-Event-ID. The browser appends to <code>partials[turn_id]</code> and the bubble grows live.', 'useSessionStream.ts', true],
+
+  { phase: 'E · Auto title (first turn only, in parallel)', note: 'wantsTitle: TurnsStarted==0, not renamed, top-level, user-triggered' },
+  [W, L, 'llm', 'Title side call: TitlePrompt(first message)', 'forSideCall has <b>no retry</b>, a 10s timeout and NoThinking. It runs on the session\'s own model and key, and gets its own <code>llm.call</code> span (no turn_id).', 'worker/title.go', true],
+  [W, P, 'sql', 'AppendFenced usage.recorded ×N + session.renamed{by:auto}', 'No ExpectSeq. The projection sets <code>sessions.title</code>. <code>dropSupersededAuto</code> removes the rename if the user already renamed. If it fails, the placeholder title stays (the first 60 chars of the message).', 'eventlog/store.go project'],
+
+  { phase: 'F · The reply lands', note: 'the durable event replaces the ephemeral text' },
+  [L, W, 'llm', 'final Response {message, stop_reason, usage, request_id}', 'The span ends with <code>gen_ai.usage.*</code>, finish_reasons and jf.request_id, and goes to the batch span processor.', 'provider/tracing/tracing.go'],
+  [W, J, 'otel', 'OTLP/HTTP export (batched, async)', 'The worker sends spans to <code>http://jaeger:4318</code>. Spans are <b>root spans</b>; find them by jf.session_id.', 'internal/telemetry', true],
+  [W, P, 'sql', 'stopBatch() then AppendFenced llm.response + usage.recorded', '<b>stopBatch flushes the last delta first.</b> Then <code>llm.response</code> (seq 8) and one <code>usage.recorded</code> per non-zero class, with cost_micros priced from the catalog. Projections insert <code>usage</code> rows and bump <code>tokens_used</code>, <code>cost_micros</code> and <code>turns</code>.', 'worker.go startTurn · store.go project'],
+  [P, H, 'notify', 'jf_events "<sid>:10"', 'It arrives after the turn\'s last jf_stream on the same connection (commit order). The handler drains pending deltas, then runs <code>ListEvents(seq > lastSent)</code>.', 'api/sessions.go handle', true],
+  [A, B, 'sse', 'frames: session.renamed, llm.response (usage stripped)', 'The browser marks turn_id done, deletes <code>partials[turn_id]</code> and renders the durable reply. Any late deltas for that turn are ignored. The header shows the new title.', 'useSessionStream.ts'],
+  [W, W, 'int', 'title.settle(): wait for the title call', 'The title must land before the lease is given up. The heartbeat keeps the lease alive meanwhile.', 'worker/title.go'],
+
+  { phase: 'G · Park', note: 'nothing left to do, so give the session back' },
+  [W, P, 'sql', 'Re-fold → Decide=Complete → park with ExpectSeq', 'Writes <code>session.completed{end_turn}</code> + <code>status_changed running→awaiting_user</code>, guarded by <code>last_seq = expected</code>. That clears lease_owner and lease_expires_at. If a user message arrived meanwhile → <b>ErrStale</b> → re-fold → a new turn.', 'worker.go drive · exec'],
+  [P, H, 'notify', 'jf_activity + jf_events', 'Activity: <code>event: status {awaiting_user}</code> → the badge clears. Session stream: the status_changed frame.', 'stream/listen.go', true],
+  [A, B, 'sse', 'event: status {awaiting_user}', 'useChatList sees a chat that is missing or still untitled in its list, so it refetches <code>GET /api/sessions</code> and the real title appears in the sidebar.', 'web/src/lib/useChatList.ts · activity.ts needsListRefetch'],
+  [W, W, 'int', 'drive returns · slot freed · heartbeat stops', 'The worker goes back to <code>claimAll</code>. The session sits in awaiting_user until the next POST /messages, which sets it to runnable and the cycle repeats.', 'worker.go'],
+];
+
+const KC = { http: 'var(--http)', sql: 'var(--sql)', notify: 'var(--notify)', sse: 'var(--sse)', llm: 'var(--llm)', otel: 'var(--otel)', int: 'var(--int)', key: 'var(--key)' };
+
+function buildSeq() {
+  const seq = document.getElementById('seq');
+  LANES.forEach(([t, s], i) => {
+    const ll = document.createElement('div');
+    ll.className = 'lifeline';
+    ll.style.left = `calc(${(i + .5) / LANES.length * 100}% - 1px)`;
+    seq.appendChild(ll);
+    const lane = document.createElement('div');
+    lane.className = 'lane';
+    lane.innerHTML = `${t}<small>${s}</small>`;
+    seq.appendChild(lane);
+  });
+  let n = 0;
+  for (const s of SEQ) {
+    if (s.phase) {
+      const ph = document.createElement('div');
+      ph.className = 'phase';
+      ph.innerHTML = `${s.phase}<span>${s.note}</span>`;
+      seq.appendChild(ph);
+      continue;
+    }
+    const [from, to, kind, label, detail, ref, dashed] = s;
+    n++;
+    const lo = Math.min(from, to), hi = Math.max(from, to), span = hi - lo + 1;
+    const el = document.createElement('div');
+    el.className = 'step ' + (from === to ? 'self' : from < to ? 'ltr' : 'rtl') + (dashed ? ' dashed' : '');
+    el.style.gridColumn = `${lo + 1} / ${hi + 2}`;
+    el.style.setProperty('--c', KC[kind]);
+    el.style.setProperty('--half', `calc(100% / ${2 * span})`);
+    el.dataset.lo = lo; el.dataset.hi = hi; el.dataset.label = label; el.dataset.detail = detail; el.dataset.ref = ref || ''; el.dataset.n = n; el.dataset.kind = kind;
+    el.innerHTML = `<div class="inner"><div class="label"><span class="num">${n}</span>${esc(label)}<span class="kind">${kind}</span></div>` +
+      (from === to ? '' : '<div class="arrow"></div>') + `<div class="detail">${detail}</div></div>`;
+    seq.appendChild(el);
+  }
+}
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ---------------------------------------------------------------- layout regions in rows
+function layoutRegions() {
+  const regions = [...document.querySelectorAll('.region')];
+  const rows = {};
+  regions.forEach(r => (rows[r.dataset.row] ??= []).push(r));
+  let y = 0;
+  for (const k of Object.keys(rows).sort()) {
+    let x = 0, h = 0;
+    for (const r of rows[k]) {
+      r.style.left = x + 'px'; r.style.top = y + 'px';
+      x += r.offsetWidth + 120; h = Math.max(h, r.offsetHeight);
+    }
+    y += h + 140;
+  }
+}
+
+// ---------------------------------------------------------------- connectors
+const DIAGRAMS = {
+  'd-map': [
+    ['m-browser', 'm-api', { c: 'http', label: 'HTTPS JSON: create, message, interrupt,<br>retry, model, title, keys, auth', fs: 'r', ts: 'l', fa: .18, ta: .3 }],
+    ['m-api', 'm-browser', { c: 'sse', label: 'SSE ×2: Session stream (frames + deltas)<br>and Activity stream (snapshot + status)', fs: 'l', ts: 'r', fa: .6, ta: .62 }],
+    ['m-api', 'm-pg', { c: 'sql', label: 'writes: 1 tx = events + sessions<br>projection + pg_notify', fs: 'r', ts: 'l', fa: .2, ta: .2 }],
+    ['m-pg', 'm-listen', { c: 'notify', label: 'LISTEN jf_events · jf_activity · jf_stream', fs: 'l', ts: 'r', fa: .5, ta: .5 }],
+    ['m-api', 'm-pg', { c: 'sql', label: 'reads: replay, snapshot, chat list', fs: 'r', ts: 'l', fa: .8, ta: .78, dash: 1 }],
+    ['m-pg', 'm-wlisten', { c: 'notify', label: 'LISTEN jf_runnable (+3s poll)', fs: 'r', ts: 'l', fa: .12, ta: .5 }],
+    ['m-worker', 'm-pg', { c: 'sql', label: 'Claim · Heartbeat · AppendFenced', fs: 'l', ts: 'r', fa: .38, ta: .42 }],
+    ['m-worker', 'm-pg', { c: 'notify', label: "pg_notify('jf_stream') token deltas every 50ms", fs: 'l', ts: 'r', fa: .55, ta: .66, dash: 1 }],
+    ['m-gw', 'm-anthropic', { c: 'llm', label: 'stream turn + title', fs: 'r', ts: 'l', fa: .5, ta: .4 }],
+    ['m-otel', 'm-jaeger', { c: 'otel', label: 'OTLP/HTTP spans', fs: 'r', ts: 'l', fa: .5, ta: .5, dash: 1 }],
+    ['m-api', 'm-mail', { c: 'http', label: 'SMTP login codes', fs: 'b', ts: 't', fa: .1, ta: .5, dash: 1 }],
+    ['m-api', 'm-anthropic', { c: 'llm', label: 'ListModels when saving a key', fs: 't', ts: 't', fa: .8, ta: .5, dash: 1, bend: 260 }],
+  ],
+  'd-fan': [
+    ['f-pg', 'f-listen', { c: 'notify', label: 'one conn', fs: 'r', ts: 'l' }],
+    ['f-listen', 'f-hubs', { c: 'int', label: 'jf_events → Notify(sid)', fs: 'r', ts: 'l', fa: .2 }],
+    ['f-listen', 'f-huba', { c: 'int', label: 'jf_activity → NotifyActivity(user,sid)', fs: 'r', ts: 'l', fa: .5 }],
+    ['f-listen', 'f-bus', { c: 'int', label: 'jf_stream → deliverPayload', fs: 'r', ts: 'l', fa: .8 }],
+    ['f-hubs', 'f-ss', { c: 'int', label: 'hint', fs: 'r', ts: 'l', ta: .25 }],
+    ['f-bus', 'f-ss', { c: 'int', label: 'Delta', fs: 'r', ts: 'l', ta: .8 }],
+    ['f-huba', 'f-as', { c: 'int', label: 'sid hint / resync', fs: 'r', ts: 'l', ta: .3 }],
+  ],
+  'd-states': [
+    ['s-start', 's-runnable', { c: 'int', label: '' }],
+    ['s-runnable', 's-running', { c: 'sql', label: 'Claim' }],
+    ['s-running', 's-await', { c: 'sse', label: 'completed (end_turn) · stop-class error<br>· user interrupt', fs: 'r', ts: 'l', fa: .3, ta: .6 }],
+    ['s-running', 's-sleep', { c: 'notify', label: 'retryable error after quick retries<br>(1m→5m→15m) · provider long_wait', fs: 'r', ts: 'l', fa: .7, ta: .4, dx: 150, dy: -10 }],
+    ['s-sleep', 's-running', { c: 'sql', label: 'Claim when wake_at ≤ now<br>(timer.fired, 3s poll)', fs: 't', ts: 'b', fa: .2, ta: .75, dx: -110, dy: 30 }],
+    ['s-running', 's-failed', { c: 'llm', label: 'retries exhausted · crash_loop · internal error', fs: 'b', ts: 't' }],
+    ['s-await', 's-runnable', { c: 'http', label: 'user message · Retry (after stop error)<br>· model change (after model/billing error)', fs: 't', ts: 't', fa: .3, ta: .5, bend: 200 }],
+    ['s-sleep', 's-await', { c: 'sse', label: 'Interrupt<br>("Stop retrying")', fs: 'r', ts: 'r', fa: .5, ta: .6, bend: 140 }],
+    ['s-sleep', 's-runnable', { c: 'http', label: 'user message · Retry now', fs: 'b', ts: 'b', fa: .5, ta: .2, bend: 420 }],
+    ['s-failed', 's-runnable', { c: 'http', label: 'user message · Retry', fs: 'l', ts: 'b', fa: .5, ta: .75, dx: -40 }],
+  ],
+  'd-keys': [
+    ['k-env', 'k-put', { c: 'key', label: 'Seal (primary)', fs: 'b', ts: 't' }],
+    ['k-put', 'k-row', { c: 'sql', label: 'upsert', fs: 'r', ts: 'l', ta: .6 }],
+    ['k-row', 'k-turn', { c: 'sql', label: 'Sealed() → Open()', fs: 'r', ts: 'l', fa: .3, ta: .5 }],
+    ['k-row', 'k-refresh', { c: 'sql', label: 'open → list → update', fs: 'r', ts: 'l', fa: .7, ta: .5, dash: 1 }],
+    ['k-rot', 'k-row', { c: 'key', label: 're-seal under primary', fs: 't', ts: 'b' }],
+    ['k-env', 'k-turn', { c: 'key', label: 'same keyring in worker', fs: 'r', ts: 'l', fa: .3, ta: .25, dash: 1 }],
+  ],
+  'd-otel': [
+    ['o-retry', 'o-trace', { c: 'int', label: 'each attempt calls', fs: 'b', ts: 't' }],
+    ['o-trace', 'o-anth', { c: 'llm', label: '', fs: 'b', ts: 't' }],
+    ['o-trace', 'o-span', { c: 'otel', label: 'Start/End span', fs: 'r', ts: 'l', ta: .7 }],
+    ['o-span', 'o-setup', { c: 'otel', label: 'tracer provider', fs: 'b', ts: 't' }],
+    ['o-setup', 'o-jaeger', { c: 'otel', label: 'OTLP/HTTP :4318', fs: 'r', ts: 'l', dash: 1 }],
+  ],
+};
+
+function drawLinks(id, links, scale) {
+  const d = document.getElementById(id);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  d.querySelectorAll('svg.links, .lbl').forEach(e => e.remove());
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.classList.add('links');
+  svg.setAttribute('width', d.offsetWidth); svg.setAttribute('height', d.offsetHeight);
+  const defs = document.createElementNS(svgNS, 'defs');
+  svg.appendChild(defs);
+  const made = {};
+  const marker = (c) => {
+    if (made[c]) return made[c];
+    const m = document.createElementNS(svgNS, 'marker');
+    const mid = 'mk-' + id + '-' + c;
+    m.setAttribute('id', mid); m.setAttribute('viewBox', '0 0 10 10'); m.setAttribute('refX', 9); m.setAttribute('refY', 5);
+    m.setAttribute('markerWidth', 7); m.setAttribute('markerHeight', 7); m.setAttribute('orient', 'auto-start-reverse');
+    const p = document.createElementNS(svgNS, 'path');
+    p.setAttribute('d', 'M0,0 L10,5 L0,10 z'); p.setAttribute('fill', KC[c]);
+    m.appendChild(p); defs.appendChild(m);
+    return made[c] = mid;
+  };
+  const dr = d.getBoundingClientRect();
+  const rect = (e) => { const r = e.getBoundingClientRect(); return { x: (r.left - dr.left) / scale, y: (r.top - dr.top) / scale, w: r.width / scale, h: r.height / scale }; };
+  const pt = (r, side, f) => ({
+    l: [r.x, r.y + r.h * f, -1, 0], r: [r.x + r.w, r.y + r.h * f, 1, 0],
+    t: [r.x + r.w * f, r.y, 0, -1], b: [r.x + r.w * f, r.y + r.h, 0, 1],
+  })[side];
+  for (const [a, b, o] of links) {
+    const ra = rect(document.getElementById(a)), rb = rect(document.getElementById(b));
+    let fs = o.fs, ts = o.ts;
+    if (!fs || !ts) {
+      const dx = (rb.x + rb.w / 2) - (ra.x + ra.w / 2), dy = (rb.y + rb.h / 2) - (ra.y + ra.h / 2);
+      if (Math.abs(dx) > Math.abs(dy)) { fs = fs || (dx > 0 ? 'r' : 'l'); ts = ts || (dx > 0 ? 'l' : 'r'); }
+      else { fs = fs || (dy > 0 ? 'b' : 't'); ts = ts || (dy > 0 ? 't' : 'b'); }
+    }
+    const [x1, y1, nx1, ny1] = pt(ra, fs, o.fa ?? .5), [x2, y2, nx2, ny2] = pt(rb, ts, o.ta ?? .5);
+    const dist = Math.hypot(x2 - x1, y2 - y1), k = o.bend ?? Math.max(50, dist * .4);
+    const c1 = [x1 + nx1 * k, y1 + ny1 * k], c2 = [x2 + nx2 * k, y2 + ny2 * k];
+    const p = document.createElementNS(svgNS, 'path');
+    p.setAttribute('d', `M${x1},${y1} C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${x2},${y2}`);
+    p.setAttribute('fill', 'none'); p.setAttribute('stroke', KC[o.c]); p.setAttribute('stroke-width', 2.5);
+    if (o.dash) p.setAttribute('stroke-dasharray', '9 7');
+    p.setAttribute('marker-end', `url(#${marker(o.c)})`);
+    svg.appendChild(p);
+    if (o.label) {
+      const mx = (x1 + 3 * c1[0] + 3 * c2[0] + x2) / 8, my = (y1 + 3 * c1[1] + 3 * c2[1] + y2) / 8;
+      const l = document.createElement('div');
+      l.className = 'lbl'; l.innerHTML = o.label; l.style.borderColor = KC[o.c]; l.style.color = KC[o.c];
+      l.style.left = (mx + (o.dx || 0)) + 'px'; l.style.top = (my + (o.dy || 0)) + 'px';
+      d.appendChild(l);
+    }
+  }
+  d.prepend(svg);
+}
+
+// ---------------------------------------------------------------- pan / zoom
+const vp = document.getElementById('viewport'), world = document.getElementById('world'), zl = document.getElementById('zoom');
+let s = 1, tx = 0, ty = 0;
+function apply() {
+  world.style.transform = `translate(${tx}px,${ty}px) scale(${s})`;
+  vp.style.backgroundSize = `${26 * s}px ${26 * s}px`;
+  vp.style.backgroundPosition = `${tx}px ${ty}px`;
+  zl.textContent = Math.round(s * 100) + '%';
+  document.body.classList.toggle('far', s < .22);
+}
+function zoomAt(f, cx, cy) {
+  const ns = Math.min(3, Math.max(.03, s * f));
+  tx = cx - (cx - tx) * (ns / s); ty = cy - (cy - ty) * (ns / s); s = ns; apply();
+}
+function animate(fn) {
+  world.classList.add('anim'); vp.classList.add('anim'); fn();
+  clearTimeout(animate.t); animate.t = setTimeout(() => { world.classList.remove('anim'); vp.classList.remove('anim'); }, 600);
+}
+function worldRect(el) {
+  let x = 0, y = 0;
+  for (let e = el; e && e !== world; e = e.offsetParent) { x += e.offsetLeft; y += e.offsetTop; }
+  return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+}
+function worldBounds() {
+  const rs = [...document.querySelectorAll('.region')].map(worldRect);
+  const x = Math.min(...rs.map(r => r.x)), y = Math.min(...rs.map(r => r.y));
+  return { x, y, w: Math.max(...rs.map(r => r.x + r.w)) - x, h: Math.max(...rs.map(r => r.y + r.h)) - y };
+}
+function flyTo(r, pad = 60, maxScale = 1.2) {
+  const left = 300, vw = innerWidth - left, vh = innerHeight - (player.classList.contains('on') ? 170 : 0);
+  const ns = Math.min(maxScale, (vw - pad * 2) / r.w, (vh - pad * 2) / r.h);
+  animate(() => { s = ns; tx = left + (vw - r.w * s) / 2 - r.x * s; ty = (vh - r.h * s) / 2 - r.y * s; apply(); });
+}
+function fitAll() { flyTo(worldBounds(), 40, 1); }
+
+vp.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * (e.deltaMode ? .05 : .0045)), e.clientX, e.clientY);
+  else { tx -= e.deltaX; ty -= e.deltaY; apply(); }
+}, { passive: false });
+let drag = null;
+vp.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  drag = { x: e.clientX, y: e.clientY, tx, ty }; vp.setPointerCapture(e.pointerId); vp.classList.add('dragging');
+});
+vp.addEventListener('pointermove', (e) => { if (!drag) return; tx = drag.tx + e.clientX - drag.x; ty = drag.ty + e.clientY - drag.y; apply(); });
+const endDrag = () => { drag = null; vp.classList.remove('dragging'); };
+vp.addEventListener('pointerup', endDrag); vp.addEventListener('pointercancel', endDrag);
+vp.addEventListener('dblclick', (e) => animate(() => zoomAt(1.8, e.clientX, e.clientY)));
+// Safari pinch
+let gs = 1;
+vp.addEventListener('gesturestart', (e) => { e.preventDefault(); gs = 1; });
+vp.addEventListener('gesturechange', (e) => { e.preventDefault(); zoomAt(e.scale / gs, e.clientX, e.clientY); gs = e.scale; });
+
+// ---------------------------------------------------------------- nav + player
+const navlist = document.getElementById('navlist');
+document.querySelectorAll('.region').forEach((r) => {
+  const b = document.createElement('button');
+  b.textContent = r.dataset.title;
+  b.onclick = () => flyTo(worldRect(r), 40, 1);
+  navlist.appendChild(b);
+});
+document.getElementById('fitbtn').onclick = fitAll;
+
+const player = document.getElementById('player');
+let steps = [], cur = -1;
+function show(i) {
+  steps.forEach(x => x.classList.remove('active'));
+  cur = Math.max(0, Math.min(steps.length - 1, i));
+  const el = steps[cur]; el.classList.add('active');
+  document.getElementById('ppos').textContent = `step ${cur + 1} / ${steps.length}`;
+  document.getElementById('plabel').innerHTML = `<span class="pill" style="color:${KC[el.dataset.kind]}">${el.dataset.kind}</span> ${el.dataset.n}. ${esc(el.dataset.label)}`;
+  document.getElementById('pdetail').innerHTML = el.dataset.detail;
+  document.getElementById('pref').textContent = el.dataset.ref;
+  // frame the lanes the step spans plus one either side, with rows above and below
+  const seq = worldRect(document.getElementById('seq')), r = worldRect(el), lw = seq.w / LANES.length;
+  const a = Math.max(0, +el.dataset.lo - 1), b = Math.min(LANES.length - 1, +el.dataset.hi + 1);
+  flyTo({ x: seq.x + a * lw, y: r.y - 160, w: (b - a + 1) * lw, h: r.h + 320 }, 20, 1.1);
+}
+function play() { player.classList.add('on'); show(cur < 0 ? 0 : cur); }
+function stop() { player.classList.remove('on'); steps.forEach(x => x.classList.remove('active')); }
+document.getElementById('playbtn').onclick = play;
+document.getElementById('pnext').onclick = () => show(cur + 1);
+document.getElementById('pprev').onclick = () => show(cur - 1);
+document.getElementById('pstop').onclick = stop;
+for (const id of ['nav', 'player', 'zoom']) document.getElementById(id).addEventListener('pointerdown', e => e.stopPropagation());
+
+addEventListener('keydown', (e) => {
+  const on = player.classList.contains('on');
+  if (e.key === '0') fitAll();
+  else if (e.key === '+' || e.key === '=') animate(() => zoomAt(1.4, innerWidth / 2, innerHeight / 2));
+  else if (e.key === '-') animate(() => zoomAt(1 / 1.4, innerWidth / 2, innerHeight / 2));
+  else if (on && (e.key === 'ArrowRight' || e.key === ' ')) { e.preventDefault(); show(cur + 1); }
+  else if (on && e.key === 'ArrowLeft') show(cur - 1);
+  else if (e.key === 'Escape') stop();
+});
+
+// ---------------------------------------------------------------- boot
+buildSeq();
+steps = [...document.querySelectorAll('.step')];
+layoutRegions();
+for (const [id, links] of Object.entries(DIAGRAMS)) drawLinks(id, links, 1);
+apply();
+fitAll();
+</script>
+</body>
+</html>

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -38,12 +37,29 @@ type fakeAnthropic struct {
 
 func newFakeAnthropic(t *testing.T, modelsStatus int) *fakeAnthropic {
 	t.Helper()
-	sse, err := os.ReadFile("../provider/anthropic/testdata/tool_use.sse")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return newFakeAnthropicSSE(t, modelsStatus, sse)
+	return newFakeAnthropicSSE(t, modelsStatus, []byte(cachedSSE))
 }
+
+// cachedSSE is a Haiku text reply that bills every usage class.
+const cachedSSE = `event: message_start
+data: {"type":"message_start","message":{"id":"msg_2","type":"message","role":"assistant","model":"claude-haiku-4-5-20251001","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":30,"cache_creation_input_tokens":300,"cache_read_input_tokens":2000,"cache_creation":{"ephemeral_5m_input_tokens":100,"ephemeral_1h_input_tokens":200},"output_tokens":1}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":20}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
 
 // newFakeAnthropicSSE is newFakeAnthropic replying with sse to every turn.
 func newFakeAnthropicSSE(t *testing.T, modelsStatus int, sse []byte) *fakeAnthropic {
@@ -85,7 +101,7 @@ func testGateway(t *testing.T, pool *pgxpool.Pool, base string) Gateway {
 func runWorker(t *testing.T, pool *pgxpool.Pool, gw Gateway) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	w := New(pool, gw, stream.NewPGDeltaBus(pool), Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
+	w := New(pool, gw, nil, stream.NewPGDeltaBus(pool), Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
 	w.titleTimeout = 0
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()

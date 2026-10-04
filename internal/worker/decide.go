@@ -7,6 +7,12 @@ type StepKind int
 const (
 	// StepMarkInterrupted closes a turn a dead Worker left open.
 	StepMarkInterrupted StepKind = iota + 1
+	// StepMarkToolsInterrupted closes tool calls a dead Worker left started.
+	StepMarkToolsInterrupted
+	// StepStartTool runs the next batch of requested tool calls.
+	StepStartTool
+	// StepRequestTools records every call of the latest reply.
+	StepRequestTools
 	// StepStartTurn calls the Provider over the conversation so far.
 	StepStartTurn
 	// StepComplete parks the session awaiting the user.
@@ -28,7 +34,13 @@ func Decide(st State) Step {
 	switch {
 	case st.OpenTurn != nil:
 		return Step{Kind: StepMarkInterrupted, TurnID: st.OpenTurn.ID}
-	case len(st.PendingUserSeqs) > 0:
+	case len(st.calls(CallStarted)) > 0:
+		return Step{Kind: StepMarkToolsInterrupted}
+	case len(st.calls(CallRequested)) > 0:
+		return Step{Kind: StepStartTool}
+	case len(st.calls(CallAsked)) > 0:
+		return Step{Kind: StepRequestTools}
+	case st.ToolsRan || len(st.PendingUserSeqs) > 0:
 		return Step{Kind: StepStartTurn}
 	default:
 		return Step{Kind: StepComplete}

@@ -21,6 +21,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/tracing"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
+	"github.com/bhanuprakaash/jelly-fish/internal/tool"
 )
 
 const (
@@ -31,10 +32,6 @@ const (
 	// append before the session is failed (event-log.md §5.6).
 	maxRecoveryAttempts = 5
 )
-
-// emptyToolsHash is the sha256 of the empty tool list, the only one this
-// slice has.
-const emptyToolsHash = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 
 // DeltaPublisher sends a turn's ephemeral text deltas to the Session streams
 // watching it.
@@ -56,6 +53,7 @@ type Worker struct {
 	pool     *pgxpool.Pool
 	store    *eventlog.Store
 	gateway  Gateway
+	tools    *tool.Registry
 	deltas   DeltaPublisher
 	lease    Lease
 	upcast   eventlog.Upcasters
@@ -67,11 +65,11 @@ type Worker struct {
 	titleTimeout time.Duration
 }
 
-// New builds a Worker that runs each turn on the Provider gw picks, streams
-// reply text to deltas and leases sessions as lease says. It reads stored
-// events through upcast, and releases any session holding an event it cannot
-// read.
-func New(pool *pgxpool.Pool, gw Gateway, deltas DeltaPublisher, lease Lease, upcast eventlog.Upcasters, logger *slog.Logger) *Worker {
+// New builds a Worker that runs each turn on the Provider gw picks, offers
+// the model tools (nil for none), streams reply text to deltas and leases
+// sessions as lease says. It reads stored events through upcast, and releases
+// any session holding an event it cannot read.
+func New(pool *pgxpool.Pool, gw Gateway, tools *tool.Registry, deltas DeltaPublisher, lease Lease, upcast eventlog.Upcasters, logger *slog.Logger) *Worker {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
@@ -80,6 +78,7 @@ func New(pool *pgxpool.Pool, gw Gateway, deltas DeltaPublisher, lease Lease, upc
 		pool:    pool,
 		store:   eventlog.NewStore(pool),
 		gateway: gw,
+		tools:   tools,
 		deltas:  deltas,
 		lease:   lease,
 		upcast:  upcast,
@@ -296,6 +295,7 @@ func (w *Worker) finishInterrupt(ctx context.Context, logger *slog.Logger, c eve
 			Payload:       map[string]string{"turn_id": st.OpenTurn.ID, "reason": "user_interrupt"},
 		})
 	}
+	closing = append(closing, w.userStopEvents(st)...)
 	_, err = w.store.AppendFenced(ctx, c.SessionID, c.Fence, closing, &eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "interrupted"})
 	if err != nil && !errors.Is(err, eventlog.ErrLeaseLost) {
 		logger.Error("finish interrupt", "error", err)
@@ -362,6 +362,12 @@ func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, s
 			Payload:       map[string]string{"turn_id": step.TurnID, "reason": "worker_lost"},
 		}}, nil)
 		return err
+	case StepMarkToolsInterrupted:
+		return w.markToolsInterrupted(ctx, c, f, st)
+	case StepRequestTools:
+		return w.requestTools(ctx, c, f, st)
+	case StepStartTool:
+		return w.startTools(ctx, c, f, st)
 	case StepStartTurn:
 		return w.startTurn(ctx, c, f, st)
 	case StepComplete:
@@ -388,6 +394,11 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	case err != nil:
 		return fmt.Errorf("pick provider: %w", err)
 	}
+	defs := w.tools.Defs()
+	toolsHash, err := tool.Hash(defs)
+	if err != nil {
+		return err
+	}
 	seqs, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
 		Type:          eventlog.TypeTurnStarted,
 		Actor:         w.actor(),
@@ -397,7 +408,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 			"model":             st.Model,
 			"provider":          prov.Name(),
 			"input_through_seq": st.LastSeq,
-			"tools_hash":        emptyToolsHash,
+			"tools_hash":        toolsHash,
 		},
 	}}, nil)
 	if err != nil {
@@ -407,7 +418,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	defer title.abandon()
 
 	stopBatch := batch.Start(ctx)
-	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages}, func(d provider.Delta) {
+	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages, Tools: toolSpecs(defs)}, func(d provider.Delta) {
 		if d.Kind == provider.DeltaText {
 			batch.Add(d.Text)
 		}
@@ -424,6 +435,11 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	}
 	if err != nil {
 		return fmt.Errorf("call provider: %w", err)
+	}
+
+	if resp.StopReason == provider.StopReasonMaxTokens {
+		// A call cut off mid-way can't be run, and no result could answer it.
+		resp.Message.Parts = slices.DeleteFunc(resp.Message.Parts, func(p msg.Part) bool { return p.Kind == msg.KindToolUse })
 	}
 
 	classes := usageClasses(resp.Usage, w.gateway.price(st.Model))
@@ -449,6 +465,14 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	// The next loop iteration parks, which gives up the Lease.
 	title.settle()
 	return nil
+}
+
+func toolSpecs(defs []tool.Def) []provider.ToolSpec {
+	specs := make([]provider.ToolSpec, len(defs))
+	for i, d := range defs {
+		specs[i] = provider.ToolSpec{Name: d.Name, Description: d.Description, Schema: d.Schema}
+	}
+	return specs
 }
 
 type usageClass struct {

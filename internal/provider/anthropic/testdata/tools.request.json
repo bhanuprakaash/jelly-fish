@@ -1,0 +1,43 @@
+{
+  "max_tokens": 64000,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "hi",
+          "cache_control": {
+            "type": "ephemeral"
+          },
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "claude-haiku-4-5-20251001",
+  "tools": [
+    {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      },
+      "name": "memory",
+      "description": "Read and write memories."
+    },
+    {
+      "input_schema": {
+        "type": "object"
+      },
+      "name": "sleep",
+      "description": "Wait."
+    }
+  ],
+  "stream": true
+}

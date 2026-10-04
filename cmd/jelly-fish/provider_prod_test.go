@@ -15,6 +15,12 @@ func TestNonDevBuildHasNoFakeProvider(t *testing.T) {
 	}
 }
 
+func TestNonDevBuildHasNoFakeTools(t *testing.T) {
+	if devTools() != nil {
+		t.Fatal("non-dev build wired the fake Tools")
+	}
+}
+
 func TestDefaultModel(t *testing.T) {
 	cat, err := catalog.Load()
 	if err != nil {

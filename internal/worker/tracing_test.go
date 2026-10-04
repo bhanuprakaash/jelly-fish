@@ -26,7 +26,7 @@ func TestTurnSpansCarrySessionAndTurnIDs(t *testing.T) {
 	p := &scripted{results: []error{providerErr(provider.KindProviderDown, 1), nil}}
 	gw := worker.Gateway{Fake: p, Tracer: tp, Sleep: func(context.Context, time.Duration) error { return nil }}
 	ctx, cancel := context.WithCancel(t.Context())
-	w := worker.New(pool, gw, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
+	w := worker.New(pool, gw, nil, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
 	worker.SetTitleTimeout(w, 0)
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()

@@ -12,6 +12,7 @@ import {
 import { sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
 import { renamedTitle } from './lib/sessionTitle'
+import { toolChips } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { ModelPicker } from './ModelPicker'
 import { SessionNotice } from './SessionNotice'
@@ -106,7 +107,13 @@ export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, on
     }
   }
 
-  const bubbles = events.filter((e) => e.type === 'user.message' || e.type === 'llm.response')
+  const chips = new Map(toolChips(events).map((c) => [c.seq, c]))
+  const bubbles = events.filter(
+    (e) =>
+      e.type === 'user.message' ||
+      (e.type === 'llm.response' && bubbleText(e.payload) !== '') ||
+      chips.has(e.seq),
+  )
   const loading = !isNew && !connected && !failed
   const notice = sessionNotice(events)
   const current = hasSession ? sessionModel(events) : (picked ?? models?.default)
@@ -159,16 +166,27 @@ export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, on
         {!loading && !failed && bubbles.length === 0 && (
           <p className="text-center text-neutral-500">Say something to start the chat.</p>
         )}
-        {bubbles.map((e) => (
-          <div
-            key={e.seq}
-            className={`max-w-md rounded-2xl px-4 py-2 whitespace-pre-wrap ${
-              e.type === 'user.message' ? 'ml-auto bg-neutral-800' : 'mr-auto bg-neutral-900'
-            }`}
-          >
-            {bubbleText(e.payload)}
-          </div>
-        ))}
+        {bubbles.map((e) => {
+          const chip = chips.get(e.seq)
+          if (chip) {
+            return (
+              <div key={e.seq} className="mr-auto max-w-md rounded-full bg-neutral-900 px-3 py-1 text-sm text-neutral-400">
+                {chip.name} · {chip.state}
+                {chip.error && <span className="text-red-400"> · {chip.error}</span>}
+              </div>
+            )
+          }
+          return (
+            <div
+              key={e.seq}
+              className={`max-w-md rounded-2xl px-4 py-2 whitespace-pre-wrap ${
+                e.type === 'user.message' ? 'ml-auto bg-neutral-800' : 'mr-auto bg-neutral-900'
+              }`}
+            >
+              {bubbleText(e.payload)}
+            </div>
+          )
+        })}
         {Object.entries(partials).map(([turnId, text]) => (
           <div
             key={turnId}

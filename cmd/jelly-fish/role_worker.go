@@ -59,7 +59,7 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 	gw := worker.Gateway{Keyring: kr, Keys: providerkeys.NewStore(pool), Catalog: cat, Anthropic: claude, Fake: devFake(), Tracer: tp}
 	g.Go(func() error { worker.RunModelRefresh(gctx, pool, kr, claude, logger); return nil })
 	g.Go(func() error {
-		worker.New(pool, gw, stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger).Run(gctx)
+		worker.New(pool, gw, devTools(), stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger).Run(gctx)
 		return nil
 	})
 	return g.Wait()

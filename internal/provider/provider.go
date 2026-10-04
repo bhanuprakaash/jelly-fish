@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
@@ -39,6 +40,15 @@ type Request struct {
 	SummaryEnd int
 	// NoThinking asks for no extended thinking, for short side calls.
 	NoThinking bool
+	// Tools the model may call, in a stable order.
+	Tools []ToolSpec
+}
+
+// ToolSpec is a tool as the model sees it.
+type ToolSpec struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Schema      json.RawMessage `json:"schema"`
 }
 
 // DeltaKind says what a Delta carries.

@@ -5,8 +5,11 @@ package fake
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
@@ -21,12 +24,15 @@ const (
 	// interrupts.
 	defaultMinReply = 5 * time.Second
 	slowPrefix      = "/slow "
+	toolPrefix      = "/tool "
 	// titleRunes is how much of the first message a Title echoes
 	// (event-log.md D45).
 	titleRunes = 60
 )
 
-// Provider echoes the last user message word by word.
+// Provider echoes the last user message word by word. A message
+// "/tool a 1s ; b 2s" instead asks for tools a and b with those inputs, and
+// the reply that follows their results lists them.
 type Provider struct {
 	// WordDelay is the pause between words; zero means 150 ms.
 	WordDelay time.Duration
@@ -45,6 +51,10 @@ func (Provider) Name() string { return Name }
 func (p Provider) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {
 	if first, ok := provider.TitleMessage(lastUserText(req.Messages)); ok {
 		return titleResponse(req, first), nil
+	}
+	if resp, ok := toolResponse(req); ok {
+		onDelta(provider.Delta{Text: resp.Message.Text()})
+		return resp, nil
 	}
 	delay := cmp.Or(p.WordDelay, defaultWordDelay)
 	total := cmp.Or(p.MinReply, defaultMinReply)
@@ -134,4 +144,31 @@ func parseSlow(text string) (time.Duration, string, bool) {
 		return 0, "", false
 	}
 	return d, rest, true
+}
+
+// toolResponse answers a "/tool" message with tool_use parts, and the
+// tool_result message that follows them with their text.
+func toolResponse(req provider.Request) (provider.Response, bool) {
+	if len(req.Messages) == 0 {
+		return provider.Response{}, false
+	}
+	last := req.Messages[len(req.Messages)-1]
+	usage := provider.Usage{Input: wordCount(req.Messages), Output: 1}
+	if results := last.ToolResultText(); results != "" {
+		return provider.Response{Message: msg.AssistantText("tools: " + results), StopReason: provider.StopReasonEndTurn, Usage: usage}, true
+	}
+	rest, ok := strings.CutPrefix(last.Text(), toolPrefix)
+	if !ok {
+		return provider.Response{}, false
+	}
+	m := msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant}
+	for call := range strings.SplitSeq(rest, ";") {
+		name, input, _ := strings.Cut(strings.TrimSpace(call), " ")
+		args, err := json.Marshal(map[string]string{"input": strings.TrimSpace(input)})
+		if err != nil {
+			return provider.Response{}, false
+		}
+		m.Parts = append(m.Parts, msg.Part{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: uuid.NewString(), Name: name, Args: args}})
+	}
+	return provider.Response{Message: m, StopReason: provider.StopReasonToolUse, Usage: usage}, true
 }

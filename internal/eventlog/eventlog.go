@@ -27,6 +27,10 @@ const (
 	TypeTimerFired       = "timer.fired"
 	TypeConfigChanged    = "session.config_changed"
 	TypeSessionRenamed   = "session.renamed"
+	TypeToolRequested    = "tool.call.requested"
+	TypeToolStarted      = "tool.call.started"
+	TypeToolCompleted    = "tool.call.completed"
+	TypeToolInterrupted  = "tool.call.interrupted"
 )
 
 // Session statuses this slice uses (event-log.md §3).

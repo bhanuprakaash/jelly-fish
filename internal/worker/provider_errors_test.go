@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
@@ -18,6 +19,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/fake"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
+	"github.com/bhanuprakaash/jelly-fish/internal/tool"
 	"github.com/bhanuprakaash/jelly-fish/internal/worker"
 )
 
@@ -66,9 +68,19 @@ func providerErr(kind provider.ErrorKind, input int64) error {
 
 func startScripted(t *testing.T, pool *pgxpool.Pool, p provider.Provider, heartbeat time.Duration) (stop func()) {
 	t.Helper()
-	gw := worker.Gateway{Fake: p, Sleep: func(context.Context, time.Duration) error { return nil }}
+	return startTools(t, pool, p, heartbeat, nil)
+}
+
+func startTools(t *testing.T, pool *pgxpool.Pool, p provider.Provider, heartbeat time.Duration, tools *tool.Registry) (stop func()) {
+	t.Helper()
+	return startTraced(t, pool, p, heartbeat, tools, nil)
+}
+
+func startTraced(t *testing.T, pool *pgxpool.Pool, p provider.Provider, heartbeat time.Duration, tools *tool.Registry, tp trace.TracerProvider) (stop func()) {
+	t.Helper()
+	gw := worker.Gateway{Fake: p, Tracer: tp, Sleep: func(context.Context, time.Duration) error { return nil }}
 	ctx, cancel := context.WithCancel(t.Context())
-	w := worker.New(pool, gw, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: heartbeat}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
+	w := worker.New(pool, gw, tools, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: heartbeat}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
 	worker.SetTitleTimeout(w, 0)
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()

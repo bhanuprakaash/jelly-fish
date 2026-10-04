@@ -56,6 +56,12 @@ func TestToUI(t *testing.T) {
 			wantSent:    true,
 			wantPayload: `{"title":"Trip plan","by":"auto"}`,
 		},
+		{
+			name:        "tool.call.completed passes through",
+			event:       eventlog.Event{Seq: 7, Type: eventlog.TypeToolCompleted, Actor: "worker:w1", Payload: []byte(`{"tool_call_id":"c1","is_error":true}`)},
+			wantSent:    true,
+			wantPayload: `{"tool_call_id":"c1","is_error":true}`,
+		},
 		{name: "usage.recorded is never sent", event: eventlog.Event{Type: eventlog.TypeUsageRecorded, Payload: []byte(`{}`)}},
 		{name: "turn.started is never sent", event: eventlog.Event{Type: eventlog.TypeTurnStarted, Payload: []byte(`{"tools_hash":"x"}`)}},
 		{name: "llm.response with a malformed payload is not sent", event: eventlog.Event{Type: eventlog.TypeLLMResponse, Payload: []byte(`not json`)}},

@@ -141,6 +141,11 @@ func (c chat) params(req provider.Request) (sdk.MessageNewParams, error) {
 	for _, s := range req.System {
 		p.System = append(p.System, sdk.TextBlockParam{Text: s})
 	}
+	for _, t := range req.Tools {
+		// Sent as given, so every adapter shares the one schema.
+		schema := param.Override[sdk.ToolInputSchemaParam](t.Schema)
+		p.Tools = append(p.Tools, sdk.ToolUnionParam{OfTool: &sdk.ToolParam{Name: t.Name, Description: sdk.String(t.Description), InputSchema: schema}})
+	}
 	if known && !req.NoThinking && info.Thinking == provider.ThinkingAdaptiveOnly {
 		// Newer models default display to "omitted"; summarized is the only
 		// change from the default, so the prefix stays byte-stable (D17).

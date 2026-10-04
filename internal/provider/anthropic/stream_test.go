@@ -222,6 +222,10 @@ func TestRequestGoldens(t *testing.T) {
 	}{
 		{"text", userHi()},
 		{"adaptive_thinking", provider.Request{Model: opus, Messages: []msg.Message{msg.UserText("hi")}}},
+		{"tools", provider.Request{Model: haiku, Messages: []msg.Message{msg.UserText("hi")}, Tools: []provider.ToolSpec{
+			{Name: "memory", Description: "Read and write memories.", Schema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}`)},
+			{Name: "sleep", Description: "Wait.", Schema: json.RawMessage(`{"type":"object"}`)},
+		}}},
 		{"replay", provider.Request{Model: opus, Messages: history}},
 		{"breakpoints", provider.Request{
 			Model:      haiku,

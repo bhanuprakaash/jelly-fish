@@ -103,7 +103,7 @@ func (p *titleProvider) titleCount() int {
 func startTitleWorker(t *testing.T, pool *pgxpool.Pool, p provider.Provider, heartbeat, titleTimeout time.Duration) (stop func()) {
 	t.Helper()
 	gw := worker.Gateway{Fake: p, Sleep: func(context.Context, time.Duration) error { return nil }}
-	w := worker.New(pool, gw, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: heartbeat}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
+	w := worker.New(pool, gw, nil, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: heartbeat}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
 	if titleTimeout > 0 {
 		worker.SetTitleTimeout(w, titleTimeout)
 	}

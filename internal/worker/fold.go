@@ -42,6 +42,72 @@ type State struct {
 	Trigger string
 	// TopLevel is false for a Child Session.
 	TopLevel bool
+	// Calls are the tool calls of the latest llm.response, in the order the
+	// model asked.
+	Calls []Call
+	// ResultsAt is the index in Messages of the user message that holds the
+	// tool results of Calls.
+	ResultsAt int
+	// ToolsRan is set while the latest reply's tool results wait for a turn
+	// to read them.
+	ToolsRan bool
+}
+
+// CallStatus is how far a tool call has got.
+type CallStatus int
+
+// Call statuses, in the order a call passes through them.
+const (
+	CallAsked CallStatus = iota + 1
+	CallRequested
+	CallStarted
+	CallDone
+)
+
+// Call is one tool call the model asked for.
+type Call struct {
+	ID   string
+	Name string
+	Args json.RawMessage
+	// TurnID is the turn whose reply asked for the call.
+	TurnID string
+	Status CallStatus
+	// Result is the tool_result part, once the call is done.
+	Result *msg.Part
+}
+
+// calls lists the calls that have status.
+func (st State) calls(status CallStatus) []Call {
+	var out []Call
+	for _, c := range st.Calls {
+		if c.Status == status {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func (st *State) call(id string) (*Call, error) {
+	for i := range st.Calls {
+		if st.Calls[i].ID == id {
+			return &st.Calls[i], nil
+		}
+	}
+	return nil, fmt.Errorf("unknown tool call %q", id)
+}
+
+// setResult records c's result and rewrites the results message, so results
+// sit in the order of the calls whatever order they finished in.
+func (st *State) setResult(c *Call, part msg.Part) {
+	c.Status = CallDone
+	c.Result = &part
+	var parts []msg.Part
+	for _, other := range st.Calls {
+		if other.Result != nil {
+			parts = append(parts, *other.Result)
+		}
+	}
+	st.Messages[st.ResultsAt].Parts = parts
 }
 
 // wantsTitle reports whether the session is a top-level chat still waiting
@@ -140,12 +206,71 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
+		var turnID string
 		if st.OpenTurn != nil {
 			st.InputThroughSeq = st.OpenTurn.InputThroughSeq
+			turnID = st.OpenTurn.ID
 		}
 		st.OpenTurn = nil
 		st.Turns++
 		st.Messages = append(st.Messages, p.Message)
+		st.Calls = nil
+		for _, part := range p.Message.Parts {
+			if part.Kind == msg.KindToolUse {
+				st.Calls = append(st.Calls, Call{ID: part.ToolUse.ID, Name: part.ToolUse.Name, Args: part.ToolUse.Args, TurnID: turnID, Status: CallAsked})
+			}
+		}
+		st.ToolsRan = len(st.Calls) > 0
+		if st.ToolsRan {
+			st.ResultsAt = len(st.Messages)
+			st.Messages = append(st.Messages, msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleUser})
+		}
+	case eventlog.TypeToolRequested, eventlog.TypeToolStarted:
+		var p struct {
+			CallID string `json:"tool_call_id"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		c, err := st.call(p.CallID)
+		if err != nil {
+			return err
+		}
+		c.Status = CallRequested
+		if e.Type == eventlog.TypeToolStarted {
+			c.Status = CallStarted
+		}
+	case eventlog.TypeToolCompleted:
+		var p struct {
+			CallID string      `json:"tool_call_id"`
+			Result msg.Message `json:"result"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		c, err := st.call(p.CallID)
+		if err != nil {
+			return err
+		}
+		if len(p.Result.Parts) != 1 || p.Result.Parts[0].Kind != msg.KindToolResult {
+			return fmt.Errorf("tool call %q: result is not one tool_result", p.CallID)
+		}
+		st.setResult(c, p.Result.Parts[0])
+	case eventlog.TypeToolInterrupted:
+		var p struct {
+			CallID string `json:"tool_call_id"`
+			Note   string `json:"note"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		c, err := st.call(p.CallID)
+		if err != nil {
+			return err
+		}
+		st.setResult(c, msg.Part{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{
+			CallID: p.CallID, IsError: true, Parts: []msg.Part{{Kind: msg.KindText, Text: p.Note}},
+		}})
 	case eventlog.TypeTurnInterrupted:
 		st.OpenTurn = nil
 	case eventlog.TypeSessionError:
