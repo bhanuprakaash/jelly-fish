@@ -30,14 +30,14 @@ export function LinkSignIn({ token, onSignedIn }: Props) {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-neutral-950 px-4 text-neutral-100">
-      <div className="w-full max-w-sm rounded-2xl bg-neutral-900 p-8 text-center shadow-xl sm:max-w-md">
+    <main className="flex min-h-svh items-center justify-center bg-bg px-4 text-ink">
+      <div className="w-full max-w-sm rounded-panel border border-line bg-surface p-8 text-center sm:max-w-md">
         <h1 className="text-2xl font-semibold sm:text-3xl">Sign in to jelly-fish</h1>
-        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
         <button
           onClick={signIn}
           disabled={busy}
-          className="mt-6 w-full rounded-xl bg-neutral-100 px-6 py-3 font-medium text-neutral-900 disabled:opacity-50"
+          className="btn btn-primary btn-lg mt-6 w-full"
         >
           Sign in
         </button>

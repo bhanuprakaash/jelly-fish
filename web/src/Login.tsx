@@ -5,9 +5,8 @@ type Props = {
   onSignedIn: () => void
 }
 
-const inputClass = 'w-full rounded-xl bg-neutral-800 px-4 py-2 outline-none disabled:opacity-50'
-const buttonClass =
-  'mt-4 w-full rounded-xl bg-neutral-100 px-6 py-3 font-medium text-neutral-900 disabled:opacity-50'
+const inputClass = 'w-full rounded-btn border border-line2 bg-surface px-4 py-2 outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50'
+const buttonClass = 'btn btn-primary btn-lg mt-4 w-full'
 
 export function Login({ onSignedIn }: Props) {
   const [email, setEmail] = useState('')
@@ -38,15 +37,15 @@ export function Login({ onSignedIn }: Props) {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-neutral-950 px-4 text-neutral-100">
+    <main className="flex min-h-svh items-center justify-center bg-bg px-4 text-ink">
       <form
         onSubmit={submit}
-        className="w-full max-w-sm rounded-2xl bg-neutral-900 p-8 shadow-xl sm:max-w-md"
+        className="w-full max-w-sm rounded-panel border border-line bg-surface p-8 sm:max-w-md"
       >
         <h1 className="text-center text-2xl font-semibold sm:text-3xl">Jelly-fish</h1>
         {codeSent ? (
           <>
-            <p className="mt-6 text-center text-neutral-300">
+            <p className="mt-6 text-center text-ink2">
               Check your email. If you're invited, a 6-digit code is on its way.
             </p>
             <input
@@ -74,7 +73,7 @@ export function Login({ onSignedIn }: Props) {
             autoFocus
           />
         )}
-        {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-center text-sm text-danger">{error}</p>}
         <button
           type="submit"
           disabled={busy || (codeSent ? code.trim().length !== 6 : !email.trim())}

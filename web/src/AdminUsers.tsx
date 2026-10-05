@@ -79,15 +79,15 @@ export function AdminUsers({ onSignedOut }: Props) {
   }
 
   return (
-    <div className="min-h-svh bg-neutral-950 text-neutral-100">
-      <header className="border-b border-neutral-800 px-4 py-3">
-        <a href="/settings" className="text-sm text-neutral-400 hover:text-neutral-200">
+    <div className="min-h-svh bg-bg text-ink">
+      <header className="border-b border-line px-4 py-3">
+        <a href="/settings" className="text-sm text-muted hover:text-ink">
           ← Back
         </a>
       </header>
       <main className="mx-auto max-w-md space-y-6 px-4 py-6">
         <h1 className="text-2xl font-semibold">Users</h1>
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <form onSubmit={invite} className="flex gap-2">
           <input
@@ -96,9 +96,9 @@ export function AdminUsers({ onSignedOut }: Props) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="friend@example.com"
-            className="min-w-0 flex-1 rounded-xl bg-neutral-900 px-4 py-2"
+            className="min-w-0 flex-1 rounded-btn border border-line2 bg-surface px-4 py-2 outline-none focus-visible:ring-2 focus-visible:ring-accent"
           />
-          <button className="rounded-xl bg-neutral-100 px-4 py-2 font-medium text-neutral-900">
+          <button className="btn btn-primary">
             Invite
           </button>
         </form>
@@ -107,22 +107,22 @@ export function AdminUsers({ onSignedOut }: Props) {
           <section className="space-y-3">
             <h2 className="text-lg font-medium">Invites</h2>
             {data.invites.map((inv) => (
-              <div key={inv.id} className="rounded-xl bg-neutral-900 p-4">
+              <div key={inv.id} className="rounded-card border border-line bg-surface p-4">
                 <p className="truncate">{inv.email}</p>
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-muted">
                   {new Date(inv.expires_at) < new Date() ? 'Expired' : 'Expires'}{' '}
                   {new Date(inv.expires_at).toLocaleDateString()}
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button
                     onClick={() => run(() => resendInvite(inv.id))}
-                    className="rounded-xl bg-neutral-800 px-4 py-2 text-sm"
+                    className="btn btn-secondary btn-sm"
                   >
                     Resend
                   </button>
                   <button
                     onClick={() => run(() => revokeInvite(inv.id))}
-                    className="rounded-xl bg-neutral-800 px-4 py-2 text-sm"
+                    className="btn btn-danger btn-sm"
                   >
                     Revoke
                   </button>
@@ -135,23 +135,23 @@ export function AdminUsers({ onSignedOut }: Props) {
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Users</h2>
           {data?.users.map((u) => (
-            <div key={u.id} className="rounded-xl bg-neutral-900 p-4">
+            <div key={u.id} className="rounded-card border border-line bg-surface p-4">
               <p className="truncate">
                 {u.email}
-                {u.is_admin && <span className="ml-2 text-sm text-neutral-400">(admin)</span>}
-                {u.disabled_at && <span className="ml-2 text-sm text-red-400">(disabled)</span>}
+                {u.is_admin && <span className="ml-2 text-sm text-muted">(admin)</span>}
+                {u.disabled_at && <span className="ml-2 text-sm text-danger">(disabled)</span>}
               </p>
               <div className="mt-2 flex gap-2">
                 <button
                   onClick={() => run(() => setUserDisabled(u.id, !u.disabled_at))}
-                  className="rounded-xl bg-neutral-800 px-4 py-2 text-sm"
+                  className="btn btn-secondary btn-sm"
                 >
                   {u.disabled_at ? 'Enable' : 'Disable'}
                 </button>
                 {!u.is_admin && (
                   <button
                     onClick={() => run(() => makeAdmin(u.id))}
-                    className="rounded-xl bg-neutral-800 px-4 py-2 text-sm"
+                    className="btn btn-secondary btn-sm"
                   >
                     Make admin
                   </button>

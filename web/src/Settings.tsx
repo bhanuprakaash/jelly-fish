@@ -71,36 +71,36 @@ export function Settings({ onSignedOut }: Props) {
     })
 
   return (
-    <div className="min-h-svh bg-neutral-950 text-neutral-100">
-      <header className="border-b border-neutral-800 px-4 py-3">
-        <a href="/" className="text-sm text-neutral-400 hover:text-neutral-200">
+    <div className="min-h-svh bg-bg text-ink">
+      <header className="border-b border-line px-4 py-3">
+        <a href="/" className="text-sm text-muted hover:text-ink">
           ← Back
         </a>
       </header>
       <main className="mx-auto max-w-md space-y-6 px-4 py-6">
         <h1 className="text-2xl font-semibold">Account</h1>
-        {me && <p className="text-neutral-300">{me.email}</p>}
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {me && <p className="text-ink2">{me.email}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <Appearance />
 
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Devices</h2>
           {devices?.map((d) => (
-            <div key={d.id} className="flex items-center gap-3 rounded-xl bg-neutral-900 p-4">
+            <div key={d.id} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4">
               <div className="min-w-0 flex-1">
                 <p className="truncate">
                   {d.user_agent || 'Unknown device'}
-                  {d.current && <span className="ml-2 text-sm text-neutral-400">(this device)</span>}
+                  {d.current && <span className="ml-2 text-sm text-muted">(this device)</span>}
                 </p>
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-muted">
                   Signed in {new Date(d.created_at).toLocaleDateString()}, last seen{' '}
                   {new Date(d.last_seen_at).toLocaleString()}
                 </p>
               </div>
               <button
                 onClick={() => logOutDevice(d)}
-                className="rounded-xl bg-neutral-800 px-4 py-2 text-sm"
+                className="btn btn-secondary btn-sm"
               >
                 Log out
               </button>
@@ -113,7 +113,7 @@ export function Settings({ onSignedOut }: Props) {
         {me?.is_admin && (
           <a
             href="/admin/users"
-            className="block rounded-xl bg-neutral-900 px-6 py-3 text-center text-neutral-200"
+            className="btn btn-secondary btn-lg w-full"
           >
             Admin: Users
           </a>
@@ -121,7 +121,7 @@ export function Settings({ onSignedOut }: Props) {
 
         <button
           onClick={logOutEverywhere}
-          className="w-full rounded-xl bg-neutral-100 px-6 py-3 font-medium text-neutral-900"
+          className="btn btn-danger btn-lg w-full"
         >
           Log out everywhere
         </button>
@@ -226,16 +226,16 @@ function ProviderKeys({ onSignedOut }: Props) {
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-medium">Provider Keys</h2>
-      <div className="space-y-3 rounded-xl bg-neutral-900 p-4">
+      <div className="space-y-3 rounded-card border border-line bg-surface p-4">
         <div className="flex items-center gap-3">
           <p className="min-w-0 flex-1">
             Anthropic
-            {saved && <span className="ml-2 text-sm text-neutral-400">sk-…{saved.last4}</span>}
+            {saved && <span className="ml-2 font-mono text-sm text-muted">sk-…{saved.last4}</span>}
           </p>
           {!saved && loaded && !adding && (
             <button
               onClick={() => setAdding(true)}
-              className="rounded-xl bg-neutral-800 px-4 py-2 text-sm"
+              className="btn btn-secondary btn-sm"
             >
               Add key
             </button>
@@ -244,11 +244,11 @@ function ProviderKeys({ onSignedOut }: Props) {
             <>
               <button
                 onClick={() => setEditing(true)}
-                className="rounded-xl bg-neutral-800 px-4 py-2 text-sm"
+                className="btn btn-secondary btn-sm"
               >
                 Replace
               </button>
-              <button onClick={remove} className="rounded-xl bg-neutral-800 px-4 py-2 text-sm">
+              <button onClick={remove} className="btn btn-danger btn-sm">
                 Delete
               </button>
             </>
@@ -268,23 +268,23 @@ function ProviderKeys({ onSignedOut }: Props) {
               value={key}
               onChange={(e) => setKey(e.target.value)}
               placeholder="Anthropic API key"
-              className="min-w-0 flex-1 rounded-xl bg-neutral-800 px-4 py-2"
+              className="min-w-0 flex-1 rounded-btn border border-line2 bg-surface px-4 py-2 outline-none focus-visible:ring-2 focus-visible:ring-accent"
             />
             <button
               type="submit"
               disabled={busy || key.trim() === ''}
-              className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-50"
+              className="btn btn-primary"
             >
               Save
             </button>
           </form>
         )}
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
       </div>
       {comingSoon.map((name) => (
-        <div key={name} className="flex items-center gap-3 rounded-xl bg-neutral-900 p-4 opacity-50">
+        <div key={name} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 opacity-50">
           <p className="min-w-0 flex-1">{name}</p>
-          <span className="text-sm text-neutral-400">Coming soon</span>
+          <span className="text-sm text-muted">Coming soon</span>
         </div>
       ))}
     </section>

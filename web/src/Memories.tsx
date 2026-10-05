@@ -42,16 +42,16 @@ export function Memories({ onUnauthorized }: Props) {
   }
 
   return (
-    <div className="min-h-svh bg-neutral-950 text-neutral-100">
-      <header className="border-b border-neutral-800 px-4 py-3">
-        <a href="/" className="text-sm text-neutral-400 hover:text-neutral-200">
+    <div className="min-h-svh bg-bg text-ink">
+      <header className="border-b border-line px-4 py-3">
+        <a href="/" className="text-sm text-muted hover:text-ink">
           ← Back
         </a>
       </header>
       <main className="mx-auto max-w-2xl space-y-8 px-4 py-6">
         <h1 className="text-2xl font-semibold">Memories</h1>
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        {!data && !error && <p className="text-neutral-500">Loading…</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
+        {!data && !error && <p className="text-muted">Loading…</p>}
         {data && (
           <>
             <section className="space-y-3">
@@ -64,7 +64,7 @@ export function Memories({ onUnauthorized }: Props) {
             </section>
             <section className="space-y-3">
               <h2 className="text-lg font-medium">Project Memory: {data.project.name}</h2>
-              <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <label className="flex items-center gap-2 text-sm text-ink2">
                 <input
                   type="checkbox"
                   checked={data.project.use_user_memory}
@@ -92,7 +92,7 @@ type ListProps = {
 }
 
 function MemoryList({ memories, onChanged, onUnauthorized }: ListProps) {
-  if (memories.length === 0) return <p className="text-sm text-neutral-500">Nothing remembered yet.</p>
+  if (memories.length === 0) return <p className="text-sm text-muted">Nothing remembered yet.</p>
   return (
     <ul className="space-y-3">
       {memories.map((m) => (
@@ -121,28 +121,28 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
   }
 
   return (
-    <li className="space-y-2 rounded-xl border border-neutral-800 p-4">
+    <li className="space-y-2 rounded-card border border-line p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-medium">{memory.title}</h3>
         {memory.status === 'pending_review' && (
-          <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-xs text-amber-300">Pending review</span>
+          <span className="rounded-full bg-attention-tint px-2 py-0.5 text-xs text-attention">Pending review</span>
         )}
         {memory.stale && (
-          <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs text-neutral-400">Stale</span>
+          <span className="rounded-full bg-sunk px-2 py-0.5 text-xs text-muted">Stale</span>
         )}
       </div>
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-muted">
         {memory.path} · updated {new Date(memory.updated_at).toLocaleString()}
         {memory.source_session_id && (
           <>
             {' · '}
-            <a href={`/s/${memory.source_session_id}`} className="underline hover:text-neutral-300">
+            <a href={`/s/${memory.source_session_id}`} className="underline hover:text-ink2">
               source chat
             </a>
           </>
         )}
       </p>
-      <p className="text-sm whitespace-pre-wrap text-neutral-300">{memory.content}</p>
+      <p className="text-sm whitespace-pre-wrap text-ink2">{memory.content}</p>
       <MemoryActions
         key={memory.version}
         memory={memory}
@@ -152,10 +152,10 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
         }}
         onUnauthorized={onUnauthorized}
       />
-      <button onClick={showHistory} className="text-sm text-neutral-400 hover:text-neutral-200">
+      <button onClick={showHistory} className="btn btn-ghost btn-sm">
         {history ? 'Hide history' : 'History'}
       </button>
-      {historyError && <p className="text-sm text-red-400">Could not load history.</p>}
+      {historyError && <p className="text-sm text-danger">Could not load history.</p>}
       {history && <History revisions={history} />}
     </li>
   )
@@ -165,16 +165,16 @@ const writers = { agent: 'Assistant', user: 'You', tidy: 'Tidy' }
 
 function History({ revisions }: { revisions: MemoryRevision[] }) {
   return (
-    <ol className="space-y-2 border-l border-neutral-800 pl-3 text-sm">
+    <ol className="space-y-2 border-l border-line pl-3 text-sm">
       {revisions.map((r, i) => (
         <li key={r.version}>
-          <p className="text-neutral-400">
+          <p className="text-muted">
             v{r.version} · {writers[r.written_by]} · {new Date(r.created_at).toLocaleString()} ·{' '}
             {changes(revisions[i - 1], r)}
           </p>
           <details>
-            <summary className="cursor-pointer text-neutral-500">Text at this version</summary>
-            <p className="whitespace-pre-wrap text-neutral-300">{r.content}</p>
+            <summary className="cursor-pointer text-muted">Text at this version</summary>
+            <p className="whitespace-pre-wrap text-ink2">{r.content}</p>
           </details>
         </li>
       ))}

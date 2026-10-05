@@ -58,7 +58,7 @@ function App() {
   if (signIn === 'checking') return null
   if (signIn === 'error') {
     return (
-      <main className="flex min-h-svh items-center justify-center bg-neutral-950 text-red-400">
+      <main className="flex min-h-svh items-center justify-center bg-bg text-danger">
         Could not reach the server.
       </main>
     )
