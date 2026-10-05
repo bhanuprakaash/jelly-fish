@@ -132,6 +132,10 @@ func TestMemoryChipUndo(t *testing.T) {
 		rr := e.do(http.MethodPost, "/api/memories/"+id.String()+"/undo", map[string]int{"version": version}, c)
 		return rr.Code, strings.TrimSpace(rr.Body.String())
 	}
+	pending := e.seedMemory(t, u, "/memories/p.md", "pending_review", "from a web page", "edited")
+	if code, body := undo(pending, 2); code != http.StatusConflict {
+		t.Errorf("undo pending: %d %s, want 409", code, body)
+	}
 	if code, body := undo(created, 1); code != http.StatusNoContent {
 		t.Fatalf("undo create: %d %s", code, body)
 	}

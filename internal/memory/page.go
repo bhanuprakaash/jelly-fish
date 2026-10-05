@@ -188,7 +188,9 @@ func (p *Pages) Undo(ctx context.Context, scope eventlog.TenantScope, id uuid.UU
 		if err != nil {
 			return err
 		}
-		if cur.version != version {
+		// A pending memory is settled by approve, edit or delete; undo would
+		// activate it.
+		if cur.version != version || cur.status != statusActive {
 			return ErrChanged
 		}
 		if version == 1 {
