@@ -115,6 +115,7 @@ One function-schema tool named `memory`, sent identically to every Provider. One
 **Paths**
 - Virtual (`/memories/...`), resolved to rows. No filesystem access, so path traversal is impossible.
 - Normalize paths. Reject `..`.
+- Reject `<`, `>` and control characters (tab, CR, LF included) in a path or title, so an index line cannot close its prompt block.
 
 **Caps and errors**
 - Caps: 4 KB per memory; max 200 memories per scope (User Memory; each Project's Project Memory); prompt index max 200 lines or 25 KB.
@@ -126,6 +127,7 @@ One function-schema tool named `memory`, sent identically to every Provider. One
 - Normal sessions: full tool.
 - **Child Sessions**: `view` only. Write commands are refused.
 - **Incognito** sessions: no `memory` tool at all.
+- A Project with `use_user_memory` off: User scope is off for the tool. `view /memories` omits User Memory, and any `scope: "user"` command is refused with "User Memory is off for this project".
 - The tool is free under the Approver (internal, reversible, not an external side effect; ADR 0004). Every call is still rendered as a visible chip.
 
 ## 5. Algorithms and flows
@@ -198,7 +200,7 @@ Refresh only at session start and after a Compaction. Never rewrite the index mi
 5. **Apply**: accepted changes are written with `written_by='tidy'` and get revisions like any other write. Their `memory.written` events go to the Tidy run's session (the System Session when started from the Memories page).
 
 ### 5.5 Memories page edits
-Manual edits, approvals, and deletes on the Memories page make no LLM call and need no session. They emit no event; their only record is `memory_revisions` rows with `written_by='user'` (`session_id` NULL). A hard delete removes the row and its revisions.
+Manual edits, approvals, and deletes on the Memories page make no LLM call and need no session. They emit no event; their only record is `memory_revisions` rows with `written_by='user'` (`session_id` NULL). A hard delete removes the row and its revisions. Approve and edit carry the version the card showed and are refused (409) if the memory has moved on.
 
 ### 5.6 Clearing old memories
 - **Size pressure**: caps force the agent to merge or delete (§4).

@@ -304,7 +304,7 @@ export type Memory = {
   content: string
   status: 'active' | 'pending_review'
   version: number
-  // stale is true when the memory was last read over 90 days ago.
+  // stale is true when the memory was last read, or if never read created, over 90 days ago.
   stale: boolean
   // source_session_id is null once the session that wrote it is deleted.
   source_session_id: string | null
@@ -335,19 +335,25 @@ export async function getMemoryRevisions(id: string): Promise<MemoryRevision[]> 
   return res.json() as Promise<MemoryRevision[]>
 }
 
-// editMemory saves new content. It throws HttpError 422 when the text is
-// empty, over 4 KB or looks like a secret. Editing a pending memory approves it.
-export async function editMemory(id: string, content: string): Promise<void> {
+// editMemory saves new content over the card's version. It throws HttpError
+// 422 when the text is empty, over 4 KB or looks like a secret, and 409 when
+// the memory has changed since. Editing a pending memory approves it.
+export async function editMemory(id: string, content: string, version: number): Promise<void> {
   await request(`/api/memories/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, version }),
   })
 }
 
-// approveMemory makes a pending memory active.
-export async function approveMemory(id: string): Promise<void> {
-  await request(`/api/memories/${id}/approve`, { method: 'POST' })
+// approveMemory makes a pending memory active; it throws HttpError 409 when
+// the memory has changed since version.
+export async function approveMemory(id: string, version: number): Promise<void> {
+  await request(`/api/memories/${id}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version }),
+  })
 }
 
 // deleteMemory hard-deletes a memory and its history.

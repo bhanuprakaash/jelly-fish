@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/google/uuid"
-
 	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 )
 
@@ -44,7 +42,7 @@ func (h *memoryHandlers) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *memoryHandlers) revisions(w http.ResponseWriter, r *http.Request) {
-	id, ok := idParam(w, r)
+	id, ok := pathUUID(w, r)
 	if !ok {
 		return
 	}
@@ -57,13 +55,12 @@ func (h *memoryHandlers) revisions(w http.ResponseWriter, r *http.Request) {
 }
 
 type editMemoryRequest struct {
-	// Title is optional; empty keeps the title.
-	Title   string `json:"title"`
 	Content string `json:"content"`
+	Version int    `json:"version"`
 }
 
 func (h *memoryHandlers) edit(w http.ResponseWriter, r *http.Request) {
-	id, ok := idParam(w, r)
+	id, ok := pathUUID(w, r)
 	if !ok {
 		return
 	}
@@ -71,35 +68,39 @@ func (h *memoryHandlers) edit(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	h.done(w, h.pages.Edit(r.Context(), scopeFrom(r), id, req.Title, req.Content), "edit memory")
+	h.done(w, h.pages.Edit(r.Context(), scopeFrom(r), id, req.Version, req.Content), "edit memory")
 }
 
 func (h *memoryHandlers) approve(w http.ResponseWriter, r *http.Request) {
-	id, ok := idParam(w, r)
+	id, ok := pathUUID(w, r)
 	if !ok {
 		return
 	}
-	h.done(w, h.pages.Approve(r.Context(), scopeFrom(r), id), "approve memory")
+	var req versionRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	h.done(w, h.pages.Approve(r.Context(), scopeFrom(r), id, req.Version), "approve memory")
 }
 
 func (h *memoryHandlers) delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := idParam(w, r)
+	id, ok := pathUUID(w, r)
 	if !ok {
 		return
 	}
 	h.done(w, h.pages.Delete(r.Context(), scopeFrom(r), id), "delete memory")
 }
 
-type undoMemoryRequest struct {
+type versionRequest struct {
 	Version int `json:"version"`
 }
 
 func (h *memoryHandlers) undo(w http.ResponseWriter, r *http.Request) {
-	id, ok := idParam(w, r)
+	id, ok := pathUUID(w, r)
 	if !ok {
 		return
 	}
-	var req undoMemoryRequest
+	var req versionRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
@@ -115,7 +116,7 @@ type patchProjectRequest struct {
 }
 
 func (h *memoryHandlers) patchProject(w http.ResponseWriter, r *http.Request) {
-	id, ok := idParam(w, r)
+	id, ok := pathUUID(w, r)
 	if !ok {
 		return
 	}
@@ -136,13 +137,4 @@ func (h *memoryHandlers) done(w http.ResponseWriter, err error, what string) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func idParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "not found")
-		return uuid.UUID{}, false
-	}
-	return id, true
 }

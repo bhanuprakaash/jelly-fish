@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -23,7 +22,8 @@ import (
 var (
 	// ErrNotFound is returned for a memory or project that is not the caller's.
 	ErrNotFound = errors.New("memory not found")
-	// ErrChanged is returned by Undo when the memory moved on since the chip.
+	// ErrChanged is returned when the memory moved on since the card or chip the
+	// request came from.
 	ErrChanged = errors.New("memory changed since")
 )
 
@@ -131,17 +131,15 @@ func (p *Pages) Revisions(ctx context.Context, scope eventlog.TenantScope, id uu
 	return revs, nil
 }
 
-// Edit saves new content, and a new title when title is non-empty. Editing a
-// pending_review memory approves it.
-func (p *Pages) Edit(ctx context.Context, scope eventlog.TenantScope, id uuid.UUID, title, content string) error {
+// Edit saves new content and keeps the title. It returns ErrChanged when the
+// memory is no longer at version. Editing a pending_review memory approves it.
+func (p *Pages) Edit(ctx context.Context, scope eventlog.TenantScope, id uuid.UUID, version int, content string) error {
 	switch {
 	case strings.TrimSpace(content) == "":
 		return RejectedError{"content is required"}
 	case len(content) > maxContent:
 		return RejectedError{fmt.Sprintf("content is %d bytes; the limit is 4 KB", len(content))}
-	case strings.ContainsAny(title, "\r\n"):
-		return RejectedError{"title must be one line"}
-	case hasSecret(content, title):
+	case hasSecret(content):
 		return RejectedError{"the text looks like a secret or credential. Never store secrets in memory."}
 	}
 	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
@@ -149,16 +147,23 @@ func (p *Pages) Edit(ctx context.Context, scope eventlog.TenantScope, id uuid.UU
 		if err != nil {
 			return err
 		}
-		return save(ctx, tx, id, cur.version, path, cmp.Or(title, cur.title), content)
+		if cur.version != version {
+			return ErrChanged
+		}
+		return save(ctx, tx, id, cur.version, path, cur.title, content)
 	})
 }
 
-// Approve makes a pending_review memory active and untainted.
-func (p *Pages) Approve(ctx context.Context, scope eventlog.TenantScope, id uuid.UUID) error {
+// Approve makes a pending_review memory active and untainted. It returns
+// ErrChanged when the memory is no longer at version.
+func (p *Pages) Approve(ctx context.Context, scope eventlog.TenantScope, id uuid.UUID, version int) error {
 	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		cur, path, err := lockOwned(ctx, tx, scope, id)
 		if err != nil {
 			return err
+		}
+		if cur.version != version {
+			return ErrChanged
 		}
 		if cur.status == statusActive {
 			return nil

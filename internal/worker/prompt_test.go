@@ -123,18 +123,26 @@ func TestIndexStaysFrozenAcrossWritesReclaimsAndDeletes(t *testing.T) {
 	}
 
 	// A new Worker claims the session.
-	again := &replies{list: []provider.Response{done()}}
+	// The frozen memory itself changes mid-session.
+	again := &replies{list: []provider.Response{
+		memCall("s1", map[string]any{"command": "str_replace", "scope": "user", "path": "/memories/diet.md", "old_str": needle, "new_str": "changed", "title": "Strict vegan"}),
+		done(),
+	}}
 	startTools(t, pool, again, 10*time.Second, registry)
 	say(t, pool, scope, second)
-	waitStatus(t, pool, second, eventlog.StatusAwaitingUser, 3)
+	waitStatus(t, pool, second, eventlog.StatusAwaitingUser, 4)
+	if n := queryCount(t, pool, `SELECT count(*) FROM memories WHERE path = '/memories/diet.md' AND title = 'Strict vegan' AND version = 2`); n != 1 {
+		t.Fatalf("diet.md was not retitled")
+	}
 	wantSystem(t, again.requests()[0], platform, userBlock)
+	wantSystem(t, again.requests()[1], platform, userBlock)
 
 	if _, err := pool.Exec(t.Context(), `DELETE FROM memories WHERE path = '/memories/diet.md'`); err != nil {
 		t.Fatal(err)
 	}
 	say(t, pool, scope, second)
-	waitStatus(t, pool, second, eventlog.StatusAwaitingUser, 4)
-	wantSystem(t, again.requests()[1], platform)
+	waitStatus(t, pool, second, eventlog.StatusAwaitingUser, 5)
+	wantSystem(t, again.requests()[2], platform)
 }
 
 func TestPendingMemoryIsInTheNextChatOnlyAfterApproval(t *testing.T) {
@@ -151,7 +159,12 @@ func TestPendingMemoryIsInTheNextChatOnlyAfterApproval(t *testing.T) {
 	waitStatus(t, pool, second, eventlog.StatusAwaitingUser, 1)
 	wantSystem(t, p.requests()[3], platform)
 
-	if _, err := pool.Exec(t.Context(), `UPDATE memories SET status = 'active' WHERE user_id = $1`, scope.UserID); err != nil {
+	var id uuid.UUID
+	var version int
+	if err := pool.QueryRow(t.Context(), `SELECT id, version FROM memories WHERE user_id = $1`, scope.UserID).Scan(&id, &version); err != nil {
+		t.Fatal(err)
+	}
+	if err := memory.NewPages(pool).Approve(t.Context(), scope, id, version); err != nil {
 		t.Fatal(err)
 	}
 	say(t, pool, scope, second)

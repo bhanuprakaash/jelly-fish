@@ -32,6 +32,8 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
       if (err instanceof UnauthorizedError) onUnauthorized()
       else if (err instanceof HttpError && err.status === 422) {
         setError('Not saved: the text is empty, over 4 KB, or looks like a secret.')
+      } else if (err instanceof HttpError && err.status === 409) {
+        setError('Changed since, so it can’t be saved or approved. Reload to see the latest.')
       } else setError('Something went wrong. Try again.')
     }
   }
@@ -50,7 +52,7 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
             className="w-full rounded-xl bg-neutral-900 px-3 py-2 text-sm outline-none"
           />
           <div className="flex gap-2">
-            <button className={button} onClick={() => run(() => editMemory(memory.id, draft))}>
+            <button className={button} onClick={() => run(() => editMemory(memory.id, draft, memory.version))}>
               Save
             </button>
             <button className={button} onClick={() => setEditing(false)}>
@@ -62,7 +64,7 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
       {!editing && (
         <div className="flex gap-2">
           {memory.status === 'pending_review' && (
-            <button className={button} onClick={() => run(() => approveMemory(memory.id))}>
+            <button className={button} onClick={() => run(() => approveMemory(memory.id, memory.version))}>
               Approve
             </button>
           )}

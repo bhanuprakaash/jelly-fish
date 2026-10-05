@@ -85,11 +85,11 @@ func TestMemoryPageEditApproveDelete(t *testing.T) {
 		body         any
 		want         int
 	}{
-		{http.MethodPatch, "/api/memories/" + edited.String(), map[string]string{"content": "new"}, http.StatusNoContent},
-		{http.MethodPost, "/api/memories/" + approved.String() + "/approve", nil, http.StatusNoContent},
+		{http.MethodPatch, "/api/memories/" + edited.String(), map[string]any{"content": "new", "version": 1}, http.StatusNoContent},
+		{http.MethodPost, "/api/memories/" + approved.String() + "/approve", map[string]int{"version": 1}, http.StatusNoContent},
 		{http.MethodDelete, "/api/memories/" + deleted.String(), nil, http.StatusNoContent},
-		{http.MethodPatch, "/api/memories/" + edited.String(), map[string]string{"content": "key sk-ant-abc"}, http.StatusUnprocessableEntity},
-		{http.MethodPatch, "/api/memories/" + edited.String(), map[string]string{"content": strings.Repeat("x", 4097)}, http.StatusUnprocessableEntity},
+		{http.MethodPatch, "/api/memories/" + edited.String(), map[string]any{"content": "key sk-ant-abc", "version": 2}, http.StatusUnprocessableEntity},
+		{http.MethodPatch, "/api/memories/" + edited.String(), map[string]any{"content": strings.Repeat("x", 4097), "version": 2}, http.StatusUnprocessableEntity},
 	} {
 		if rr := e.do(step.method, step.path, step.body, c); rr.Code != step.want {
 			t.Fatalf("%s %s: status %d, want %d, body %s", step.method, step.path, rr.Code, step.want, rr.Body)
@@ -118,6 +118,35 @@ func TestMemoryPageEditApproveDelete(t *testing.T) {
 	}
 	if n := e.count(t, `SELECT count(*) FROM memories WHERE tainted`); n != 0 {
 		t.Errorf("%d memories still tainted", n)
+	}
+}
+
+func TestMemoryStaleCardIsRefused(t *testing.T) {
+	e := newLoginEnv(t)
+	u := testdb.NewUser(t, e.pool)
+	c := e.signInUser(t, u)
+	id := e.seedMemory(t, u, "/memories/a.md", "pending_review", "from a web page", "agent overwrite")
+	url := "/api/memories/" + id.String()
+
+	for name, step := range map[string]struct {
+		method, path string
+		body         any
+	}{
+		"approve": {http.MethodPost, url + "/approve", map[string]int{"version": 1}},
+		"edit":    {http.MethodPatch, url, map[string]any{"content": "mine", "version": 1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rr := e.do(step.method, step.path, step.body, c)
+			if got := strings.TrimSpace(rr.Body.String()); rr.Code != http.StatusConflict || got != `{"error":"changed since"}` {
+				t.Fatalf("%d %s, want 409 changed since", rr.Code, got)
+			}
+			if e.count(t, `SELECT count(*) FROM memories WHERE id = $1 AND status = 'pending_review' AND version = 2 AND content = 'agent overwrite'`, id) != 1 {
+				t.Fatal("memory changed by a stale request")
+			}
+		})
+	}
+	if rr := e.do(http.MethodPost, url+"/approve", map[string]int{"version": 2}, c); rr.Code != http.StatusNoContent {
+		t.Fatalf("approve at the current version: %d %s", rr.Code, rr.Body)
 	}
 }
 
@@ -216,19 +245,27 @@ func TestMemoryTenancy(t *testing.T) {
 		{http.MethodPost, "/api/memories/" + id.String() + "/undo"},
 		{http.MethodDelete, "/api/memories/" + id.String()},
 	} {
-		body := map[string]any{"content": "x", "version": 1}
-		if rr := e.do(r.method, r.path, body, bc); rr.Code != http.StatusNotFound {
-			t.Errorf("%s %s as other user: status %d, want 404", r.method, r.path, rr.Code)
+		t.Run(r.method+" "+strings.TrimPrefix(r.path, "/api/memories/"+id.String()), func(t *testing.T) {
+			body := map[string]any{"content": "x", "version": 1}
+			if rr := e.do(r.method, r.path, body, bc); rr.Code != http.StatusNotFound {
+				t.Errorf("as other user: status %d, want 404", rr.Code)
+			}
+		})
+	}
+	t.Run("list", func(t *testing.T) {
+		if m := e.overview(t, bc).Memories; len(m) != 0 {
+			t.Errorf("other user lists %d memories, want 0", len(m))
 		}
-	}
-	if m := e.overview(t, bc).Memories; len(m) != 0 {
-		t.Errorf("other user lists %d memories, want 0", len(m))
-	}
-	pid := e.overview(t, ac).Project.ID
-	if rr := e.do(http.MethodPatch, "/api/projects/"+pid.String(), map[string]bool{"use_user_memory": false}, bc); rr.Code != http.StatusNotFound {
-		t.Errorf("toggle other user's project: status %d, want 404", rr.Code)
-	}
-	if e.count(t, `SELECT count(*) FROM memories WHERE id = $1 AND status = 'pending_review' AND content = 'secret plans'`, id) != 1 {
-		t.Error("other user's memory changed")
-	}
+	})
+	t.Run("toggle project", func(t *testing.T) {
+		pid := e.overview(t, ac).Project.ID
+		if rr := e.do(http.MethodPatch, "/api/projects/"+pid.String(), map[string]bool{"use_user_memory": false}, bc); rr.Code != http.StatusNotFound {
+			t.Errorf("status %d, want 404", rr.Code)
+		}
+	})
+	t.Run("memory unchanged", func(t *testing.T) {
+		if e.count(t, `SELECT count(*) FROM memories WHERE id = $1 AND status = 'pending_review' AND content = 'secret plans'`, id) != 1 {
+			t.Error("other user's memory changed")
+		}
+	})
 }
