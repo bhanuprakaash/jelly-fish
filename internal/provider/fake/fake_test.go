@@ -2,6 +2,7 @@ package fake_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -85,5 +86,23 @@ func TestStreamTitleRequestDropsTheSlowPrefix(t *testing.T) {
 	}
 	if got := resp.Message.Text(); got != "hello there" {
 		t.Fatalf("title = %q", got)
+	}
+}
+
+func TestToolCallSendsAJSONObjectInputAsTheArgs(t *testing.T) {
+	p := fake.Provider{}
+	resp, err := p.Stream(t.Context(), provider.Request{Messages: []msg.Message{
+		msg.UserText(`/tool memory {"command":"view","path":"/memories"} ; sleep 2s`),
+	}}, func(provider.Delta) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, part := range resp.Message.Parts {
+		got = append(got, part.ToolUse.Name+" "+string(part.ToolUse.Args))
+	}
+	want := []string{`memory {"command":"view","path":"/memories"}`, `sleep {"input":"2s"}`}
+	if !slices.Equal(got, want) {
+		t.Fatalf("calls = %q, want %q", got, want)
 	}
 }

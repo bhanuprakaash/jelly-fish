@@ -12,11 +12,11 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/tool"
 )
 
-// New returns the dev tools. A call to slow_side_effect appends its
+// Tools returns the dev tools. A call to slow_side_effect appends its
 // idempotency key to the file at sideEffectLog, so a test can count how many
 // times the side effect happened.
-func New(sideEffectLog string) *tool.Registry {
-	return tool.NewRegistry(sleep{}, fetch{}, slowSideEffect{log: sideEffectLog})
+func Tools(sideEffectLog string) []tool.Tool {
+	return []tool.Tool{sleep{}, fetch{}, slowSideEffect{log: sideEffectLog}}
 }
 
 const schema = `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}`

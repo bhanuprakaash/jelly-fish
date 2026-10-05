@@ -11,12 +11,14 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/config"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
+	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/anthropic"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/telemetry"
+	"github.com/bhanuprakaash/jelly-fish/internal/tool"
 	"github.com/bhanuprakaash/jelly-fish/internal/worker"
 )
 
@@ -59,7 +61,7 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 	gw := worker.Gateway{Keyring: kr, Keys: providerkeys.NewStore(pool), Catalog: cat, Anthropic: claude, Fake: devFake(), Tracer: tp}
 	g.Go(func() error { worker.RunModelRefresh(gctx, pool, kr, claude, logger); return nil })
 	g.Go(func() error {
-		worker.New(pool, gw, devTools(), stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger).Run(gctx)
+		worker.New(pool, gw, tool.NewRegistry(append(devTools(), memory.New(pool))...), stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger).Run(gctx)
 		return nil
 	})
 	return g.Wait()

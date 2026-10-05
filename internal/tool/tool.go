@@ -11,6 +11,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 )
 
@@ -34,12 +37,34 @@ type Def struct {
 type CallInput struct {
 	CallID, IdempotencyKey string
 	Args                   json.RawMessage
+	Session                Session
+}
+
+// Session is the session a call runs for.
+type Session struct {
+	ID, UserID, WorkspaceID, ProjectID uuid.UUID
+	// Child is set for a Child Session.
+	Child bool
+	// Tainted is set when an untrusted tool's output arrived since the last
+	// user message (memory.md §5.2).
+	Tainted bool
 }
 
 // Result is what the model sees from a call.
 type Result struct {
 	Content []msg.Part
 	IsError bool
+	// Commit, if set, runs in the transaction that records the call's
+	// completion, so the call's database writes land with it or not at all.
+	// The Result it returns replaces this one, and its Events are appended
+	// before the completion.
+	Commit func(ctx context.Context, tx pgx.Tx) (Result, []Event, error)
+}
+
+// Event is an Event Log entry a Commit adds.
+type Event struct {
+	Type    string
+	Payload any
 }
 
 // Tool is one callable tool. Call must return soon after ctx ends: a call
@@ -49,6 +74,12 @@ type Result struct {
 type Tool interface {
 	Def() Def
 	Call(ctx context.Context, in CallInput) (Result, error)
+}
+
+// ParallelByArgs is implemented by a Tool whose calls differ in whether they
+// may run alongside each other; it overrides Def.ParallelSafe.
+type ParallelByArgs interface {
+	ParallelSafeCall(args json.RawMessage) bool
 }
 
 // Registry holds the tools a session can call. A nil Registry has none.

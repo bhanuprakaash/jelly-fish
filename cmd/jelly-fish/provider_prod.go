@@ -16,4 +16,4 @@ const buildDefaultModel = "claude-haiku-4-5-20251001"
 func devFake() provider.Provider { return nil }
 
 // devTools returns no Tools: the fake Tools must not exist outside dev builds.
-func devTools() *tool.Registry { return nil }
+func devTools() []tool.Tool { return nil }

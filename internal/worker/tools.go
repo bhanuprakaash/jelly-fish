@@ -5,10 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/tool"
 	tooltracing "github.com/bhanuprakaash/jelly-fish/internal/tool/tracing"
@@ -58,7 +63,40 @@ func (w *Worker) nextBatch(st State) []Call {
 
 func (w *Worker) parallelSafe(call Call) bool {
 	t, ok := w.tools.Get(call.Name)
+	if p, byArgs := t.(tool.ParallelByArgs); ok && byArgs {
+		return p.ParallelSafeCall(call.Args)
+	}
 	return ok && t.Def().ParallelSafe
+}
+
+// redactMemoryCalls swaps the memory text in the args of memory calls for a
+// placeholder, so the stored reply holds none, and keeps the real args for
+// this drive to run the calls with.
+func (w *Worker) redactMemoryCalls(sid uuid.UUID, parts []msg.Part) []msg.Part {
+	parts = slices.Clone(parts)
+	for i, p := range parts {
+		if p.Kind != msg.KindToolUse || p.ToolUse.Name != memory.ToolName {
+			continue
+		}
+		args, changed := memory.Redact(p.ToolUse.Args)
+		if !changed {
+			continue
+		}
+		w.held.put(sid, p.ToolUse.ID, p.ToolUse.Args)
+		use := *p.ToolUse
+		use.Args = args
+		parts[i].ToolUse = &use
+	}
+	return parts
+}
+
+// session is the Session a tool call sees.
+func (w *Worker) session(c eventlog.Claim, st State) tool.Session {
+	tainted := slices.ContainsFunc(st.ToolsSinceUser, func(name string) bool {
+		t, ok := w.tools.Get(name)
+		return ok && t.Def().Untrusted
+	})
+	return tool.Session{ID: c.SessionID, UserID: c.UserID, WorkspaceID: c.WorkspaceID, ProjectID: c.ProjectID, Child: !st.TopLevel, Tainted: tainted}
 }
 
 // startTools commits tool.call.started for the next batch, and only then runs
@@ -79,11 +117,12 @@ func (w *Worker) startTools(ctx context.Context, c eventlog.Claim, f eventlog.Fe
 		return err
 	}
 
+	sess := w.session(c, st)
 	errs := make([]error, len(batch))
 	var wg sync.WaitGroup
 	for i, call := range batch {
 		wg.Go(func() {
-			errs[i] = w.runCall(ctx, c, f, call, fmt.Sprintf("%s:%d", c.SessionID, seqs[i]))
+			errs[i] = w.runCall(ctx, c, f, call, fmt.Sprintf("%s:%d", c.SessionID, seqs[i]), sess)
 		})
 	}
 	wg.Wait()
@@ -92,27 +131,65 @@ func (w *Worker) startTools(ctx context.Context, c eventlog.Claim, f eventlog.Fe
 
 // runCall calls one tool and records its result. A call cut short by ctx
 // records nothing: whoever ends the drive closes it.
-func (w *Worker) runCall(ctx context.Context, c eventlog.Claim, f eventlog.Fence, call Call, key string) error {
+func (w *Worker) runCall(ctx context.Context, c eventlog.Claim, f eventlog.Fence, call Call, key string, sess tool.Session) error {
 	began := time.Now()
-	res := w.invoke(ctx, c, call, key)
+	res := w.invoke(ctx, c, call, key, sess)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, err := w.store.AppendFenced(ctx, c.SessionID, f, []eventlog.NewEvent{w.completedEvent(call.ID, res, time.Since(began))}, nil)
+	took := time.Since(began)
+	_, err := w.store.AppendFencedFunc(ctx, c.SessionID, f, func(ctx context.Context, tx pgx.Tx) ([]eventlog.NewEvent, error) {
+		var evs []eventlog.NewEvent
+		if res.Commit != nil {
+			var added []tool.Event
+			res, added = w.commit(ctx, tx, c, call, res)
+			for _, e := range added {
+				evs = append(evs, eventlog.NewEvent{Type: e.Type, Actor: w.actor(), CorrelationID: call.ID, Payload: e.Payload})
+			}
+		}
+		return append(evs, w.completedEvent(call.ID, res, took)), nil
+	})
 	return err
 }
 
+// commit runs res.Commit in a savepoint, so a failure turns the call into an
+// error Result instead of failing the append it rides on.
+func (w *Worker) commit(ctx context.Context, tx pgx.Tx, c eventlog.Claim, call Call, res tool.Result) (tool.Result, []tool.Event) {
+	var out tool.Result
+	var added []tool.Event
+	err := pgx.BeginFunc(ctx, tx, func(sp pgx.Tx) error {
+		var err error
+		out, added, err = res.Commit(ctx, sp)
+		return err
+	})
+	if err != nil {
+		w.logger.Error("tool commit", "session_id", c.SessionID, "tool", call.Name, "error", err)
+		return tool.TextResult("tool failed", true), nil
+	}
+	return out, added
+}
+
 // invoke turns every way a call can fail into an error Result for the model.
-func (w *Worker) invoke(ctx context.Context, c eventlog.Claim, call Call, key string) tool.Result {
+func (w *Worker) invoke(ctx context.Context, c eventlog.Claim, call Call, key string, sess tool.Session) tool.Result {
 	t, ok := w.tools.Get(call.Name)
 	if !ok {
 		return tool.TextResult(fmt.Sprintf("unknown tool %q", call.Name), true)
+	}
+	args := call.Args
+	if call.Name == memory.ToolName {
+		kept, found := w.held.take(c.SessionID, call.ID)
+		switch {
+		case found:
+			args = kept
+		case memory.Lost(args):
+			return tool.TextResult("arguments lost; call again", true)
+		}
 	}
 	timeout := cmp.Or(t.Def().Timeout, tool.DefaultTimeout)
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	res, err := w.traced(t, c, call).Call(cctx, tool.CallInput{CallID: call.ID, IdempotencyKey: key, Args: call.Args})
+	res, err := w.traced(t, c, call).Call(cctx, tool.CallInput{CallID: call.ID, IdempotencyKey: key, Args: args, Session: sess})
 	switch {
 	case ctx.Err() != nil:
 		return res

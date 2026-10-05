@@ -42,6 +42,20 @@ func (s *Store) AppendFenced(ctx context.Context, sid uuid.UUID, f Fence, evs []
 	return s.append(ctx, sid, nil, &f, evs, next)
 }
 
+// AppendFencedFunc is AppendFenced for events that depend on other writes:
+// run executes in the same transaction, after the session row is locked, and
+// the events it returns are appended. If the fence fails, its writes roll back
+// with the rest.
+func (s *Store) AppendFencedFunc(ctx context.Context, sid uuid.UUID, f Fence, run func(ctx context.Context, tx pgx.Tx) ([]NewEvent, error)) ([]int64, error) {
+	var seqs []int64
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var err error
+		seqs, err = s.appendTxFunc(ctx, tx, sid, nil, &f, nil, nil, run)
+		return err
+	})
+	return seqs, err
+}
+
 func (s *Store) append(ctx context.Context, sid uuid.UUID, scope *TenantScope, f *Fence, evs []NewEvent, next *StatusChange) ([]int64, error) {
 	var seqs []int64
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -53,6 +67,10 @@ func (s *Store) append(ctx context.Context, sid uuid.UUID, scope *TenantScope, f
 }
 
 func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *TenantScope, f *Fence, evs []NewEvent, next *StatusChange) ([]int64, error) {
+	return s.appendTxFunc(ctx, tx, sid, scope, f, evs, next, nil)
+}
+
+func (s *Store) appendTxFunc(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *TenantScope, f *Fence, evs []NewEvent, next *StatusChange, run func(ctx context.Context, tx pgx.Tx) ([]NewEvent, error)) ([]int64, error) {
 	// The status is read under the row lock before the bump, so a
 	// conditional StatusChange decides on the status this append really
 	// sees.
@@ -71,6 +89,13 @@ func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, sid uuid.UUID, scope *T
 	}
 	if next != nil && !next.applies(fromStatus) {
 		next = nil
+	}
+	if run != nil {
+		more, err := run(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		evs = append(slices.Clone(evs), more...)
 	}
 
 	evs, err := dropSupersededAuto(ctx, tx, sid, evs)
@@ -272,8 +297,10 @@ func project(ctx context.Context, tx pgx.Tx, sid uuid.UUID, seq int64, e NewEven
 type Claim struct {
 	SessionID uuid.UUID
 	// UserID owns the session, and so the Provider Keys its turns run on.
-	UserID uuid.UUID
-	Fence  Fence
+	UserID      uuid.UUID
+	WorkspaceID uuid.UUID
+	ProjectID   uuid.UUID
+	Fence       Fence
 	// RecoveryAttempts counts claims since the session's last successful
 	// fenced append, this one included (event-log.md §5.6).
 	RecoveryAttempts int
@@ -291,7 +318,6 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 	var c Claim
 	var found bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		var workspaceID uuid.UUID
 		var last int64
 		var from string
 		err := tx.QueryRow(ctx, `
@@ -307,8 +333,8 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 			  recovery_attempts = s.recovery_attempts + 1, wake_at = NULL,
 			  last_seq = s.last_seq + CASE WHEN c.status = 'sleeping' THEN 2 ELSE 1 END, updated_at = now()
 			FROM c WHERE s.id = c.id
-			RETURNING s.id, s.lease_epoch, s.recovery_attempts, s.last_seq, s.workspace_id, s.user_id, c.status`,
-			owner, ttl, skip).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &workspaceID, &c.UserID, &from)
+			RETURNING s.id, s.lease_epoch, s.recovery_attempts, s.last_seq, s.workspace_id, s.project_id, s.user_id, c.status`,
+			owner, ttl, skip).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &c.WorkspaceID, &c.ProjectID, &c.UserID, &from)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -320,12 +346,12 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 
 		if from == StatusSleeping {
 			fired := NewEvent{Type: TypeTimerFired, Actor: "system", Payload: map[string]string{"reason": "wake_at"}}
-			if err := insertEvent(ctx, tx, c.SessionID, workspaceID, last-1, &c.Fence.Epoch, fired); err != nil {
+			if err := insertEvent(ctx, tx, c.SessionID, c.WorkspaceID, last-1, &c.Fence.Epoch, fired); err != nil {
 				return err
 			}
 		}
 		ev := StatusChange{To: StatusRunning, Reason: "claimed"}.event(from)
-		if err := insertEvent(ctx, tx, c.SessionID, workspaceID, last, &c.Fence.Epoch, ev); err != nil {
+		if err := insertEvent(ctx, tx, c.SessionID, c.WorkspaceID, last, &c.Fence.Epoch, ev); err != nil {
 			return err
 		}
 		return notifyAppend(ctx, tx, c.SessionID, c.UserID, last, false, true)

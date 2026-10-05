@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/tracing"
@@ -54,6 +55,7 @@ type Worker struct {
 	store    *eventlog.Store
 	gateway  Gateway
 	tools    *tool.Registry
+	held     held
 	deltas   DeltaPublisher
 	lease    Lease
 	upcast   eventlog.Upcasters
@@ -174,6 +176,7 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 	var hb sync.WaitGroup
 	defer hb.Wait()
 	defer cancel(nil)
+	defer w.held.drop(c.SessionID)
 	hb.Go(func() { w.heartbeat(ctx, cancel, c) })
 
 	logger := w.logger.With("session_id", c.SessionID)
@@ -399,6 +402,10 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	if err != nil {
 		return err
 	}
+	messages, err := memory.Resolve(ctx, w.pool, st.Messages)
+	if err != nil {
+		return err
+	}
 	seqs, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
 		Type:          eventlog.TypeTurnStarted,
 		Actor:         w.actor(),
@@ -418,7 +425,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	defer title.abandon()
 
 	stopBatch := batch.Start(ctx)
-	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, Messages: st.Messages, Tools: toolSpecs(defs)}, func(d provider.Delta) {
+	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, Messages: messages, Tools: toolSpecs(defs)}, func(d provider.Delta) {
 		if d.Kind == provider.DeltaText {
 			batch.Add(d.Text)
 		}
@@ -441,6 +448,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 		// A call cut off mid-way can't be run, and no result could answer it.
 		resp.Message.Parts = slices.DeleteFunc(resp.Message.Parts, func(p msg.Part) bool { return p.Kind == msg.KindToolUse })
 	}
+	resp.Message.Parts = w.redactMemoryCalls(sid, resp.Message.Parts)
 
 	classes := usageClasses(resp.Usage, w.gateway.price(st.Model))
 	usage := map[string]int64{}

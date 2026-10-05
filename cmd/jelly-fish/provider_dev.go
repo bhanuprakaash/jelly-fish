@@ -20,4 +20,4 @@ func devFake() provider.Provider { return fake.Provider{} }
 
 // devTools wires the fake Tools into dev builds only; JF_FAKE_TOOL_LOG names
 // the file slow_side_effect appends to.
-func devTools() *tool.Registry { return faketool.New(os.Getenv("JF_FAKE_TOOL_LOG")) }
+func devTools() []tool.Tool { return faketool.Tools(os.Getenv("JF_FAKE_TOOL_LOG")) }

@@ -31,6 +31,7 @@ const (
 	TypeToolStarted      = "tool.call.started"
 	TypeToolCompleted    = "tool.call.completed"
 	TypeToolInterrupted  = "tool.call.interrupted"
+	TypeMemoryWritten    = "memory.written"
 )
 
 // Session statuses this slice uses (event-log.md §3).

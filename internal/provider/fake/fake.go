@@ -32,7 +32,8 @@ const (
 
 // Provider echoes the last user message word by word. A message
 // "/tool a 1s ; b 2s" instead asks for tools a and b with those inputs, and
-// the reply that follows their results lists them.
+// the reply that follows their results lists them. An input that is a JSON
+// object is sent as the call's args as it is.
 type Provider struct {
 	// WordDelay is the pause between words; zero means 150 ms.
 	WordDelay time.Duration
@@ -164,9 +165,13 @@ func toolResponse(req provider.Request) (provider.Response, bool) {
 	m := msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant}
 	for call := range strings.SplitSeq(rest, ";") {
 		name, input, _ := strings.Cut(strings.TrimSpace(call), " ")
-		args, err := json.Marshal(map[string]string{"input": strings.TrimSpace(input)})
-		if err != nil {
-			return provider.Response{}, false
+		input = strings.TrimSpace(input)
+		args := json.RawMessage(input)
+		if !strings.HasPrefix(input, "{") || !json.Valid(args) {
+			var err error
+			if args, err = json.Marshal(map[string]string{"input": input}); err != nil {
+				return provider.Response{}, false
+			}
 		}
 		m.Parts = append(m.Parts, msg.Part{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: uuid.NewString(), Name: name, Args: args}})
 	}

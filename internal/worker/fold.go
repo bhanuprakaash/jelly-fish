@@ -48,6 +48,9 @@ type State struct {
 	// ResultsAt is the index in Messages of the user message that holds the
 	// tool results of Calls.
 	ResultsAt int
+	// ToolsSinceUser names the tools whose results arrived since the last
+	// user.message, for taint (memory.md §5.2).
+	ToolsSinceUser []string
 	// ToolsRan is set while the latest reply's tool results wait for a turn
 	// to read them.
 	ToolsRan bool
@@ -179,6 +182,7 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		st.Messages = append(st.Messages, p.Message)
 		*userSeqs = append(*userSeqs, e.Seq)
 		st.RetryStep = 0
+		st.ToolsSinceUser = nil
 	case eventlog.TypeStatusChanged:
 		var p struct {
 			To string `json:"to"`
@@ -256,6 +260,7 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			return fmt.Errorf("tool call %q: result is not one tool_result", p.CallID)
 		}
 		st.setResult(c, p.Result.Parts[0])
+		st.ToolsSinceUser = append(st.ToolsSinceUser, c.Name)
 	case eventlog.TypeToolInterrupted:
 		var p struct {
 			CallID string `json:"tool_call_id"`

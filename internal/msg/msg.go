@@ -34,6 +34,7 @@ const (
 	KindToolResult Kind = "tool_result"
 	KindThinking   Kind = "thinking"
 	KindNative     Kind = "native"
+	KindMemoryRef  Kind = "memory_ref"
 )
 
 // kindFields lists the Part fields each Kind sets. A Kind missing here is
@@ -45,6 +46,7 @@ func kindFields() map[Kind][]string {
 		KindToolResult: {"ToolResult"},
 		KindThinking:   {"Thinking"},
 		KindNative:     {"Native"},
+		KindMemoryRef:  {"MemoryRef"},
 	}
 }
 
@@ -64,6 +66,7 @@ type Part struct {
 	ToolResult *ToolResult `json:"tr,omitempty"`
 	Thinking   *Thinking   `json:"th,omitempty"`
 	Native     *Native     `json:"nat,omitempty"`
+	MemoryRef  *MemoryRef  `json:"mem,omitempty"`
 }
 
 // ToolUse is a tool call the model asked for.
@@ -98,6 +101,13 @@ type Native struct {
 	Provider string          `json:"provider"`
 	Type     string          `json:"type"`
 	Raw      json.RawMessage `json:"raw"`
+}
+
+// MemoryRef points at one version of a memory, so a stored tool result names
+// the memory without holding its text, which lives only in memory_revisions.
+type MemoryRef struct {
+	MemoryID string `json:"id"`
+	Version  int    `json:"v"`
 }
 
 // UserText builds a single-part text Message from the user.
