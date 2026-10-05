@@ -192,7 +192,8 @@ func restoreArgs(p msg.Part, c *call, revs map[msg.MemoryRef]revision) msg.Part 
 }
 
 // resolveResult renders the refs of a memory result: a viewed memory as its
-// content, the index as lines, and a write's own ref as nothing.
+// content, the index as lines, a str_replace or insert's own ref as the text it
+// left, and any other write's own ref as nothing.
 func resolveResult(p msg.Part, c *call, revs map[msg.MemoryRef]revision) msg.Part {
 	var parts []msg.Part
 	var lines []revision
@@ -203,7 +204,14 @@ func resolveResult(p msg.Part, c *call, revs map[msg.MemoryRef]revision) msg.Par
 		}
 		rev, ok := revs[*sp.MemoryRef]
 		switch {
-		case c == nil || c.command != cmdView:
+		case c == nil:
+		case c.command == cmdStrReplace || c.command == cmdInsert:
+			text := deleted
+			if ok {
+				text = "It now reads:\n" + rev.content
+			}
+			parts = append(parts, msg.Part{Kind: msg.KindText, Text: text})
+		case c.command != cmdView:
 		case c.path == rootPath:
 			if ok {
 				lines = append(lines, rev)

@@ -98,3 +98,33 @@ func TestResolveRendersRefsFromRevisionsAndMarksDeletedOnes(t *testing.T) {
 		t.Fatalf("results after delete = %q", results)
 	}
 }
+
+func TestResolveShowsWhatAnEditLeft(t *testing.T) {
+	e := newEnv(t)
+	e.create("/memories/a.md", "alpha body")
+	editArgs := map[string]any{"command": "str_replace", "scope": "user", "path": "/memories/a.md", "old_str": "alpha", "new_str": "beta"}
+	edited, _ := e.run(editArgs)
+	history := []msg.Message{
+		{Role: msg.RoleAssistant, Parts: []msg.Part{use("c1", editArgs)}},
+		{Role: msg.RoleUser, Parts: []msg.Part{answer("c1", edited)}},
+	}
+	render := func() []msg.Part {
+		t.Helper()
+		out, err := memory.Resolve(t.Context(), e.pool, history)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out[1].Parts[0].ToolResult.Parts
+	}
+
+	parts := render()
+	if len(parts) != 2 || parts[0].Text != "updated /memories/a.md" || parts[1].Text != "It now reads:\nbeta body" {
+		t.Fatalf("parts = %+v", parts)
+	}
+	if _, err := e.pool.Exec(t.Context(), `DELETE FROM memories`); err != nil {
+		t.Fatal(err)
+	}
+	if parts := render(); len(parts) != 2 || parts[1].Text != "(this memory was deleted)" {
+		t.Fatalf("parts after delete = %+v", parts)
+	}
+}

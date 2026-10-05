@@ -101,6 +101,27 @@ func TestMemoryTextNeverReachesTheEventLog(t *testing.T) {
 	assertFoldMatchesRow(t, pool, sid)
 }
 
+func TestModelSeesWhatItsEditsWrote(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid, _ := newFakeSession(t, pool)
+	replace := memCall("c2", map[string]any{"command": "str_replace", "scope": "user", "path": "/memories/a.md", "old_str": "body", "new_str": "edited"})
+	insert := memCall("c3", map[string]any{"command": "insert", "scope": "user", "path": "/memories/a.md", "insert_line": 0, "content": "first line"})
+	p := &replies{list: []provider.Response{create("c1", "/memories/a.md"), replace, insert, done()}}
+	startTools(t, pool, p, 10*time.Second, tool.NewRegistry(memory.New(pool)))
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 4)
+
+	last := p.requests()[3].Messages
+	for i, want := range map[int]string{
+		4: "It now reads:\nneedle-edited-7431",
+		6: "It now reads:\nfirst line\nneedle-edited-7431",
+	} {
+		parts := last[i].Parts[0].ToolResult.Parts
+		if len(parts) != 2 || parts[0].Text != "updated /memories/a.md" || parts[1].Text != want {
+			t.Fatalf("result %d = %+v, want the ack then %q", i, parts, want)
+		}
+	}
+}
+
 func TestWriteAfterUntrustedOutputIsPendingUntilTheNextUserMessage(t *testing.T) {
 	pool := testdb.NewPool(t)
 	sid, scope := newFakeSession(t, pool)
