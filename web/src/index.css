@@ -97,6 +97,62 @@
   --waiting: #a5b4fc;
 }
 
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+@keyframes jelly-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 50%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+@keyframes jelly-beacon {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 60%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+@keyframes jelly-fade {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.jelly-run {
+  animation: jelly-pulse 2s ease-in-out infinite;
+}
+.jelly-ask {
+  animation: jelly-beacon 1.4s ease-in-out infinite;
+}
+.jelly-wait {
+  animation: jelly-pulse 3s ease-in-out infinite;
+}
+.jelly-sleep {
+  animation: jelly-fade 4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jelly-run,
+  .jelly-ask,
+  .jelly-wait,
+  .jelly-sleep {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 35%, transparent);
+  }
+}
+
 @layer components {
   .btn {
     display: inline-flex;
@@ -154,6 +210,11 @@
   .btn-primary {
     background: var(--ink);
     color: var(--bg);
+  }
+  .btn-primary:disabled,
+  .btn-attention:disabled {
+    background: var(--sunk);
+    color: var(--ink2);
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--ink2);

@@ -13,7 +13,7 @@ export type ActivityEntry = {
 // ActivityMap holds the busy sessions by session_id.
 export type ActivityMap = Record<string, ActivityEntry>
 
-export type Badge = 'approval' | 'failed' | 'busy'
+export type Badge = 'approval' | 'failed' | 'busy' | 'sleeping' | 'waiting'
 
 const BUSY = new Set(['runnable', 'running', 'sleeping', 'awaiting_children'])
 
@@ -32,13 +32,15 @@ export function applyStatus(map: ActivityMap, e: ActivityEntry): ActivityMap {
 }
 
 // badgeFor is the badge for a chat row: an approval wanted by the chat or any
-// of its children beats a failed chat, which beats a busy one. A failing child
-// does not badge its root.
+// of its children beats a failed chat, which beats the chat's own busy status.
+// A failing child does not badge its root.
 export function badgeFor(chatId: string, map: ActivityMap): Badge | null {
   const entries = Object.values(map)
   if (entries.some((e) => e.root_id === chatId && e.status === 'awaiting_approval')) return 'approval'
   const own = map[chatId]
   if (own?.status === 'failed') return 'failed'
+  if (own?.status === 'sleeping') return 'sleeping'
+  if (own?.status === 'awaiting_children') return 'waiting'
   if (own && BUSY.has(own.status)) return 'busy'
   return null
 }

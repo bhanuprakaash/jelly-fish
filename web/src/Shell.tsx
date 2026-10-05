@@ -19,7 +19,7 @@ export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }:
   return (
     <div className="flex min-h-svh bg-bg text-ink">
       <aside
-        className={`${sessionId ? 'hidden' : 'flex'} w-full flex-col border-r border-line md:sticky md:top-0 md:flex md:h-svh md:w-72 md:shrink-0`}
+        className={`${sessionId ? 'hidden' : 'flex'} w-full flex-col border-r border-line bg-surface md:sticky md:top-0 md:flex md:h-svh md:w-72 md:shrink-0`}
       >
         {chats ? (
           <ChatList
