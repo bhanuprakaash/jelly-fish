@@ -10,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -111,8 +112,15 @@ func (t Tool) Call(ctx context.Context, in tool.CallInput) (tool.Result, error) 
 	if err := json.Unmarshal(in.Args, &a); err != nil {
 		return refuse("invalid arguments: " + err.Error()), nil
 	}
+	var useUser bool
+	if err := t.pool.QueryRow(ctx, `SELECT use_user_memory FROM projects WHERE id = $1`, in.Session.ProjectID).Scan(&useUser); err != nil {
+		return tool.Result{}, fmt.Errorf("load project: %w", err)
+	}
+	if !useUser && a.Scope == scopeUser {
+		return refuse("User Memory is off for this project"), nil
+	}
 	if a.Command == cmdView {
-		return t.view(ctx, in.Session, a)
+		return t.view(ctx, in.Session, a, useUser)
 	}
 	return t.prepare(in.Session, a), nil
 }
@@ -150,13 +158,13 @@ func projectFor(sess tool.Session, scope string) (*uuid.UUID, error) {
 	return nil, errors.New(`scope must be "user" or "project"`)
 }
 
-func (t Tool) view(ctx context.Context, sess tool.Session, a args) (tool.Result, error) {
+func (t Tool) view(ctx context.Context, sess tool.Session, a args, useUser bool) (tool.Result, error) {
 	p, err := cleanPath(a.Path)
 	if err != nil {
 		return refuse(err.Error()), nil
 	}
 	if p == rootPath {
-		return t.index(ctx, sess)
+		return t.index(ctx, sess, useUser)
 	}
 	project, err := projectFor(sess, a.Scope)
 	if err != nil {
@@ -179,12 +187,13 @@ func (t Tool) view(ctx context.Context, sess tool.Session, a args) (tool.Result,
 }
 
 // index is the live index: the active memories of both scopes, as refs the
-// projection renders as "path — title" lines.
-func (t Tool) index(ctx context.Context, sess tool.Session) (tool.Result, error) {
+// projection renders as "path — title" lines. User scope is left out when the
+// project does not use User Memory.
+func (t Tool) index(ctx context.Context, sess tool.Session, useUser bool) (tool.Result, error) {
 	rows, err := t.pool.Query(ctx, `
 		SELECT id, version FROM memories
-		WHERE user_id = $1 AND status = 'active' AND (scope = 'user' OR project_id = $2)
-		ORDER BY scope = 'project', path`, sess.UserID, sess.ProjectID)
+		WHERE user_id = $1 AND status = 'active' AND ((scope = 'user' AND $3) OR project_id = $2)
+		ORDER BY scope = 'project', path`, sess.UserID, sess.ProjectID, useUser)
 	if err != nil {
 		return tool.Result{}, fmt.Errorf("list memories: %w", err)
 	}
@@ -253,8 +262,10 @@ func (t Tool) prepare(sess tool.Session, a args) tool.Result {
 	switch {
 	case a.Kind != "" && !validKind(a.Kind):
 		return refuse(`kind must be "preference", "fact", "feedback" or "reference"`)
-	case strings.ContainsAny(a.Title, "\r\n"):
-		return refuse("title must be one line")
+	case unsafeText(a.Path) || unsafeText(a.NewPath):
+		return refuse("path must not contain '<', '>' or control characters")
+	case unsafeText(a.Title):
+		return refuse("title must not contain '<', '>' or control characters")
 	case a.Command == cmdCreate && (a.Title == "" || a.Kind == "" || a.Content == ""):
 		return refuse("create needs title, kind and content")
 	case a.Command == cmdStrReplace && a.OldStr == "":
@@ -267,6 +278,12 @@ func (t Tool) prepare(sess tool.Session, a args) tool.Result {
 		return refuse(fmt.Sprintf("content is %d bytes; the limit is 4 KB. %s", len(a.Content), consolidate))
 	}
 	return tool.Result{Commit: w.commit}
+}
+
+// unsafeText reports whether s could close a prompt block or break an index
+// line.
+func unsafeText(s string) bool {
+	return strings.ContainsAny(s, "<>") || strings.IndexFunc(s, unicode.IsControl) >= 0
 }
 
 func validKind(k string) bool {

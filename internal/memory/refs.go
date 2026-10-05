@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -69,7 +68,7 @@ func Lost(raw json.RawMessage) bool {
 }
 
 type revision struct {
-	scope, path, title, content string
+	scope, path, title, content, project string
 }
 
 type call struct {
@@ -136,10 +135,11 @@ func Resolve(ctx context.Context, pool *pgxpool.Pool, msgs []msg.Message) ([]msg
 
 func loadRevisions(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID, versions []int) (map[msg.MemoryRef]revision, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT r.memory_id, r.version, m.scope, r.path, r.title, r.content
+		SELECT r.memory_id, r.version, m.scope, r.path, r.title, r.content, coalesce(p.name, '')
 		FROM unnest($1::uuid[], $2::int[]) AS k(id, v)
 		JOIN memory_revisions r ON r.memory_id = k.id AND r.version = k.v
-		JOIN memories m ON m.id = r.memory_id`, ids, versions)
+		JOIN memories m ON m.id = r.memory_id
+		LEFT JOIN projects p ON p.id = m.project_id`, ids, versions)
 	if err != nil {
 		return nil, fmt.Errorf("load memory revisions: %w", err)
 	}
@@ -149,7 +149,7 @@ func loadRevisions(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID, ver
 		var id uuid.UUID
 		var version int
 		var r revision
-		if err := rows.Scan(&id, &version, &r.scope, &r.path, &r.title, &r.content); err != nil {
+		if err := rows.Scan(&id, &version, &r.scope, &r.path, &r.title, &r.content, &r.project); err != nil {
 			return nil, fmt.Errorf("scan memory revision: %w", err)
 		}
 		revs[msg.MemoryRef{MemoryID: id.String(), Version: version}] = r
@@ -215,30 +215,14 @@ func resolveResult(p msg.Part, c *call, revs map[msg.MemoryRef]revision) msg.Par
 		}
 	}
 	if c != nil && c.command == cmdView && c.path == rootPath {
-		parts = append(parts, msg.Part{Kind: msg.KindText, Text: renderIndex(lines)})
+		text := renderBlocks(lines)
+		if text == "" {
+			text = "(no memories)"
+		}
+		parts = append(parts, msg.Part{Kind: msg.KindText, Text: text})
 	}
 	tr := *p.ToolResult
 	tr.Parts = parts
 	p.ToolResult = &tr
 	return p
-}
-
-// renderIndex is "path — title" lines, a block per scope.
-func renderIndex(revs []revision) string {
-	var b strings.Builder
-	for _, scope := range []string{scopeUser, scopeProject} {
-		var lines strings.Builder
-		for _, r := range revs {
-			if r.scope == scope {
-				fmt.Fprintf(&lines, "%s — %s\n", r.path, r.title)
-			}
-		}
-		if lines.Len() > 0 {
-			fmt.Fprintf(&b, "<%s_memory>\n%s</%s_memory>\n", scope, lines.String(), scope)
-		}
-	}
-	if b.Len() == 0 {
-		return "(no memories)"
-	}
-	return strings.TrimSuffix(b.String(), "\n")
 }

@@ -66,6 +66,9 @@ func TestMemoryFromEarlierChatsIsInThePrompt(t *testing.T) {
 		remember("c1", "user", "/memories/diet.md", "Vegetarian"),
 		remember("c2", "project", "/memories/trip.md", "Goa trip budget"),
 		done(),
+		memCall("v1", map[string]any{"command": "view", "path": "/memories"}), done(),
+		memCall("v2", map[string]any{"command": "view", "path": "/memories"}),
+		view("v3", "/memories/diet.md"), done(),
 	}}
 	startTools(t, pool, p, 10*time.Second, tool.NewRegistry(memory.New(pool)))
 	waitStatus(t, pool, first, eventlog.StatusAwaitingUser, 3)
@@ -77,15 +80,25 @@ func TestMemoryFromEarlierChatsIsInThePrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := chat(t, pool, scope, false)
-	waitStatus(t, pool, second, eventlog.StatusAwaitingUser, 1)
+	waitStatus(t, pool, second, eventlog.StatusAwaitingUser, 2)
 	wantSystem(t, p.requests()[3], platform, "Answer in French.", userBlock+"\n"+projectBlock)
+	seen := p.requests()[4].Messages
+	if got := resultText(seen[len(seen)-1], 0); got != userBlock+"\n"+projectBlock {
+		t.Fatalf("view /memories at session start = %q, want the prompt index", got)
+	}
 
 	if _, err := pool.Exec(t.Context(), `UPDATE projects SET use_user_memory = false WHERE user_id = $1`, scope.UserID); err != nil {
 		t.Fatal(err)
 	}
 	third := chat(t, pool, scope, false)
-	waitStatus(t, pool, third, eventlog.StatusAwaitingUser, 1)
-	wantSystem(t, p.requests()[4], platform, "Answer in French.", projectBlock)
+	waitStatus(t, pool, third, eventlog.StatusAwaitingUser, 3)
+	wantSystem(t, p.requests()[5], platform, "Answer in French.", projectBlock)
+	for i, want := range []string{projectBlock, "User Memory is off for this project"} {
+		seen := p.requests()[6+i].Messages
+		if got := resultText(seen[len(seen)-1], 0); got != want {
+			t.Fatalf("third chat tool result %d = %q, want %q", i, got, want)
+		}
+	}
 }
 
 func TestIndexStaysFrozenAcrossWritesReclaimsAndDeletes(t *testing.T) {
