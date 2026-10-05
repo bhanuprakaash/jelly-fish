@@ -3,8 +3,14 @@ import type { UIEvent } from './api'
 export type ToolChip = {
   seq: number
   name: string
-  state: 'running' | 'done' | 'failed' | 'interrupted'
-  // error is the error text of a failed or interrupted call.
+  // stopped is a call the user interrupted; unknown is one a lost Worker left
+  // started, so whether it ran is not known.
+  state: 'running' | 'done' | 'failed' | 'stopped' | 'unknown'
+  args?: unknown
+  durationMs?: number
+  // result is the text of the call's result.
+  result?: string
+  // error is the error text of a failed call, or the note of an interrupted one.
   error?: string
   // memory is set for a finished memory write.
   memory?: { id: string; version: number; op: string; path: string }
@@ -17,6 +23,8 @@ type Payload = {
   tool?: string
   args?: { command?: string; path?: string; new_path?: string }
   is_error?: boolean
+  duration_ms?: number
+  reason?: string
   note?: string
   result?: { parts: { tr?: { parts: Part[] } }[] }
 }
@@ -32,14 +40,16 @@ export function toolChips(events: UIEvent[]): ToolChip[] {
     const p = e.payload as Payload
     switch (e.type) {
       case 'tool.call.requested':
-        chips.set(p.tool_call_id, { seq: e.seq, name: p.tool ?? '', state: 'running' })
+        chips.set(p.tool_call_id, { seq: e.seq, name: p.tool ?? '', state: 'running', args: p.args })
         args.set(p.tool_call_id, p.args)
         break
       case 'tool.call.completed': {
         const chip = chips.get(p.tool_call_id)
         if (!chip) break
         chip.state = p.is_error ? 'failed' : 'done'
-        if (p.is_error) chip.error = resultText(p)
+        chip.durationMs = p.duration_ms
+        chip.result = resultText(p)
+        if (p.is_error) chip.error = chip.result
         const a = args.get(p.tool_call_id)
         const mem = resultParts(p).find((x) => x.mem)?.mem
         if (!p.is_error && mem && a?.command && memoryWrites.includes(a.command)) {
@@ -51,7 +61,7 @@ export function toolChips(events: UIEvent[]): ToolChip[] {
       case 'tool.call.interrupted': {
         const chip = chips.get(p.tool_call_id)
         if (!chip) break
-        chip.state = 'interrupted'
+        chip.state = p.reason === 'worker_lost' ? 'unknown' : 'stopped'
         chip.error = p.note
         break
       }
@@ -68,4 +78,15 @@ function resultText(p: Payload): string {
   return resultParts(p)
     .map((x) => x.text ?? '')
     .join('')
+}
+
+// thinkingText is the reasoning text of an llm.response payload, or '' if it has none.
+export function thinkingText(payload: unknown): string {
+  const message = (payload as { message?: { parts: { k?: string; th?: { text?: string } }[] } }).message
+  return (
+    message?.parts
+      .filter((p) => p.k === 'thinking')
+      .map((p) => p.th?.text ?? '')
+      .join('\n\n') ?? ''
+  )
 }

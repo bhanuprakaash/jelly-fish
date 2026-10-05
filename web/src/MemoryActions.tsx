@@ -15,7 +15,7 @@ type Props = {
   onUnauthorized: () => void
 }
 
-// MemoryActions is [Approve] [Edit] [Delete] for one memory; Approve shows
+// MemoryActions is [Keep] [Edit] [Delete] for one memory; Keep shows
 // only while the memory waits for review. Editing a pending memory approves it.
 export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
   const [editing, setEditing] = useState(false)
@@ -63,7 +63,7 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
         <div className="flex gap-2">
           {memory.status === 'pending_review' && (
             <button className="btn btn-primary btn-sm" onClick={() => run(() => approveMemory(memory.id, memory.version))}>
-              Approve
+              Keep
             </button>
           )}
           <button

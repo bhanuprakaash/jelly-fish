@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type SubmitEvent } from 'react'
+import { Fragment, useCallback, useEffect, useState, type SubmitEvent } from 'react'
 import {
   changeModel,
   createSession,
@@ -10,15 +10,17 @@ import {
   type Memory,
   type Message,
   type Models,
+  type UIEvent,
 } from './lib/api'
 import { sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
 import { renamedTitle } from './lib/sessionTitle'
-import { toolChips } from './lib/toolChips'
+import { thinkingText, toolChips, type ToolChip } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { MemoryChip } from './MemoryChip'
 import { ModelPicker } from './ModelPicker'
 import { SessionNotice } from './SessionNotice'
+import { Thought, ToolCalls } from './ToolCalls'
 
 type Props = {
   sessionId: string
@@ -39,13 +41,6 @@ type Props = {
   onCreated: () => void
   // onUnauthorized is called when the server says the Login Session is gone.
   onUnauthorized: () => void
-}
-
-const chipColors = {
-  running: 'text-accent-ink',
-  done: 'text-success',
-  failed: 'text-danger',
-  interrupted: 'text-muted',
 }
 
 function bubbleText(payload: unknown): string {
@@ -142,9 +137,21 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   const bubbles = events.filter(
     (e) =>
       e.type === 'user.message' ||
-      (e.type === 'llm.response' && bubbleText(e.payload) !== '') ||
+      (e.type === 'llm.response' && (bubbleText(e.payload) !== '' || thinkingText(e.payload) !== '')) ||
       chips.has(e.seq),
   )
+  // Consecutive tool calls share one card.
+  const transcript: (UIEvent | ToolChip[])[] = []
+  for (const e of bubbles) {
+    const chip = chips.get(e.seq)
+    if (!chip || chip.memory) {
+      transcript.push(e)
+      continue
+    }
+    const last = transcript.at(-1)
+    if (Array.isArray(last)) last.push(chip)
+    else transcript.push([chip])
+  }
   const loading = !isNew && !connected && !failed
   const notice = sessionNotice(events)
   const current = hasSession ? sessionModel(events) : (picked ?? models?.default)
@@ -200,7 +207,9 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
         {!loading && !failed && bubbles.length === 0 && (
           <p className="text-center text-muted">Say something to start the chat.</p>
         )}
-        {bubbles.map((e) => {
+        {transcript.map((item) => {
+          if (Array.isArray(item)) return <ToolCalls key={item[0].seq} calls={item} />
+          const e = item
           const chip = chips.get(e.seq)
           if (chip?.memory) {
             return (
@@ -213,34 +222,21 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               />
             )
           }
-          if (chip) {
-            return (
-              <div
-                key={e.seq}
-                className={`mr-auto flex max-w-md items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-sm ${chipColors[chip.state]}`}
-              >
-                {chip.state === 'running' && (
-                  <span
-                    aria-hidden="true"
-                    className="size-3 shrink-0 rounded-full border-2 border-line2 border-t-accent-ink motion-safe:animate-spin"
-                  />
-                )}
-                <span>
-                  <span className="font-mono">{chip.name}</span> · {chip.state}
-                  {chip.error && <span className="text-danger"> · {chip.error}</span>}
-                </span>
-              </div>
-            )
-          }
+          const text = bubbleText(e.payload)
+          const thought = e.type === 'llm.response' ? thinkingText(e.payload) : ''
           return (
-            <div
-              key={e.seq}
-              className={`max-w-md whitespace-pre-wrap ${
-                e.type === 'user.message' ? 'ml-auto rounded-card bg-accent-tint px-4 py-2' : 'mr-auto'
-              }`}
-            >
-              {bubbleText(e.payload)}
-            </div>
+            <Fragment key={e.seq}>
+              {thought && <Thought text={thought} />}
+              {text && (
+                <div
+                  className={`max-w-md whitespace-pre-wrap ${
+                    e.type === 'user.message' ? 'ml-auto rounded-card bg-accent-tint px-4 py-2' : 'mr-auto'
+                  }`}
+                >
+                  {text}
+                </div>
+              )}
+            </Fragment>
           )
         })}
         {Object.entries(partials).map(([turnId, text]) => (

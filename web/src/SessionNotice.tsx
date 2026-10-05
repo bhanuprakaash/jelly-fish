@@ -80,7 +80,7 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
     actions = (
       <>
         {notice.code === 'key_invalid' && !notice.failed && (
-          <a href="/settings" className={linkClass}>
+          <a href="/settings" className="btn btn-primary btn-sm">
             Update key
           </a>
         )}
@@ -99,15 +99,34 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
     )
   }
 
+  const sleeping = notice.kind === 'sleeping'
   return (
     <div
       role="alert"
-      className={`mx-auto max-w-md rounded-card border px-4 py-3 ${
-        notice.kind === 'sleeping' ? 'border-line bg-sunk' : 'border-danger bg-surface'
+      className={`mr-auto w-full max-w-md rounded-card border px-4 py-3 ${
+        sleeping ? 'border-line bg-sunk' : 'border-danger bg-[color-mix(in_srgb,var(--danger)_8%,transparent)]'
       }`}
     >
-      <p className="text-sm text-ink">{text}</p>
-      <div className="mt-2 flex flex-wrap gap-2">{actions}</div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {sleeping && (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            aria-hidden="true"
+            className="shrink-0 text-ink2"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        )}
+        <p className={`min-w-0 flex-1 basis-40 text-sm ${sleeping ? 'text-ink2' : 'font-semibold text-danger'}`}>{text}</p>
+        <div className="flex flex-wrap gap-2">{actions}</div>
+      </div>
       {picking && notice.kind === 'error' && <div className="mt-2">{picker}</div>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
