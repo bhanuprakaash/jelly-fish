@@ -77,15 +77,17 @@ export function Settings({ onSignedOut }: Props) {
           ← Back
         </a>
       </header>
-      <main className="mx-auto max-w-md space-y-6 px-4 py-6">
-        <h1 className="text-2xl font-semibold">Account</h1>
-        {me && <p className="text-ink2">{me.email}</p>}
+      <main className="mx-auto max-w-2xl space-y-6 px-4 py-6 sm:px-8 sm:py-10">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Account</h1>
+          {me && <p className="mt-1 text-muted">{me.email}</p>}
+        </div>
         {error && <p className="text-sm text-danger">{error}</p>}
 
         <Appearance />
 
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Devices</h2>
+        <section className="space-y-3 border-t border-line pt-6">
+          <h2 className={sectionHeading}>Devices</h2>
           {devices?.map((d) => (
             <div key={d.id} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4">
               <div className="min-w-0 flex-1">
@@ -130,6 +132,8 @@ export function Settings({ onSignedOut }: Props) {
   )
 }
 
+const sectionHeading = 'text-[13px] font-medium tracking-[0.14em] text-muted uppercase'
+
 const themeLabels: Record<Theme, string> = {
   system: 'System',
   'jellyfish-light': 'Jellyfish light',
@@ -142,9 +146,13 @@ function Appearance() {
   const [theme, setChoice] = useState(getTheme)
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-medium">Appearance</h2>
-      <div role="group" aria-label="Theme" className="flex flex-wrap gap-2">
+    <section className="space-y-3 border-t border-line pt-6">
+      <h2 className={sectionHeading}>Appearance</h2>
+      <div
+        role="group"
+        aria-label="Theme"
+        className="flex max-w-full overflow-x-auto rounded-btn border border-line2 bg-sunk p-0.5"
+      >
         {themes.map((t) => (
           <button
             key={t}
@@ -153,7 +161,9 @@ function Appearance() {
               setTheme(t)
               setChoice(t)
             }}
-            className={`btn ${theme === t ? 'btn-primary' : 'btn-secondary'}`}
+            className={`h-9 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] font-medium whitespace-nowrap focus-visible:ring-2 focus-visible:ring-accent-ink focus-visible:outline-none sm:px-4 sm:text-sm ${
+              theme === t ? 'bg-surface text-ink shadow-[0_0_0_1px_var(--line2)]' : 'text-muted hover:text-ink'
+            }`}
           >
             {themeLabels[t]}
           </button>
@@ -224,8 +234,8 @@ function ProviderKeys({ onSignedOut }: Props) {
   const showInput = loaded && ((saved === null && adding) || editing)
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-medium">Provider Keys</h2>
+    <section className="space-y-3 border-t border-line pt-6">
+      <h2 className={sectionHeading}>Provider Keys</h2>
       <div className="space-y-3 rounded-card border border-line bg-surface p-4">
         <div className="flex items-center gap-3">
           <p className="min-w-0 flex-1">

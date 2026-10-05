@@ -41,6 +41,8 @@ export function Memories({ onUnauthorized }: Props) {
     }
   }
 
+  const column = (scope: Memory['scope']) => data?.memories.filter((m) => m.scope === scope) ?? []
+
   return (
     <div className="min-h-svh bg-bg text-ink">
       <header className="border-b border-line px-4 py-3">
@@ -48,37 +50,49 @@ export function Memories({ onUnauthorized }: Props) {
           ← Back
         </a>
       </header>
-      <main className="mx-auto max-w-2xl space-y-8 px-4 py-6">
-        <h1 className="text-2xl font-semibold">Memories</h1>
+      <main className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-8 sm:py-10">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-0 flex-1 basis-72">
+            <h1 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Memories</h1>
+            <p className="mt-1 text-muted">Notes the assistant keeps across chats. You can read, edit or delete every one.</p>
+          </div>
+          {data && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={data.project.use_user_memory}
+              onClick={() => toggle(!data.project.use_user_memory)}
+              className="inline-flex min-h-10 items-center gap-2.5 text-sm text-ink2"
+            >
+              Use what I&apos;ve told you about me
+              <span
+                className={`flex h-6.5 w-11 rounded-full p-[3px] ${
+                  data.project.use_user_memory ? 'justify-end bg-accent-ink' : 'justify-start bg-line2'
+                }`}
+              >
+                <span className="size-5 rounded-full bg-surface" />
+              </span>
+            </button>
+          )}
+        </div>
         {error && <p className="text-sm text-danger">{error}</p>}
         {!data && !error && <p className="text-muted">Loading…</p>}
         {data && (
-          <>
-            <section className="space-y-3">
-              <h2 className="text-lg font-medium">About me</h2>
-              <MemoryList
-                memories={data.memories.filter((m) => m.scope === 'user')}
-                onChanged={load}
-                onUnauthorized={onUnauthorized}
-              />
-            </section>
-            <section className="space-y-3">
-              <h2 className="text-lg font-medium">Project Memory: {data.project.name}</h2>
-              <label className="flex items-center gap-2 text-sm text-ink2">
-                <input
-                  type="checkbox"
-                  checked={data.project.use_user_memory}
-                  onChange={(e) => toggle(e.target.checked)}
-                />
-                Use what I&apos;ve told you about me
-              </label>
-              <MemoryList
-                memories={data.memories.filter((m) => m.scope === 'project')}
-                onChanged={load}
-                onUnauthorized={onUnauthorized}
-              />
-            </section>
-          </>
+          <div className="grid gap-7 md:grid-cols-2">
+            <MemoryColumn
+              title="About me"
+              memories={column('user')}
+              onChanged={load}
+              onUnauthorized={onUnauthorized}
+            />
+            <MemoryColumn
+              title="This project"
+              subtitle={data.project.name}
+              memories={column('project')}
+              onChanged={load}
+              onUnauthorized={onUnauthorized}
+            />
+          </div>
         )}
       </main>
     </div>
@@ -91,14 +105,26 @@ type ListProps = {
   onUnauthorized: () => void
 }
 
-function MemoryList({ memories, onChanged, onUnauthorized }: ListProps) {
-  if (memories.length === 0) return <p className="text-sm text-muted">Nothing remembered yet.</p>
+function MemoryColumn({ title, subtitle, memories, onChanged, onUnauthorized }: ListProps & { title: string; subtitle?: string }) {
   return (
-    <ul className="space-y-3">
-      {memories.map((m) => (
-        <MemoryCard key={m.id} memory={m} onChanged={onChanged} onUnauthorized={onUnauthorized} />
-      ))}
-    </ul>
+    <section className="min-w-0 space-y-3">
+      <h2 className="flex items-baseline gap-2.5 border-b border-ink pb-2.5">
+        <span className="text-lg font-semibold tracking-[-0.02em]">{title}</span>
+        <span className="text-xs font-normal text-muted">
+          {memories.length} {memories.length === 1 ? 'memory' : 'memories'}
+          {subtitle && ` · ${subtitle}`}
+        </span>
+      </h2>
+      {memories.length === 0 ? (
+        <p className="text-sm text-muted">Nothing remembered yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {memories.map((m) => (
+            <MemoryCard key={m.id} memory={m} onChanged={onChanged} onUnauthorized={onUnauthorized} />
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -121,18 +147,29 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
   }
 
   return (
-    <li className="space-y-2 rounded-card border border-line p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="font-medium">{memory.title}</h3>
-        {memory.status === 'pending_review' && (
-          <span className="rounded-full bg-attention-tint px-2 py-0.5 text-xs text-attention">Pending review</span>
-        )}
-        {memory.stale && (
-          <span className="rounded-full bg-sunk px-2 py-0.5 text-xs text-muted">Stale</span>
-        )}
+    <li
+      className={`space-y-2 rounded-card border bg-surface px-4 py-4 ${
+        memory.status === 'pending_review' ? 'border-attention-line' : 'border-line'
+      } ${memory.stale ? 'opacity-70' : ''}`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] tracking-[0.08em] text-muted uppercase">{memory.kind}</span>
+        <div className="ml-auto flex gap-1.5">
+          {memory.status === 'pending_review' && (
+            <span className="rounded-full bg-attention-tint px-2 py-0.5 text-[11px] font-medium text-attention">
+              Pending review
+            </span>
+          )}
+          {memory.stale && (
+            <span className="rounded-full bg-sunk px-2 py-0.5 text-[11px] font-medium text-muted">Stale</span>
+          )}
+        </div>
       </div>
+      <h3 className="font-semibold">{memory.title}</h3>
+      <p className="text-sm whitespace-pre-wrap text-ink2">{memory.content}</p>
       <p className="text-xs text-muted">
         {memory.path} · updated {new Date(memory.updated_at).toLocaleString()}
+        {history && ` · last by ${writers[history[history.length - 1].written_by]}`}
         {memory.source_session_id && (
           <>
             {' · '}
@@ -142,7 +179,6 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
           </>
         )}
       </p>
-      <p className="text-sm whitespace-pre-wrap text-ink2">{memory.content}</p>
       <MemoryActions
         key={memory.version}
         memory={memory}
