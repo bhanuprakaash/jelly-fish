@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AdminUsers } from './AdminUsers'
 import { LinkSignIn } from './LinkSignIn'
 import { Login } from './Login'
+import { Memories } from './Memories'
 import { Settings } from './Settings'
 import { Shell } from './Shell'
 import { getMe, UnauthorizedError } from './lib/api'
@@ -66,6 +67,7 @@ function App() {
     return <Login onSignedIn={() => setSignIn('signed-in')} />
   }
 
+  if (path === '/memories') return <Memories onUnauthorized={unauthorized} />
   if (path === '/settings') return <Settings onSignedOut={signedOut} />
   if (path === '/admin/users') return <AdminUsers onSignedOut={signedOut} />
 

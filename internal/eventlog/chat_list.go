@@ -24,13 +24,14 @@ type SessionSummary struct {
 	Titled    bool   // whether Title is set rather than a placeholder
 	Status    string
 	UpdatedAt time.Time
+	Incognito bool
 }
 
 // ListSessions returns the User's top-level, non-System sessions, most
 // recently active first (streaming.md D20).
 func (r *Repo) ListSessions(ctx context.Context, scope TenantScope) ([]SessionSummary, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT s.id, s.title, s.status, s.updated_at, f.payload
+		SELECT s.id, s.title, s.status, s.updated_at, s.incognito, f.payload
 		FROM sessions s
 		LEFT JOIN LATERAL (
 			SELECT e.payload FROM events e
@@ -49,7 +50,7 @@ func (r *Repo) ListSessions(ctx context.Context, scope TenantScope) ([]SessionSu
 			title *string
 			first []byte
 		)
-		if err := row.Scan(&s.ID, &title, &s.Status, &s.UpdatedAt, &first); err != nil {
+		if err := row.Scan(&s.ID, &title, &s.Status, &s.UpdatedAt, &s.Incognito, &first); err != nil {
 			return s, err
 		}
 		if title != nil {

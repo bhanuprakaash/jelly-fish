@@ -67,7 +67,7 @@ func TestListSessionsHandler(t *testing.T) {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
-	if want := []string{"id", "status", "title", "titled", "updated_at"}; !slices.Equal(keys, want) {
+	if want := []string{"id", "incognito", "status", "title", "titled", "updated_at"}; !slices.Equal(keys, want) {
 		t.Errorf("keys = %v, want %v", keys, want)
 	}
 	if want := strings.Repeat("x", 60) + "…"; rows[0]["title"] != want || rows[0]["titled"] != false {

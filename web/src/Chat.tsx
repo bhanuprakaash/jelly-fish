@@ -1,11 +1,13 @@
-import { useEffect, useState, type SubmitEvent } from 'react'
+import { useCallback, useEffect, useState, type SubmitEvent } from 'react'
 import {
   changeModel,
   createSession,
   getMe,
+  getMemories,
   getModels,
   postMessage,
   UnauthorizedError,
+  type Memory,
   type Message,
   type Models,
 } from './lib/api'
@@ -14,6 +16,7 @@ import { sessionNotice } from './lib/sessionNotice'
 import { renamedTitle } from './lib/sessionTitle'
 import { toolChips } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
+import { MemoryChip } from './MemoryChip'
 import { ModelPicker } from './ModelPicker'
 import { SessionNotice } from './SessionNotice'
 
@@ -27,6 +30,8 @@ type Props = {
   // listTitle is the chat's title in the Chat List: a placeholder until it is
   // titled, undefined while the list doesn't have the chat.
   listTitle: string | undefined
+  // listIncognito is whether the Chat List says the chat is incognito.
+  listIncognito: boolean | undefined
   // onTitleChanged is called when the stream carries a Title the Chat List
   // doesn't show yet, so the list loads again.
   onTitleChanged: () => void
@@ -41,7 +46,7 @@ function bubbleText(payload: unknown): string {
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
 }
 
-export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, onCreated, onUnauthorized }: Props) {
+export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated, onUnauthorized }: Props) {
   const [started, setStarted] = useState(!isNew)
   const { events, partials, connected, failed } = useSessionStream(sessionId, started)
   // A brand-new chat has a session once its first message creates one; a
@@ -108,7 +113,25 @@ export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, on
     }
   }
 
-  const chips = new Map(toolChips(events).map((c) => [c.seq, c]))
+  const isIncognito = incognito || listIncognito === true
+  const chips = new Map(
+    toolChips(events)
+      .filter((c) => !(isIncognito && c.name === 'memory'))
+      .map((c) => [c.seq, c]),
+  )
+  const [memories, setMemories] = useState<Memory[] | null>(null)
+  const loadMemories = useCallback(() => {
+    getMemories().then(
+      (d) => setMemories(d.memories),
+      (err) => {
+        if (err instanceof UnauthorizedError) onUnauthorized()
+      },
+    )
+  }, [onUnauthorized])
+  const memoryChips = [...chips.values()].filter((c) => c.memory).length
+  useEffect(() => {
+    if (memoryChips > 0) loadMemories()
+  }, [memoryChips, loadMemories])
   const bubbles = events.filter(
     (e) =>
       e.type === 'user.message' ||
@@ -156,6 +179,9 @@ export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, on
           ← Chats
         </a>
         <h1 className="min-w-0 flex-1 truncate font-medium">{renamed ?? listTitle ?? 'New chat'}</h1>
+        {isIncognito && (
+          <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">Incognito</span>
+        )}
         {picker}
       </header>
 
@@ -169,6 +195,17 @@ export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, on
         )}
         {bubbles.map((e) => {
           const chip = chips.get(e.seq)
+          if (chip?.memory) {
+            return (
+              <MemoryChip
+                key={e.seq}
+                chip={{ ...chip, memory: chip.memory }}
+                memories={memories}
+                onChanged={loadMemories}
+                onUnauthorized={onUnauthorized}
+              />
+            )
+          }
           if (chip) {
             return (
               <div key={e.seq} className="mr-auto max-w-md rounded-full bg-neutral-900 px-3 py-1 text-sm text-neutral-400">

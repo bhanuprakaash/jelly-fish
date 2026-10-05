@@ -13,6 +13,7 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/mail"
+	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 )
 
 const (
@@ -59,6 +60,8 @@ type AuthConfig struct {
 	ProviderKeys ProviderKeyConfig
 	// Models backs /api/models and the model a session runs on.
 	Models ModelConfig
+	// Memories backs /api/memories and the memory chips.
+	Memories *memory.Pages
 	// PublicURL is the app's external origin, used for links in email. It is
 	// config because the request Host is attacker-controlled.
 	PublicURL string

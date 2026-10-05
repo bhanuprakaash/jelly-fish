@@ -244,6 +244,7 @@ export type ChatSummary = {
   titled: boolean
   status: string
   updated_at: string
+  incognito: boolean
 }
 
 // getSessions lists the User's chats for the Chat List, newest activity first.
@@ -292,6 +293,85 @@ export async function interruptSession(sessionId: string): Promise<void> {
 // retrySession is "Retry now" after a Provider error.
 export async function retrySession(sessionId: string): Promise<void> {
   await request(`/api/sessions/${sessionId}/retry`, { method: 'POST' })
+}
+
+export type Memory = {
+  id: string
+  scope: 'user' | 'project'
+  path: string
+  title: string
+  kind: string
+  content: string
+  status: 'active' | 'pending_review'
+  version: number
+  // stale is true when the memory was last read over 90 days ago.
+  stale: boolean
+  // source_session_id is null once the session that wrote it is deleted.
+  source_session_id: string | null
+  updated_at: string
+}
+
+export type MemoryProject = { id: string; name: string; use_user_memory: boolean }
+
+export type MemoryRevision = {
+  version: number
+  path: string
+  title: string
+  content: string
+  written_by: 'agent' | 'user' | 'tidy'
+  created_at: string
+}
+
+// getMemories lists User Memory and the Personal project's Memory, pending
+// entries included.
+export async function getMemories(): Promise<{ project: MemoryProject; memories: Memory[] }> {
+  const res = await request('/api/memories')
+  return res.json() as Promise<{ project: MemoryProject; memories: Memory[] }>
+}
+
+// getMemoryRevisions lists every version of a memory, oldest first.
+export async function getMemoryRevisions(id: string): Promise<MemoryRevision[]> {
+  const res = await request(`/api/memories/${id}/revisions`)
+  return res.json() as Promise<MemoryRevision[]>
+}
+
+// editMemory saves new content. It throws HttpError 422 when the text is
+// empty, over 4 KB or looks like a secret. Editing a pending memory approves it.
+export async function editMemory(id: string, content: string): Promise<void> {
+  await request(`/api/memories/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+}
+
+// approveMemory makes a pending memory active.
+export async function approveMemory(id: string): Promise<void> {
+  await request(`/api/memories/${id}/approve`, { method: 'POST' })
+}
+
+// deleteMemory hard-deletes a memory and its history.
+export async function deleteMemory(id: string): Promise<void> {
+  await request(`/api/memories/${id}`, { method: 'DELETE' })
+}
+
+// undoMemory reverses the chat write that left the memory at version; it
+// throws HttpError 409 when the memory has changed since.
+export async function undoMemory(id: string, version: number): Promise<void> {
+  await request(`/api/memories/${id}/undo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version }),
+  })
+}
+
+// setUseUserMemory sets whether new chats of the project use User Memory.
+export async function setUseUserMemory(projectId: string, use: boolean): Promise<void> {
+  await request(`/api/projects/${projectId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ use_user_memory: use }),
+  })
 }
 
 // Delta is an ephemeral fragment of a streaming reply (streaming.md §4.1).

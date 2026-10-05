@@ -16,6 +16,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
 	"github.com/bhanuprakaash/jelly-fish/internal/mail"
+	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
@@ -89,7 +90,8 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Sealer: kr,
 			Models: api.AnthropicLister{},
 		},
-		Models: api.ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: model, Fake: fakeModel},
+		Models:   api.ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: model, Fake: fakeModel},
+		Memories: memory.NewPages(pool),
 	})
 
 	g, gctx := errgroup.WithContext(ctx)

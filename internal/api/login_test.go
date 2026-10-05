@@ -15,6 +15,7 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
 )
@@ -35,7 +36,7 @@ func newLoginEnv(t *testing.T) *loginEnv {
 	mailer := &fakeMailer{}
 	store := auth.NewStore(pool, slog.New(slog.DiscardHandler))
 	srv, authH := newServer(":0", slog.New(slog.DiscardHandler), testWebFS(), eventlog.NewRepo(pool, "fake"), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
-		AuthConfig{Authenticator: store, Admin: store, Mailer: mailer, PublicURL: testPublicURL})
+		AuthConfig{Authenticator: store, Admin: store, Mailer: mailer, PublicURL: testPublicURL, Memories: memory.NewPages(pool)})
 	return &loginEnv{pool: pool, srv: srv, auth: authH, mailer: mailer}
 }
 

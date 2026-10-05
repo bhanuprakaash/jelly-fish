@@ -46,6 +46,7 @@ export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }:
             isNew={isNew}
             navigate={navigate}
             listTitle={chats?.find((c) => c.id === sessionId)?.title}
+            listIncognito={chats?.find((c) => c.id === sessionId)?.incognito}
             onTitleChanged={refetch}
             onCreated={refetch}
             onUnauthorized={onUnauthorized}

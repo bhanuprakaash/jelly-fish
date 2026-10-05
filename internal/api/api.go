@@ -48,6 +48,15 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.HandleFunc("PUT /api/provider-keys/{p}", keys.handlePutKey)
 	protected.HandleFunc("DELETE /api/provider-keys/{p}", keys.handleDeleteKey)
 
+	mem := &memoryHandlers{pages: authCfg.Memories, logger: logger}
+	protected.HandleFunc("GET /api/memories", mem.list)
+	protected.HandleFunc("GET /api/memories/{id}/revisions", mem.revisions)
+	protected.HandleFunc("PATCH /api/memories/{id}", mem.edit)
+	protected.HandleFunc("POST /api/memories/{id}/approve", mem.approve)
+	protected.HandleFunc("POST /api/memories/{id}/undo", mem.undo)
+	protected.HandleFunc("DELETE /api/memories/{id}", mem.delete)
+	protected.HandleFunc("PATCH /api/projects/{id}", mem.patchProject)
+
 	admin := http.NewServeMux()
 	admin.HandleFunc("POST /api/admin/invites", authH.handleCreateInvite)
 	admin.HandleFunc("POST /api/admin/invites/{id}/resend", authH.handleResendInvite)

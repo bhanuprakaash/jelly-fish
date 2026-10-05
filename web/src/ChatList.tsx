@@ -74,7 +74,10 @@ export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged
         )}
       </nav>
 
-      <div className="border-t border-neutral-800 p-4">
+      <div className="flex gap-4 border-t border-neutral-800 p-4">
+        <a href="/memories" className="text-sm text-neutral-400 hover:text-neutral-200">
+          Memories
+        </a>
         <a href="/settings" className="text-sm text-neutral-400 hover:text-neutral-200">
           Settings
         </a>

@@ -87,6 +87,7 @@ type chatSummary struct {
 	Titled    bool      `json:"titled"`
 	Status    string    `json:"status"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Incognito bool      `json:"incognito"`
 }
 
 func handleListSessions(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
@@ -99,7 +100,7 @@ func handleListSessions(repo SessionRepo, logger *slog.Logger) http.HandlerFunc 
 		}
 		out := make([]chatSummary, 0, len(sessions))
 		for _, s := range sessions {
-			out = append(out, chatSummary{ID: s.ID, Title: s.Title, Titled: s.Titled, Status: s.Status, UpdatedAt: s.UpdatedAt})
+			out = append(out, chatSummary{ID: s.ID, Title: s.Title, Titled: s.Titled, Status: s.Status, UpdatedAt: s.UpdatedAt, Incognito: s.Incognito})
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
