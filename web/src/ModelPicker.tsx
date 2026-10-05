@@ -54,7 +54,7 @@ export function ModelPicker({ models, current, onPick, disabled, ref }: Props) {
       value={current}
       disabled={disabled}
       onChange={(e) => onPick(e.target.value)}
-      className="max-w-[60vw] cursor-pointer truncate rounded-btn border border-transparent bg-transparent px-1 py-0.5 font-mono text-sm text-ink2 hover:border-line2 focus-visible:border-accent-ink focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+      className="field-sizing-content w-auto max-w-full cursor-pointer truncate rounded-btn border border-line2 bg-transparent px-1 py-0.5 font-mono text-sm text-ink2 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {!from && <option value={current}>{current}</option>}
       {models.providers.map((g) => (

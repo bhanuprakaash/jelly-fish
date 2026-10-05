@@ -2,6 +2,8 @@ import type { UIEvent } from './api'
 
 export type ToolChip = {
   seq: number
+  // turn is the turn_id of the reply that requested the call.
+  turn: string
   name: string
   // stopped is a call the user interrupted; unknown is one a lost Worker left
   // started, so whether it ran is not known.
@@ -20,6 +22,7 @@ type Part = { text?: string; mem?: { id: string; v: number } }
 
 type Payload = {
   tool_call_id: string
+  turn_id?: string
   tool?: string
   args?: { command?: string; path?: string; new_path?: string }
   is_error?: boolean
@@ -35,13 +38,15 @@ const memoryWrites = ['create', 'str_replace', 'insert', 'delete', 'rename']
 // were requested.
 export function toolChips(events: UIEvent[]): ToolChip[] {
   const chips = new Map<string, ToolChip>()
-  const args = new Map<string, Payload['args']>()
+  let turn = ''
   for (const e of events) {
     const p = e.payload as Payload
     switch (e.type) {
+      case 'llm.response':
+        turn = p.turn_id ?? String(e.seq)
+        break
       case 'tool.call.requested':
-        chips.set(p.tool_call_id, { seq: e.seq, name: p.tool ?? '', state: 'running', args: p.args })
-        args.set(p.tool_call_id, p.args)
+        chips.set(p.tool_call_id, { seq: e.seq, turn, name: p.tool ?? '', state: 'running', args: p.args })
         break
       case 'tool.call.completed': {
         const chip = chips.get(p.tool_call_id)
@@ -50,7 +55,7 @@ export function toolChips(events: UIEvent[]): ToolChip[] {
         chip.durationMs = p.duration_ms
         chip.result = resultText(p)
         if (p.is_error) chip.error = chip.result
-        const a = args.get(p.tool_call_id)
+        const a = chip.args as Payload['args']
         const mem = resultParts(p).find((x) => x.mem)?.mem
         if (!p.is_error && mem && a?.command && memoryWrites.includes(a.command)) {
           const path = a.command === 'rename' ? a.new_path : a.path

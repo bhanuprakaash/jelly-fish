@@ -158,17 +158,22 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       (e.type === 'llm.response' && (bubbleText(e.payload) !== '' || thinkingText(e.payload) !== '')) ||
       chips.has(e.seq),
   )
-  // Consecutive tool calls share one card.
-  const transcript: (UIEvent | ToolChip[])[] = []
+  const transcript: (UIEvent | { turn: string; calls: ToolChip[] })[] = []
+  const cards = new Map<string, ToolChip[]>()
   for (const e of bubbles) {
     const chip = chips.get(e.seq)
     if (!chip || chip.memory) {
       transcript.push(e)
       continue
     }
-    const last = transcript.at(-1)
-    if (Array.isArray(last)) last.push(chip)
-    else transcript.push([chip])
+    const card = cards.get(chip.turn)
+    if (card) {
+      card.push(chip)
+    } else {
+      const calls = [chip]
+      cards.set(chip.turn, calls)
+      transcript.push({ turn: chip.turn, calls })
+    }
   }
   const loading = !isNew && !connected && !failed
   const notice = sessionNotice(events)
@@ -199,12 +204,12 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
     )
   const picker = renderPicker()
 
-  let status: JellyStatus = 'runnable'
+  let status: JellyStatus | undefined
   for (const e of events) {
     if (e.type === 'session.status_changed') status = (e.payload as { to: JellyStatus }).to
   }
-  const canStop = hasSession && ['runnable', 'running', 'sleeping'].includes(status)
-  const steering = hasSession && ['runnable', 'running'].includes(status)
+  const canStop = hasSession && status === 'running'
+  const steering = hasSession && (status === 'runnable' || status === 'running')
   const created = events.find((e) => e.type === 'session.created')
   const agentName = (created?.payload as { agent?: { name?: string } } | undefined)?.agent?.name
 
@@ -239,8 +244,9 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       void stop()
       return
     }
-    modelRef.current?.focus()
-    modelRef.current?.showPicker()
+    const select = modelRef.current
+    select?.focus()
+    if (select && !select.disabled && 'showPicker' in select) select.showPicker()
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -271,7 +277,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             ← Chats
           </a>
           <h1 className="min-w-0 flex-1 truncate font-medium">{renamed ?? listTitle ?? 'New chat'}</h1>
-          {hasSession && (
+          {hasSession && status && (
             <span
               className={`inline-flex items-center gap-2 rounded-full bg-sunk py-0.5 pr-3 pl-1 text-sm ${
                 status === 'failed' ? 'text-danger' : 'text-ink2'
@@ -308,7 +314,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
           <p className="text-center text-muted">Say something to start the chat.</p>
         )}
         {transcript.map((item) => {
-          if (Array.isArray(item)) return <ToolCalls key={item[0].seq} calls={item} />
+          if ('calls' in item) return <ToolCalls key={item.turn} calls={item.calls} />
           const e = item
           const chip = chips.get(e.seq)
           if (chip?.memory) {
@@ -360,7 +366,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             Incognito: no memory in this chat
           </label>
         )}
-        <div className="overflow-hidden rounded-panel border border-accent-line bg-surface">
+        <div className="overflow-hidden rounded-panel border border-accent-line bg-surface has-[input:focus-visible]:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)]">
           {slashOpen && (
             <div
               id="slash-menu"
@@ -393,11 +399,12 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               aria-expanded={slashOpen}
               aria-controls={slashOpen ? 'slash-menu' : undefined}
               aria-activedescendant={slashOpen ? `slash-${matches[activeIndex].name.slice(1)}` : undefined}
-              className="input min-w-0 flex-1 border-0 bg-transparent"
+              className="input min-w-0 flex-1 border-0 bg-transparent focus-visible:shadow-none"
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value)
                 setActive(0)
+                if (e.target.value !== closedAt) setClosedAt(null)
               }}
               onKeyDown={onKeyDown}
               placeholder="Message, or type / for commands"

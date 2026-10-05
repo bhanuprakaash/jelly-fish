@@ -10,7 +10,7 @@ export function Thought({ text }: { text: string }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="inline-flex min-h-8 items-center gap-2 rounded-full border border-line bg-sunk px-3 text-sm text-muted"
+        className={`inline-flex min-h-8 items-center gap-2 rounded-full border border-line bg-sunk px-3 text-sm text-muted ${ring}`}
       >
         <svg
           width="14"
@@ -30,6 +30,18 @@ export function Thought({ text }: { text: string }) {
       {open && <p className="whitespace-pre-wrap text-sm text-muted">{text}</p>}
     </div>
   )
+}
+
+const ring = 'focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)]'
+const insetRing =
+  'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--bg),inset_0_0_0_4px_var(--accent-ink)]'
+
+const stateWords = {
+  running: 'running',
+  done: 'done',
+  failed: 'failed',
+  stopped: 'stopped',
+  unknown: 'outcome unknown',
 }
 
 const stateColors = {
@@ -92,12 +104,13 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm"
+        className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm ${insetRing}`}
       >
         <span className={`flex size-5 shrink-0 items-center justify-center ${stateColors[call.state]}`}>
           <StateIcon state={call.state} />
         </span>
         <span className="font-mono text-ink">{call.name}</span>
+        <span className="sr-only">{stateWords[call.state]}</span>
         {call.error && <span className="min-w-0 flex-1 truncate text-muted">{call.error}</span>}
         {!call.error && <span className="flex-1" />}
         {call.durationMs !== undefined && call.durationMs > 0 && (

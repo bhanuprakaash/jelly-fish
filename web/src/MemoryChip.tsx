@@ -58,7 +58,7 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
       ) : (
         <div className="flex w-fit max-w-full items-center gap-2 rounded-full border border-accent-line bg-accent-tint py-1 pl-3 pr-1 text-ink2">
           <span className="min-w-0 break-words">
-            {labels[op]} · {path}
+            {memories ? labels[op] : 'Memory'} · {path}
             {memories && !current && ' · removed'}
           </span>
           {canUndo && (
