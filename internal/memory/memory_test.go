@@ -562,6 +562,18 @@ func TestUndoOfDeleteNeedsItsVersionAndItsRow(t *testing.T) {
 	}
 }
 
+func TestUndoOfDeleteAfterADayFindsNothing(t *testing.T) {
+	e := newEnv(t)
+	id := uuid.MustParse(ref(t, e.create("/memories/a.md", "one")).MemoryID)
+	e.deleteByAgent("/memories/a.md")
+	if _, err := e.pool.Exec(t.Context(), `UPDATE memories SET deleted_at = now() - interval '25 hours' WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.pages().Undo(t.Context(), e.scope(), id, 2); !errors.Is(err, memory.ErrNotFound) {
+		t.Fatalf("undo a day after the delete = %v, want ErrNotFound", err)
+	}
+}
+
 func TestCreateAndRenameOverDeletedPathDropTheOldRow(t *testing.T) {
 	e := newEnv(t)
 	old := ref(t, e.create("/memories/a.md", "old")).MemoryID

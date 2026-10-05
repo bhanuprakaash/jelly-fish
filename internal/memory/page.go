@@ -199,6 +199,9 @@ func (p *Pages) Delete(ctx context.Context, scope eventlog.TenantScope, id uuid.
 // version.
 func (p *Pages) Undo(ctx context.Context, scope eventlog.TenantScope, id uuid.UUID, version int) error {
 	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+		if err := purge(ctx, tx, scope.UserID); err != nil {
+			return err
+		}
 		cur, path, err := lockOwned(ctx, tx, scope, id)
 		if err != nil {
 			return err
