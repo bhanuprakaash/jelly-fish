@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { Badge } from './lib/activity'
-import { JellyGlyph, type JellyStatus } from './JellyGlyph'
+import { JellyGlyph } from './JellyGlyph'
 import { renameSession, retrySession, UnauthorizedError, type ChatSummary } from './lib/api'
+import { statusLabel, statusTone, type JellyStatus } from './lib/status'
 import { RenameForm, RowMenu } from './RowMenu'
 
 const badgeStatus: Record<Badge, JellyStatus> = {
@@ -9,30 +10,14 @@ const badgeStatus: Record<Badge, JellyStatus> = {
   failed: 'failed',
   busy: 'running',
   sleeping: 'sleeping',
-  waiting: 'awaiting_children',
 }
 
-const statusLabel: Record<JellyStatus, string> = {
-  runnable: 'Working…',
-  running: 'Working…',
-  awaiting_approval: 'Needs approval',
-  awaiting_children: 'Waiting…',
-  sleeping: 'Sleeping',
-  awaiting_user: 'Your turn',
-  completed: 'Done',
-  failed: 'Failed',
-}
-
-const statusTone: Partial<Record<JellyStatus, string>> = {
-  awaiting_approval: 'text-attention',
-  failed: 'text-danger',
-}
-
-// rowStatus is the live badge's status, else the chat's own: the list loads
-// less often than the Activity Stream, so a stored busy status is stale.
+// rowStatus is the live badge's status. The Activity Stream lists every
+// session that is not awaiting_user or completed, so a chat with no badge is
+// done or waiting on the User; the list's stored status is stale for anything else.
 function rowStatus(c: ChatSummary, badge: Badge | undefined): JellyStatus {
   if (badge) return badgeStatus[badge]
-  return c.status === 'completed' || c.status === 'failed' ? c.status : 'awaiting_user'
+  return c.status === 'completed' ? 'completed' : 'awaiting_user'
 }
 
 function when(iso: string): string {
@@ -52,7 +37,7 @@ type Props = {
   activeId: string | null
   onNewChat: () => void
   onOpen: (id: string) => void
-  // onChanged is called after a rename, so the list loads again.
+  // onChanged is called after a rename or a retry, so the list loads again.
   onChanged: () => void
   onUnauthorized: () => void
 }
@@ -61,30 +46,34 @@ type Props = {
 export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged, onUnauthorized }: Props) {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [retryingId, setRetryingId] = useState<string | null>(null)
+  const [retryFailedId, setRetryFailedId] = useState<string | null>(null)
 
   const retry = async (id: string) => {
     setRetryingId(id)
+    setRetryFailedId(null)
     try {
       await retrySession(id)
+      onChanged()
     } catch (err) {
       if (err instanceof UnauthorizedError) onUnauthorized()
+      else setRetryFailedId(id)
     } finally {
       setRetryingId(null)
     }
   }
 
   const rows = chats.map((c) => ({ chat: c, status: rowStatus(c, badges[c.id]) }))
-  const working = rows.filter((r) => ['runnable', 'running', 'awaiting_children'].includes(r.status)).length
+  const working = rows.filter((r) => ['runnable', 'running'].includes(r.status)).length
   const needsYou = rows.filter((r) => r.status === 'awaiting_approval').length
 
   return (
     <div className="flex h-full flex-col">
       <h2 className="px-5 pt-6 pb-1 text-3xl font-semibold tracking-tight md:px-6 md:pt-5 md:text-xl">
-        <span className="md:hidden">Your swarm</span>
+        <span className="md:hidden">Chats</span>
         <span className="hidden md:inline">jelly-fish</span>
       </h2>
 
-      <div className="px-4 pt-3 pb-2">
+      <div className="order-last px-4 pt-2 pb-4 md:order-none md:pt-3 md:pb-2">
         <button onClick={onNewChat} className="btn btn-jelly w-full">
           New chat
         </button>
@@ -103,7 +92,7 @@ export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged
         </p>
       )}
 
-      <nav aria-label="Chats" className="flex-1 overflow-y-auto px-2">
+      <nav aria-label="Chats" className="min-h-0 flex-1 overflow-y-auto px-2">
         {chats.length === 0 ? (
           <p className="px-2 py-4 text-center text-sm text-muted">No chats yet</p>
         ) : (
@@ -111,7 +100,7 @@ export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged
             {rows.map(({ chat: c, status }) => (
               <li
                 key={c.id}
-                className={`flex items-center rounded-btn ${
+                className={`relative flex items-center rounded-btn has-[a:focus-visible]:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] ${
                   c.id === activeId ? 'bg-accent-tint text-ink' : 'text-ink2 hover:bg-sunk'
                 }`}
               >
@@ -127,35 +116,47 @@ export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged
                     onUnauthorized={onUnauthorized}
                   />
                 ) : (
-                  <a
-                    href={`/s/${c.id}`}
-                    aria-current={c.id === activeId ? 'page' : undefined}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      onOpen(c.id)
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-3 px-2.5 py-2"
-                  >
+                  <div className="flex min-w-0 flex-1 items-center gap-3 px-2.5 py-2">
                     <JellyGlyph status={status} />
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm font-medium text-ink">{c.title}</span>
-                      <span className={`text-xs ${statusTone[status] ?? 'text-muted'}`}>{statusLabel[status]}</span>
+                      <a
+                        href={`/s/${c.id}`}
+                        aria-current={c.id === activeId ? 'page' : undefined}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          onOpen(c.id)
+                        }}
+                        className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0"
+                      >
+                        {c.title}
+                      </a>
+                      <span className={`text-xs ${statusTone[status]}`}>
+                        {statusLabel[status]}
+                        {status === 'failed' && (
+                          <>
+                            {' · '}
+                            <button
+                              type="button"
+                              disabled={retryingId === c.id}
+                              onClick={() => retry(c.id)}
+                              aria-label={`Retry ${c.title}`}
+                              className="relative rounded-btn font-medium underline focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] focus-visible:outline-none disabled:opacity-60"
+                            >
+                              Retry?
+                            </button>
+                          </>
+                        )}
+                      </span>
+                      {retryFailedId === c.id && (
+                        <span role="alert" className="text-xs text-danger">
+                          Could not retry
+                        </span>
+                      )}
                     </span>
                     <time dateTime={c.updated_at} className="shrink-0 text-xs text-muted">
                       {when(c.updated_at)}
                     </time>
-                  </a>
-                )}
-                {status === 'failed' && renamingId !== c.id && (
-                  <button
-                    type="button"
-                    disabled={retryingId === c.id}
-                    onClick={() => retry(c.id)}
-                    aria-label={`Retry ${c.title}`}
-                    className="btn btn-ghost btn-sm shrink-0 text-danger"
-                  >
-                    Retry?
-                  </button>
+                  </div>
                 )}
                 <RowMenu renaming={renamingId === c.id} onRename={() => setRenamingId(c.id)} />
               </li>

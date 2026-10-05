@@ -13,7 +13,7 @@ export type ActivityEntry = {
 // ActivityMap holds the busy sessions by session_id.
 export type ActivityMap = Record<string, ActivityEntry>
 
-export type Badge = 'approval' | 'failed' | 'busy' | 'sleeping' | 'waiting'
+export type Badge = 'approval' | 'failed' | 'busy' | 'sleeping'
 
 const BUSY = new Set(['runnable', 'running', 'sleeping', 'awaiting_children'])
 
@@ -40,7 +40,6 @@ export function badgeFor(chatId: string, map: ActivityMap): Badge | null {
   const own = map[chatId]
   if (own?.status === 'failed') return 'failed'
   if (own?.status === 'sleeping') return 'sleeping'
-  if (own?.status === 'awaiting_children') return 'waiting'
   if (own && BUSY.has(own.status)) return 'busy'
   return null
 }

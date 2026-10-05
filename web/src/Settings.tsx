@@ -151,7 +151,7 @@ function Appearance() {
       <div
         role="group"
         aria-label="Theme"
-        className="flex max-w-full overflow-x-auto rounded-btn border border-line2 bg-sunk p-0.5"
+        className="inline-flex max-w-full overflow-x-auto rounded-btn border border-line2 bg-sunk p-0.5"
       >
         {themes.map((t) => (
           <button
@@ -161,7 +161,7 @@ function Appearance() {
               setTheme(t)
               setChoice(t)
             }}
-            className={`h-9 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] font-medium whitespace-nowrap focus-visible:ring-2 focus-visible:ring-accent-ink focus-visible:outline-none sm:px-4 sm:text-sm ${
+            className={`h-9 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] font-medium whitespace-nowrap focus-visible:shadow-[inset_0_0_0_2px_var(--bg),inset_0_0_0_4px_var(--accent-ink)] focus-visible:outline-none sm:px-4 sm:text-sm ${
               theme === t ? 'bg-surface text-ink shadow-[0_0_0_1px_var(--line2)]' : 'text-muted hover:text-ink'
             }`}
           >

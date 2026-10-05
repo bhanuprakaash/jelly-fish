@@ -62,12 +62,12 @@ export function Memories({ onUnauthorized }: Props) {
               role="switch"
               aria-checked={data.project.use_user_memory}
               onClick={() => toggle(!data.project.use_user_memory)}
-              className="inline-flex min-h-10 items-center gap-2.5 text-sm text-ink2"
+              className="group inline-flex min-h-10 items-center gap-2.5 text-sm text-ink2 focus-visible:outline-none"
             >
               Use what I&apos;ve told you about me
               <span
-                className={`flex h-6.5 w-11 rounded-full p-[3px] ${
-                  data.project.use_user_memory ? 'justify-end bg-accent-ink' : 'justify-start bg-line2'
+                className={`flex h-6.5 w-11 rounded-full p-[3px] group-focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] ${
+                  data.project.use_user_memory ? 'justify-end bg-accent-ink' : 'justify-start bg-sunk ring-1 ring-ink2/60 ring-inset'
                 }`}
               >
                 <span className="size-5 rounded-full bg-surface" />
@@ -149,8 +149,8 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
   return (
     <li
       className={`space-y-2 rounded-card border bg-surface px-4 py-4 ${
-        memory.status === 'pending_review' ? 'border-attention-line' : 'border-line'
-      } ${memory.stale ? 'opacity-70' : ''}`}
+        memory.status === 'pending_review' ? 'border-attention-line' : memory.stale ? 'border-dashed border-line2' : 'border-line'
+      }`}
     >
       <div className="flex items-center gap-2">
         <span className="text-[11px] tracking-[0.08em] text-muted uppercase">{memory.kind}</span>
@@ -188,7 +188,7 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
         }}
         onUnauthorized={onUnauthorized}
       />
-      <button onClick={showHistory} className="btn btn-ghost btn-sm">
+      <button onClick={showHistory} className="btn btn-ghost btn-sm -ml-3.25">
         {history ? 'Hide history' : 'History'}
       </button>
       {historyError && <p className="text-sm text-danger">Could not load history.</p>}

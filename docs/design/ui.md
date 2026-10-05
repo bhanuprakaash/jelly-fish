@@ -112,9 +112,9 @@ The slash menu opens inside the composer and pushes the transcript up; it never 
 - Buttons have no loading state.
 - The mobile primary button is not 52px high.
 - The round icon button (RowMenu ⋯) is not 40px.
-- The §3 type scale and title tracking are not applied.
-- The provider-error notice has no danger tint.
+- The §3 type scale is partly applied (page titles).
 - In `jellyfish-dark`, the Pending review chip text has 4.2:1 contrast. The target is 4.5:1.
+- In `jellyfish-dark`, attention text on tints is about 4.1:1.
 - The PWA manifest and launch splash stay dark for the light themes.
 - The service worker precaches every font subset. Latin only would save about 100 KB.
 
@@ -127,7 +127,7 @@ The boards show these elements. They are not built, because the app has no data 
 - Files: artifacts card and panel, attach.
 - Cost: budget notice, header budget, /cost card, Usage page.
 - Settings pages: Agents, Skills, Connectors, Permissions.
-- Tool rows: approved_by chip, denied and skipped rows.
+- Tool rows: approved_by chip, denied, skipped and timed out rows.
 - Header: mode chip, sandbox chip, project switcher.
 - Slash commands: /background, /remote, /agent, /mode, /compact, /cost.
 - Transcript: thinking duration, memory read counts, web-page taint.

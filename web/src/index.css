@@ -137,16 +137,12 @@ body {
 .jelly-ask {
   animation: jelly-beacon 1.4s ease-in-out infinite;
 }
-.jelly-wait {
-  animation: jelly-pulse 3s ease-in-out infinite;
-}
 .jelly-sleep {
   animation: jelly-fade 4s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .jelly-run,
   .jelly-ask,
-  .jelly-wait,
   .jelly-sleep {
     animation: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 35%, transparent);
@@ -210,11 +206,6 @@ body {
   .btn-primary {
     background: var(--ink);
     color: var(--bg);
-  }
-  .btn-primary:disabled,
-  .btn-attention:disabled {
-    background: var(--sunk);
-    color: var(--ink2);
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--ink2);

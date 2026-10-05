@@ -13,10 +13,11 @@ import {
   type Models,
   type UIEvent,
 } from './lib/api'
-import { JellyGlyph, type JellyStatus } from './JellyGlyph'
+import { JellyGlyph } from './JellyGlyph'
 import { sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
 import { renamedTitle } from './lib/sessionTitle'
+import { statusLabel, type JellyStatus } from './lib/status'
 import { thinkingText, toolChips, type ToolChip } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { MemoryChip } from './MemoryChip'
@@ -43,17 +44,6 @@ type Props = {
   onCreated: () => void
   // onUnauthorized is called when the server says the Login Session is gone.
   onUnauthorized: () => void
-}
-
-const statusLabel: Record<JellyStatus, string> = {
-  runnable: 'Working…',
-  running: 'Working…',
-  awaiting_approval: 'Needs approval',
-  awaiting_children: 'Waiting…',
-  sleeping: 'Sleeping',
-  awaiting_user: 'Your turn',
-  completed: 'Done',
-  failed: 'Failed',
 }
 
 function bubbleText(payload: unknown): string {

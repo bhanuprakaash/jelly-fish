@@ -1,30 +1,9 @@
-// JellyStatus is a session status the glyph can show.
-export type JellyStatus =
-  | 'runnable'
-  | 'running'
-  | 'awaiting_approval'
-  | 'awaiting_children'
-  | 'sleeping'
-  | 'awaiting_user'
-  | 'completed'
-  | 'failed'
-
-const tone: Record<JellyStatus, string> = {
-  runnable: 'text-accent-ink',
-  running: 'text-accent-ink',
-  awaiting_approval: 'text-attention',
-  awaiting_children: 'text-waiting',
-  sleeping: 'text-muted',
-  awaiting_user: 'text-muted',
-  completed: 'text-success',
-  failed: 'text-danger',
-}
+import { statusTone, type JellyStatus } from './lib/status'
 
 const motion: Record<JellyStatus, string> = {
   runnable: 'jelly-run',
   running: 'jelly-run',
   awaiting_approval: 'jelly-ask',
-  awaiting_children: 'jelly-wait',
   sleeping: 'jelly-sleep',
   awaiting_user: '',
   completed: '',
@@ -38,7 +17,7 @@ export function JellyGlyph({ status, size = 20 }: { status: JellyStatus; size?: 
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-current/12 ${tone[status]} ${motion[status]}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-current/12 ${statusTone[status]} ${motion[status]}`}
       style={{ width: size * 1.5, height: size * 1.5 }}
     >
       <svg
