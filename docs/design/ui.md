@@ -117,3 +117,18 @@ The slash menu opens inside the composer and pushes the transcript up; it never 
 - In `jellyfish-dark`, the Pending review chip text has 4.2:1 contrast. The target is 4.5:1.
 - The PWA manifest and launch splash stay dark for the light themes.
 - The service worker precaches every font subset. Latin only would save about 100 KB.
+
+### Blocked on backend
+
+The boards show these elements. They are not built, because the app has no data for them.
+
+- Approvals: approval card, beacon status, Approve all.
+- Sub-agents: child sessions, Swarm page.
+- Files: artifacts card and panel, attach.
+- Cost: budget notice, header budget, /cost card, Usage page.
+- Settings pages: Agents, Skills, Connectors, Permissions.
+- Tool rows: approved_by chip, denied and skipped rows.
+- Header: mode chip, sandbox chip, project switcher.
+- Slash commands: /background, /remote, /agent, /mode, /compact, /cost.
+- Transcript: thinking duration, memory read counts, web-page taint.
+- Memory: Tidy suggestions.

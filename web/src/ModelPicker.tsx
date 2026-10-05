@@ -1,3 +1,4 @@
+import type { Ref } from 'react'
 import type { ModelOption, Models } from './lib/api'
 
 const providerNames: Record<string, string> = {
@@ -34,24 +35,26 @@ type Props = {
   current: string
   onPick: (model: string) => void
   disabled?: boolean
+  ref?: Ref<HTMLSelectElement>
 }
 
 // ModelPicker lists models per Provider. A Provider with no key is greyed
 // out. Only the current Provider's models can be picked, since history
 // isn't replayed across Providers (#5); the Fake Provider, which has no
 // history of its own, is exempt either way.
-export function ModelPicker({ models, current, onPick, disabled }: Props) {
+export function ModelPicker({ models, current, onPick, disabled, ref }: Props) {
   const from = providerOf(models, current)
   const pickable = (provider: string) =>
     !from || provider === from || provider === 'fake' || from === 'fake'
 
   return (
     <select
+      ref={ref}
       aria-label="Model"
       value={current}
       disabled={disabled}
       onChange={(e) => onPick(e.target.value)}
-      className="max-w-[40vw] truncate md:max-w-[60vw] rounded-btn border border-line2 bg-surface px-2 py-1 text-sm text-ink disabled:opacity-50"
+      className="max-w-[60vw] cursor-pointer truncate rounded-btn border border-transparent bg-transparent px-1 py-0.5 font-mono text-sm text-ink2 hover:border-line2 focus-visible:border-accent-ink focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
     >
       {!from && <option value={current}>{current}</option>}
       {models.providers.map((g) => (
