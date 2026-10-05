@@ -28,3 +28,4 @@ This directory is the maintained source for verifying jelly-fish's real behavior
 - [Rename and automatic Title](./rename-title.md) — `PUT /api/sessions/{id}/title`, the "⋯" Rename menu, header updates from `session.renamed`, the Worker's automatic Title.
 - [S5 demo](./s5-demo.md) — the whole S5 flow on desktop and Pixel 7 emulation: live badges, Title, rename, hide/show recovery.
 - [Tool calls](./tool-calls.md) — `tool.call.*` events, the parallel batch of the dev fake tools, Interrupt mid-call.
+- [Memory](./memory.md) — the `memory` tool: rows + revisions, `memory.written`, taint → `pending_review`, secret refusal, no memory text in the log.

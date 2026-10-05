@@ -17,6 +17,11 @@ Run `make lint test` before calling a change done. For changes to `internal/api`
 - Code style: [docs/style.md](docs/style.md). Follow it, especially the Comments section.
 - Decisions: `docs/adr/`. Designs: `docs/design/`.
 
+## Gotchas
+
+- Never run `go mod tidy`: it rewrites unrelated otel lines. Add a dependency with `go get <pkg>`; the editor's go.mod tidy warnings are expected.
+- `make chaos` and DB tests need `TEST_DATABASE_URL`; a local Postgres works (`postgres:///postgres`).
+
 ## Git
 
 - Direct push to `main` is allowed, but only with explicit approval each time — never push unasked.

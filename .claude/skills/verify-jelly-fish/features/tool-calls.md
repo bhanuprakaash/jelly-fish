@@ -21,4 +21,6 @@ Preconditions: signed in per [`sign-in`](./sign-in.md); `$DATABASE_URL` set; coo
 
 ## Gotchas
 
+- A `/tool` input that is a JSON object is sent as the call's args unchanged (`/tool memory {"command":"view",...}`); any other input is sent as `{"input":"…"}`.
+
 - A real Anthropic reply that asks for a tool nobody registered gets an `is_error` result (`unknown tool "x"`) and the model gets another Turn. Nothing but the Budget stops a model that keeps asking.
