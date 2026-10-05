@@ -19,7 +19,7 @@ func TestCreateSession_RecordsTrigger(t *testing.T) {
 	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
@@ -95,13 +95,13 @@ func TestListSessions_OnlyTopLevelNonSystem(t *testing.T) {
 
 	a, b, c := uuid.New(), uuid.New(), uuid.New()
 	for _, id := range []uuid.UUID{a, b, c} {
-		if _, err := repo.CreateSession(t.Context(), scope, id, uuid.New(), "hello", ""); err != nil {
+		if _, err := repo.CreateSession(t.Context(), scope, id, uuid.New(), "hello", "", false); err != nil {
 			t.Fatalf("CreateSession: %v", err)
 		}
 	}
 	insertSessionRow(t, pool, scope, "memory_tidy", nil)
 	insertSessionRow(t, pool, scope, eventlog.TriggerUserMessage, &a)
-	if _, err := repo.CreateSession(t.Context(), other, uuid.New(), uuid.New(), "not mine", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), other, uuid.New(), uuid.New(), "not mine", "", false); err != nil {
 		t.Fatalf("CreateSession other: %v", err)
 	}
 	setUpdatedAt(t, pool, a, 3*time.Hour)
@@ -152,7 +152,7 @@ func TestListSessions_PlaceholderFromFirstUserMessage(t *testing.T) {
 			repo := eventlog.NewRepo(pool, "fake")
 			scope := testdb.NewUser(t, pool).Scope()
 			sid := uuid.New()
-			if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), tt.message, ""); err != nil {
+			if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), tt.message, "", false); err != nil {
 				t.Fatalf("CreateSession: %v", err)
 			}
 			if tt.title != "" {

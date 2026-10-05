@@ -172,7 +172,7 @@ func (w *Worker) commit(ctx context.Context, tx pgx.Tx, c eventlog.Claim, call C
 // invoke turns every way a call can fail into an error Result for the model.
 func (w *Worker) invoke(ctx context.Context, c eventlog.Claim, call Call, key string, sess tool.Session) tool.Result {
 	t, ok := w.tools.Get(call.Name)
-	if !ok {
+	if !ok || c.Incognito && call.Name == memory.ToolName {
 		return tool.TextResult(fmt.Sprintf("unknown tool %q", call.Name), true)
 	}
 	args := call.Args

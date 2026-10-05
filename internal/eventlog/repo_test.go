@@ -25,7 +25,7 @@ func TestCreateSession(t *testing.T) {
 	sessionID := uuid.New()
 	clientMsgID := uuid.New()
 
-	last, err := repo.CreateSession(t.Context(), scope, sessionID, clientMsgID, "hello", "")
+	last, err := repo.CreateSession(t.Context(), scope, sessionID, clientMsgID, "hello", "", false)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -69,11 +69,11 @@ func TestCreateSession_RepeatIsIdempotent(t *testing.T) {
 	sessionID := uuid.New()
 	clientMsgID := uuid.New()
 
-	first, err := repo.CreateSession(t.Context(), scope, sessionID, clientMsgID, "hello", "")
+	first, err := repo.CreateSession(t.Context(), scope, sessionID, clientMsgID, "hello", "", false)
 	if err != nil {
 		t.Fatalf("first CreateSession: %v", err)
 	}
-	second, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello again", "")
+	second, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello again", "", false)
 	if err != nil {
 		t.Fatalf("second CreateSession: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestCreateSession_ConcurrentRaceIsIdempotent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			lasts[i], errs[i] = repo.CreateSession(context.Background(), scope, sessionID, uuid.New(), "hello", "")
+			lasts[i], errs[i] = repo.CreateSession(context.Background(), scope, sessionID, uuid.New(), "hello", "", false)
 		}(i)
 	}
 	wg.Wait()
@@ -135,7 +135,7 @@ func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
-	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", "", false); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
@@ -167,7 +167,7 @@ func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 	scope := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
-	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", "", false); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
@@ -230,7 +230,7 @@ func TestTenancy_WrongScopeIsNotFound(t *testing.T) {
 	other := testdb.NewUser(t, pool).Scope()
 	sessionID := uuid.New()
 
-	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", "", false); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
@@ -359,7 +359,7 @@ func TestInterruptIgnoresOtherStatusesAndTenants(t *testing.T) {
 	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Interrupt(t.Context(), scope, sid); err != nil {
@@ -384,7 +384,7 @@ func parkedOn(t *testing.T, pool *pgxpool.Pool, code string, retryable bool, to 
 	store := eventlog.NewStore(pool)
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), scope, sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
@@ -458,7 +458,7 @@ func TestRetryIsANoOpElsewhere(t *testing.T) {
 
 	// A runnable session is already going.
 	runnable := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, runnable, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, runnable, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Retry(t.Context(), scope, runnable); err != nil {
@@ -491,10 +491,10 @@ func TestCreateSessionOnAChosenModel(t *testing.T) {
 	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	chosen, dflt := uuid.New(), uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, chosen, uuid.New(), "hi", "claude-opus-5-5"); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, chosen, uuid.New(), "hi", "claude-opus-5-5", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.CreateSession(t.Context(), scope, dflt, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, dflt, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	for sid, want := range map[uuid.UUID]string{chosen: "claude-opus-5-5", dflt: "fake"} {

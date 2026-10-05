@@ -43,6 +43,8 @@ type createSessionRequest struct {
 	Message     string    `json:"message"`
 	// Model is optional; empty starts the session on the default model.
 	Model string `json:"model"`
+	// Incognito is fixed at create: no memory tool, no memory in the prompt.
+	Incognito bool `json:"incognito"`
 }
 
 func handleCreateSession(repo SessionRepo, models ModelConfig, logger *slog.Logger) http.HandlerFunc {
@@ -69,7 +71,7 @@ func handleCreateSession(repo SessionRepo, models ModelConfig, logger *slog.Logg
 				return
 			}
 		}
-		last, err := repo.CreateSession(r.Context(), scope, req.SessionID, req.ClientMsgID, req.Message, req.Model)
+		last, err := repo.CreateSession(r.Context(), scope, req.SessionID, req.ClientMsgID, req.Message, req.Model, req.Incognito)
 		if err != nil {
 			logger.Error("create session", "error", err, "session_id", req.SessionID)
 			writeError(w, http.StatusInternalServerError, "could not create session")

@@ -398,11 +398,18 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 		return fmt.Errorf("pick provider: %w", err)
 	}
 	defs := w.tools.Defs()
+	if c.Incognito {
+		defs = slices.DeleteFunc(defs, func(d tool.Def) bool { return d.Name == memory.ToolName })
+	}
 	toolsHash, err := tool.Hash(defs)
 	if err != nil {
 		return err
 	}
 	messages, err := memory.Resolve(ctx, w.pool, st.Messages)
+	if err != nil {
+		return err
+	}
+	system, err := w.system(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -425,7 +432,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	defer title.abandon()
 
 	stopBatch := batch.Start(ctx)
-	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, Messages: messages, Tools: toolSpecs(defs)}, func(d provider.Delta) {
+	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, System: system, Messages: messages, Tools: toolSpecs(defs)}, func(d provider.Delta) {
 		if d.Kind == provider.DeltaText {
 			batch.Add(d.Text)
 		}
@@ -473,6 +480,33 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	// The next loop iteration parks, which gives up the Lease.
 	title.settle()
 	return nil
+}
+
+// platformPrompt is the first system block; it must stay byte-stable.
+const platformPrompt = "You are Jelly Fish, a helpful assistant."
+
+// system is the system prompt: platform text, the Project's instructions,
+// then the memory blocks (context.md §5.2).
+func (w *Worker) system(ctx context.Context, c eventlog.Claim) ([]string, error) {
+	system := []string{platformPrompt}
+	var instructions string
+	if err := w.pool.QueryRow(ctx, `SELECT instructions FROM projects WHERE id = $1`, c.ProjectID).Scan(&instructions); err != nil {
+		return nil, fmt.Errorf("load project instructions: %w", err)
+	}
+	if instructions != "" {
+		system = append(system, instructions)
+	}
+	if c.Incognito {
+		return system, nil
+	}
+	blocks, err := memory.Prompt(ctx, w.pool, c.SessionID, c.UserID, c.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if blocks != "" {
+		system = append(system, blocks)
+	}
+	return system, nil
 }
 
 func toolSpecs(defs []tool.Def) []provider.ToolSpec {

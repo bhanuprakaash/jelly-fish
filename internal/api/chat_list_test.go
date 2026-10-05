@@ -89,3 +89,23 @@ func TestListSessionsHandler_RepoError(t *testing.T) {
 		t.Errorf("status = %d, want 500", rr.Code)
 	}
 }
+
+func TestCreateSessionIncognitoFlag(t *testing.T) {
+	e := newLoginEnv(t)
+	c := e.signInUser(t, testdb.NewUser(t, e.pool))
+	normal, incognito := uuid.New(), uuid.New()
+	for id, body := range map[uuid.UUID]map[string]any{
+		normal:    {"session_id": normal, "client_msg_id": uuid.New(), "message": "hi"},
+		incognito: {"session_id": incognito, "client_msg_id": uuid.New(), "message": "hi", "incognito": true},
+	} {
+		if rr := e.do(http.MethodPost, "/api/sessions", body, c); rr.Code != http.StatusOK {
+			t.Fatalf("create %s: status %d, body %s", id, rr.Code, rr.Body)
+		}
+	}
+	for id, want := range map[uuid.UUID]bool{normal: false, incognito: true} {
+		var got bool
+		if err := e.pool.QueryRow(t.Context(), `SELECT incognito FROM sessions WHERE id = $1`, id).Scan(&got); err != nil || got != want {
+			t.Errorf("session %s incognito = %v (%v), want %v", id, got, err, want)
+		}
+	}
+}

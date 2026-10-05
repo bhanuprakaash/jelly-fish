@@ -27,7 +27,7 @@ func TestActivitySnapshot_BusyNonSystemOwnOnly(t *testing.T) {
 	chat := func(status string) uuid.UUID {
 		t.Helper()
 		id := uuid.New()
-		if _, err := repo.CreateSession(t.Context(), scope, id, uuid.New(), "hi", ""); err != nil {
+		if _, err := repo.CreateSession(t.Context(), scope, id, uuid.New(), "hi", "", false); err != nil {
 			t.Fatalf("CreateSession: %v", err)
 		}
 		setStatus(t, pool, id, status)
@@ -43,7 +43,7 @@ func TestActivitySnapshot_BusyNonSystemOwnOnly(t *testing.T) {
 	setStatus(t, pool, child, eventlog.StatusAwaitingApproval)
 	tidy := insertSessionRow(t, pool, scope, "memory_tidy", nil)
 	setStatus(t, pool, tidy, eventlog.StatusRunnable)
-	if _, err := repo.CreateSession(t.Context(), other, uuid.New(), uuid.New(), "not mine", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), other, uuid.New(), uuid.New(), "not mine", "", false); err != nil {
 		t.Fatalf("CreateSession other: %v", err)
 	}
 
@@ -70,7 +70,7 @@ func TestActivityStatusOf_RootID(t *testing.T) {
 	repo := eventlog.NewRepo(pool, "fake")
 	scope := testdb.NewUser(t, pool).Scope()
 	root := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, root, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, root, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	child := insertSessionRow(t, pool, scope, eventlog.TriggerUserMessage, &root)
@@ -109,7 +109,7 @@ func TestActivityStatusOf_HiddenCases(t *testing.T) {
 	scope := testdb.NewUser(t, pool).Scope()
 	other := testdb.NewUser(t, pool).Scope()
 	mine := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, mine, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, mine, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	tidy := insertSessionRow(t, pool, scope, "memory_tidy", nil)

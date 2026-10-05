@@ -48,7 +48,7 @@ func newChat(t *testing.T) (*pgxpool.Pool, *eventlog.Repo, eventlog.TenantScope,
 func createChat(t *testing.T, repo *eventlog.Repo, scope eventlog.TenantScope) uuid.UUID {
 	t.Helper()
 	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	return sid

@@ -67,7 +67,7 @@ func (e *activityEnv) newSession(t *testing.T) (eventlog.TenantScope, uuid.UUID)
 	t.Helper()
 	scope := testdb.NewUser(t, e.pool).Scope()
 	sid := uuid.New()
-	if _, err := e.repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := e.repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	return scope, sid
@@ -99,7 +99,7 @@ func TestActivityNotify(t *testing.T) {
 			scope := testdb.NewUser(t, e.pool).Scope()
 			sid := uuid.New()
 			e.l.drain()
-			if _, err := e.repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
+			if _, err := e.repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", "", false); err != nil {
 				t.Fatal(err)
 			}
 			return scope, sid
@@ -107,7 +107,7 @@ func TestActivityNotify(t *testing.T) {
 		{"repeated create session", 0, func(t *testing.T, e *activityEnv) (eventlog.TenantScope, uuid.UUID) {
 			scope, sid := e.newSession(t)
 			e.l.drain()
-			if _, err := e.repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", ""); err != nil {
+			if _, err := e.repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", "", false); err != nil {
 				t.Fatal(err)
 			}
 			return scope, sid

@@ -113,7 +113,7 @@ func spawn(t *testing.T, bin string, pool *pgxpool.Pool, env ...string) *proc {
 func newSession(t *testing.T, pool *pgxpool.Pool, text string) uuid.UUID {
 	t.Helper()
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), text, ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), text, "", false); err != nil {
 		t.Fatal(err)
 	}
 	return sid

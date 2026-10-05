@@ -66,6 +66,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, on
   // picked is the model chosen before a new chat's first message.
   const [picked, setPicked] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
+  const [incognito, setIncognito] = useState(false)
 
   useEffect(() => {
     getModels()
@@ -91,7 +92,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, on
       if (hasSession) {
         await postMessage(sessionId, clientMsgId, text)
       } else {
-        await createSession(sessionId, clientMsgId, text, picked ?? undefined)
+        await createSession(sessionId, clientMsgId, text, picked ?? undefined, incognito)
         setStarted(true)
         onCreated()
       }
@@ -200,6 +201,12 @@ export function Chat({ sessionId, isNew, navigate, listTitle, onTitleChanged, on
 
       <form onSubmit={send} className="border-t border-neutral-800 p-4">
         {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
+        {!hasSession && (
+          <label className="mb-2 flex items-center gap-2 text-sm text-neutral-400">
+            <input type="checkbox" checked={incognito} onChange={(e) => setIncognito(e.target.checked)} />
+            Incognito: no memory in this chat
+          </label>
+        )}
         <div className="flex gap-2">
           <input
             className="flex-1 rounded-xl bg-neutral-900 px-4 py-2 outline-none disabled:opacity-50"

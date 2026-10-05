@@ -31,8 +31,9 @@ var errNoPersonalProject = errors.New("user has no Personal project")
 // session.created + user.message pair (session.created snapshotting the
 // hard-coded "General" agent on model, or the default model if it is empty)
 // and returns its last_seq. Repeating the same sessionID returns the existing session's
-// last_seq instead of creating a second one.
-func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text, model string) (int64, error) {
+// last_seq instead of creating a second one. An incognito session never gets
+// the memory tool or memory in its prompt.
+func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, clientMsgID uuid.UUID, text, model string, incognito bool) (int64, error) {
 	var last int64
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		found, err := scanLastSeq(ctx, tx, scope, sessionID, &last)
@@ -48,11 +49,11 @@ func (r *Repo) CreateSession(ctx context.Context, scope TenantScope, sessionID, 
 		// error, which would break the fallback query below.
 		insertErr := pgx.BeginFunc(ctx, tx, func(spTx pgx.Tx) error {
 			tag, err := spTx.Exec(ctx, `
-				INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at, trigger)
-				SELECT $1, $2, p.id, $3, $4, $5, 2, now(), $7
+				INSERT INTO sessions (id, workspace_id, project_id, user_id, agent_id, status, last_seq, ready_at, trigger, incognito)
+				SELECT $1, $2, p.id, $3, $4, $5, 2, now(), $7, $8
 				FROM projects p
 				WHERE p.workspace_id = $2 AND p.user_id = $3 AND p.name = $6`,
-				sessionID, scope.WorkspaceID, scope.UserID, generalAgent(), StatusRunnable, PersonalProject, TriggerUserMessage)
+				sessionID, scope.WorkspaceID, scope.UserID, generalAgent(), StatusRunnable, PersonalProject, TriggerUserMessage, incognito)
 			if err == nil && tag.RowsAffected() == 0 {
 				return errNoPersonalProject
 			}

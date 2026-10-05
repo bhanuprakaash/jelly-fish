@@ -181,7 +181,7 @@ func TestChangeSessionModel(t *testing.T) {
 	fake := e.newSession(t, "fake")
 	// A session on a catalog model this key's live list no longer has.
 	hidden := uuid.New()
-	if _, err := eventlog.NewRepo(e.pool, "fake").CreateSession(t.Context(), eventlog.TenantScope{WorkspaceID: e.user.WorkspaceID, UserID: e.user.ID}, hidden, uuid.New(), "hi", "claude-opus-5-5"); err != nil {
+	if _, err := eventlog.NewRepo(e.pool, "fake").CreateSession(t.Context(), eventlog.TenantScope{WorkspaceID: e.user.WorkspaceID, UserID: e.user.ID}, hidden, uuid.New(), "hi", "claude-opus-5-5", false); err != nil {
 		t.Fatal(err)
 	}
 

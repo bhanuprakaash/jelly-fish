@@ -30,7 +30,7 @@ func newEnv(t *testing.T) env {
 	pool := testdb.NewPool(t)
 	u := testdb.NewUser(t, pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, fake.Name).CreateSession(t.Context(), u.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, fake.Name).CreateSession(t.Context(), u.Scope(), sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	sess := tool.Session{ID: sid, UserID: u.ID, WorkspaceID: u.WorkspaceID}

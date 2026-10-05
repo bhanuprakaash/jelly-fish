@@ -66,7 +66,7 @@ func TestActivityStreamChildApprovalReachesRoot(t *testing.T) {
 	created, _, unsubscribeCreated := hub.SubscribeActivity(user.ID)
 	defer unsubscribeCreated()
 	parent := uuid.New()
-	if _, err := repo.CreateSession(ctx, user.Scope(), parent, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(ctx, user.Scope(), parent, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -82,7 +82,7 @@ func TestActivityStreamChildApprovalReachesRoot(t *testing.T) {
 	child := insertSession(t, pool, user.Scope(), eventlog.TriggerUserMessage, &parent)
 	tidy := insertSession(t, pool, user.Scope(), "memory_tidy", nil)
 	foreign, foreignChat := other.Scope(), uuid.New()
-	if _, err := repo.CreateSession(ctx, foreign, foreignChat, uuid.New(), "not mine", ""); err != nil {
+	if _, err := repo.CreateSession(ctx, foreign, foreignChat, uuid.New(), "not mine", "", false); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {

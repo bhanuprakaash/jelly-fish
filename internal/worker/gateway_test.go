@@ -132,7 +132,7 @@ func TestTurnRunsOnTheUsersAnthropicKey(t *testing.T) {
 	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
 
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "find cats", ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "find cats", "", false); err != nil {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, gw)
@@ -214,7 +214,7 @@ func TestUsageIsOneRowPerClassPricedFromTheCatalog(t *testing.T) {
 	user := testdb.NewUser(t, pool)
 	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, gw)
@@ -281,7 +281,7 @@ func TestModelOnlyInTheLiveListRunsUnpriced(t *testing.T) {
 		t.Fatal(err)
 	}
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, preview).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, preview).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, gw)
@@ -305,7 +305,7 @@ func TestNextTurnRunsOnTheChangedModel(t *testing.T) {
 	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
 	repo := eventlog.NewRepo(pool, haiku)
 	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := repo.CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, gw)
@@ -343,7 +343,7 @@ func TestModelNowhereKnownIsModelUnavailable(t *testing.T) {
 	user := testdb.NewUser(t, pool)
 	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, "claude-no-such-model").CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, "claude-no-such-model").CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, gw)
@@ -365,7 +365,7 @@ func TestTurnWithoutAKeyIsKeyInvalid(t *testing.T) {
 	api := newFakeAnthropic(t, http.StatusOK)
 	user := testdb.NewUser(t, pool)
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, haiku).CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
 	}
 	runWorker(t, pool, testGateway(t, pool, api.srv.URL))

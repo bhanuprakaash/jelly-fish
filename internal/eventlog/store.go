@@ -301,6 +301,7 @@ type Claim struct {
 	WorkspaceID uuid.UUID
 	ProjectID   uuid.UUID
 	Fence       Fence
+	Incognito   bool
 	// RecoveryAttempts counts claims since the session's last successful
 	// fenced append, this one included (event-log.md §5.6).
 	RecoveryAttempts int
@@ -333,8 +334,8 @@ func (s *Store) Claim(ctx context.Context, owner string, ttl time.Duration, skip
 			  recovery_attempts = s.recovery_attempts + 1, wake_at = NULL,
 			  last_seq = s.last_seq + CASE WHEN c.status = 'sleeping' THEN 2 ELSE 1 END, updated_at = now()
 			FROM c WHERE s.id = c.id
-			RETURNING s.id, s.lease_epoch, s.recovery_attempts, s.last_seq, s.workspace_id, s.project_id, s.user_id, c.status`,
-			owner, ttl, skip).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &c.WorkspaceID, &c.ProjectID, &c.UserID, &from)
+			RETURNING s.id, s.lease_epoch, s.recovery_attempts, s.last_seq, s.workspace_id, s.project_id, s.user_id, s.incognito, c.status`,
+			owner, ttl, skip).Scan(&c.SessionID, &c.Fence.Epoch, &c.RecoveryAttempts, &last, &c.WorkspaceID, &c.ProjectID, &c.UserID, &c.Incognito, &from)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}

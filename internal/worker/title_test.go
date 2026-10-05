@@ -183,7 +183,7 @@ func newTitleSession(t *testing.T, pool *pgxpool.Pool, text string) (uuid.UUID, 
 	t.Helper()
 	scope := testdb.NewUser(t, pool).Scope()
 	sid := uuid.New()
-	if _, err := eventlog.NewRepo(pool, fake.Name).CreateSession(t.Context(), scope, sid, uuid.New(), text, ""); err != nil {
+	if _, err := eventlog.NewRepo(pool, fake.Name).CreateSession(t.Context(), scope, sid, uuid.New(), text, "", false); err != nil {
 		t.Fatal(err)
 	}
 	return sid, scope

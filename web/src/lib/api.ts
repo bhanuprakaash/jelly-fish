@@ -264,13 +264,14 @@ export async function renameSession(sessionId: string, title: string): Promise<v
 
 // createSession starts a session, on model if given, else the default;
 // repeating the same sessionId returns the existing one instead of sending
-// message again (event-log.md §4).
-export function createSession(sessionId: string, clientMsgId: string, message: string, model?: string) {
+// message again (event-log.md §4). An incognito session never uses memory.
+export function createSession(sessionId: string, clientMsgId: string, message: string, model?: string, incognito?: boolean) {
   return postJSON<{ session_id: string; last_seq: number }>('/api/sessions', {
     session_id: sessionId,
     client_msg_id: clientMsgId,
     message,
     model,
+    incognito,
   })
 }
 
