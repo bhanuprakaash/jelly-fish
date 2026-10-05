@@ -38,8 +38,6 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
     }
   }
 
-  const button = 'rounded-lg bg-neutral-800 px-3 py-1 text-sm text-neutral-200 hover:bg-neutral-700'
-
   return (
     <div className="space-y-2">
       {editing && (
@@ -49,13 +47,13 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
             onChange={(e) => setDraft(e.target.value)}
             rows={6}
             aria-label="Memory text"
-            className="w-full rounded-xl bg-neutral-900 px-3 py-2 text-sm outline-none"
+            className="w-full rounded-card border border-line bg-surface px-3 py-2 text-sm outline-none"
           />
           <div className="flex gap-2">
-            <button className={button} onClick={() => run(() => editMemory(memory.id, draft, memory.version))}>
+            <button className="btn btn-primary btn-sm" onClick={() => run(() => editMemory(memory.id, draft, memory.version))}>
               Save
             </button>
-            <button className={button} onClick={() => setEditing(false)}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>
               Cancel
             </button>
           </div>
@@ -64,12 +62,12 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
       {!editing && (
         <div className="flex gap-2">
           {memory.status === 'pending_review' && (
-            <button className={button} onClick={() => run(() => approveMemory(memory.id, memory.version))}>
+            <button className="btn btn-primary btn-sm" onClick={() => run(() => approveMemory(memory.id, memory.version))}>
               Approve
             </button>
           )}
           <button
-            className={button}
+            className="btn btn-secondary btn-sm"
             onClick={() => {
               setDraft(memory.content)
               setEditing(true)
@@ -78,7 +76,7 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
             Edit
           </button>
           <button
-            className={`${button} text-red-400`}
+            className="btn btn-danger btn-sm"
             onClick={() => {
               if (window.confirm('Delete this memory and its history? This cannot be undone.')) {
                 void run(() => deleteMemory(memory.id))
@@ -89,7 +87,7 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
           </button>
         </div>
       )}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   )
 }

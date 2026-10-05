@@ -41,6 +41,13 @@ type Props = {
   onUnauthorized: () => void
 }
 
+const chipColors = {
+  running: 'text-accent-ink',
+  done: 'text-success',
+  failed: 'text-danger',
+  interrupted: 'text-muted',
+}
+
 function bubbleText(payload: unknown): string {
   const message = (payload as { message?: Message }).message
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
@@ -167,31 +174,31 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
 
   return (
     <div className="flex min-h-svh flex-1 flex-col">
-      <header className="flex items-center justify-between gap-2 border-b border-neutral-800 px-4 py-3">
+      <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
         <a
           href="/"
           onClick={(e) => {
             e.preventDefault()
             navigate('/')
           }}
-          className="text-sm text-neutral-400 hover:text-neutral-200 md:hidden"
+          className="text-sm text-muted hover:text-ink md:hidden"
         >
           ← Chats
         </a>
         <h1 className="min-w-0 flex-1 truncate font-medium">{renamed ?? listTitle ?? 'New chat'}</h1>
         {isIncognito && (
-          <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">Incognito</span>
+          <span className="rounded-full bg-sunk px-2 py-0.5 text-xs text-ink2">Incognito</span>
         )}
         {picker}
       </header>
 
       <main className="flex-1 space-y-3 overflow-y-auto px-4 py-6">
-        {loading && <p className="text-center text-neutral-500">Loading…</p>}
+        {loading && <p className="text-center text-muted">Loading…</p>}
         {failed && (
-          <p className="text-center text-red-400">Could not open this chat.</p>
+          <p className="text-center text-danger">Could not open this chat.</p>
         )}
         {!loading && !failed && bubbles.length === 0 && (
-          <p className="text-center text-neutral-500">Say something to start the chat.</p>
+          <p className="text-center text-muted">Say something to start the chat.</p>
         )}
         {bubbles.map((e) => {
           const chip = chips.get(e.seq)
@@ -208,17 +215,28 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
           }
           if (chip) {
             return (
-              <div key={e.seq} className="mr-auto max-w-md rounded-full bg-neutral-900 px-3 py-1 text-sm text-neutral-400">
-                {chip.name} · {chip.state}
-                {chip.error && <span className="text-red-400"> · {chip.error}</span>}
+              <div
+                key={e.seq}
+                className={`mr-auto flex max-w-md items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-sm ${chipColors[chip.state]}`}
+              >
+                {chip.state === 'running' && (
+                  <span
+                    aria-hidden="true"
+                    className="size-3 shrink-0 rounded-full border-2 border-line2 border-t-accent-ink motion-safe:animate-spin"
+                  />
+                )}
+                <span>
+                  <span className="font-mono">{chip.name}</span> · {chip.state}
+                  {chip.error && <span className="text-danger"> · {chip.error}</span>}
+                </span>
               </div>
             )
           }
           return (
             <div
               key={e.seq}
-              className={`max-w-md rounded-2xl px-4 py-2 whitespace-pre-wrap ${
-                e.type === 'user.message' ? 'ml-auto bg-neutral-800' : 'mr-auto bg-neutral-900'
+              className={`max-w-md whitespace-pre-wrap ${
+                e.type === 'user.message' ? 'ml-auto rounded-card bg-accent-tint px-4 py-2' : 'mr-auto'
               }`}
             >
               {bubbleText(e.payload)}
@@ -226,27 +244,24 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
           )
         })}
         {Object.entries(partials).map(([turnId, text]) => (
-          <div
-            key={turnId}
-            className="mr-auto max-w-md rounded-2xl bg-neutral-900 px-4 py-2 whitespace-pre-wrap"
-          >
+          <div key={turnId} className="mr-auto max-w-md whitespace-pre-wrap">
             {text}
           </div>
         ))}
         {notice && <SessionNotice sessionId={sessionId} notice={notice} picker={picker} onUnauthorized={onUnauthorized} />}
       </main>
 
-      <form onSubmit={send} className="border-t border-neutral-800 p-4">
-        {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
+      <form onSubmit={send} className="border-t border-line p-4">
+        {error && <p className="mb-2 text-sm text-danger">{error}</p>}
         {!hasSession && (
-          <label className="mb-2 flex items-center gap-2 text-sm text-neutral-400">
+          <label className="mb-2 flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" checked={incognito} onChange={(e) => setIncognito(e.target.checked)} />
             Incognito: no memory in this chat
           </label>
         )}
         <div className="flex gap-2">
           <input
-            className="flex-1 rounded-xl bg-neutral-900 px-4 py-2 outline-none disabled:opacity-50"
+            className="flex-1 rounded-card border border-accent-line bg-surface px-4 py-2 outline-none disabled:opacity-50"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Message"
@@ -256,7 +271,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
           <button
             type="submit"
             disabled={sending || loading || !draft.trim()}
-            className="rounded-xl bg-neutral-100 px-4 py-2 font-medium text-neutral-900 disabled:opacity-50"
+            className="btn btn-primary"
           >
             Send
           </button>

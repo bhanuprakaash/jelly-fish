@@ -47,14 +47,14 @@ export function RowMenu({ renaming, onRename }: MenuProps) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="rounded-lg px-2 py-1 text-neutral-400 hover:text-neutral-100"
+        className="rounded-btn px-2 py-1 text-muted hover:text-ink"
       >
         ⋯
       </button>
       {open && (
         <div
           role="menu"
-          className="absolute top-full right-0 z-10 mt-1 w-32 rounded-lg border border-neutral-800 bg-neutral-900 py-1 shadow-lg"
+          className="absolute top-full right-0 z-10 mt-1 w-32 rounded-btn border border-line bg-surface py-1"
         >
           <button
             type="button"
@@ -64,7 +64,7 @@ export function RowMenu({ renaming, onRename }: MenuProps) {
               setOpen(false)
               onRename()
             }}
-            className="w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-800"
+            className="w-full px-3 py-1.5 text-left text-sm hover:bg-sunk"
           >
             Rename
           </button>
@@ -126,26 +126,26 @@ export function RenameForm({ initial, onSave, onCancel, onUnauthorized }: FormPr
         value={value}
         onChange={(e) => setValue(e.target.value)}
         autoFocus
-        className="w-full rounded-lg bg-neutral-900 px-2 py-1 text-sm outline-none"
+        className="w-full rounded-btn border border-line2 bg-surface px-2 py-1 text-sm outline-none"
       />
       <div className="mt-1 flex gap-2">
         <button
           type="submit"
           disabled={!title || saving}
-          className="rounded-lg bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-900 disabled:opacity-50"
+          className="btn btn-primary btn-sm"
         >
           Save
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-lg px-3 py-1 text-xs text-neutral-400 hover:text-neutral-200"
+          className="btn btn-ghost btn-sm"
         >
           Cancel
         </button>
       </div>
       {error && (
-        <p role="alert" className="mt-1 text-xs text-red-400">
+        <p role="alert" className="mt-1 text-xs text-danger">
           {error}
         </p>
       )}

@@ -17,9 +17,9 @@ export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }:
   const { chats, error, refetch, badges } = useChatList(onUnauthorized)
 
   return (
-    <div className="flex min-h-svh bg-neutral-950 text-neutral-100">
+    <div className="flex min-h-svh bg-bg text-ink">
       <aside
-        className={`${sessionId ? 'hidden' : 'flex'} w-full flex-col border-r border-neutral-800 md:sticky md:top-0 md:flex md:h-svh md:w-72 md:shrink-0`}
+        className={`${sessionId ? 'hidden' : 'flex'} w-full flex-col border-r border-line md:sticky md:top-0 md:flex md:h-svh md:w-72 md:shrink-0`}
       >
         {chats ? (
           <ChatList
@@ -32,7 +32,7 @@ export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }:
             onUnauthorized={onUnauthorized}
           />
         ) : (
-          <p className={`p-4 text-center text-sm ${error ? 'text-red-400' : 'text-neutral-500'}`}>
+          <p className={`p-4 text-center text-sm ${error ? 'text-danger' : 'text-muted'}`}>
             {error ? 'Could not load chats.' : 'Loading…'}
           </p>
         )}
@@ -52,7 +52,7 @@ export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }:
             onUnauthorized={onUnauthorized}
           />
         ) : (
-          <p className="m-auto text-neutral-500">Select a chat or start a new one</p>
+          <p className="m-auto text-muted">Select a chat or start a new one</p>
         )}
       </div>
     </div>

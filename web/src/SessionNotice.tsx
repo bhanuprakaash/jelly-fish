@@ -35,7 +35,7 @@ function errorText(code: string, requestId: string, failed: boolean): string {
 const retryable = (code: string, failed: boolean) =>
   failed || code === 'key_invalid' || code === 'billing' || code === 'bug'
 
-const linkClass = 'rounded-lg bg-neutral-800 px-3 py-1 text-sm hover:bg-neutral-700'
+const linkClass = 'btn btn-secondary btn-sm'
 
 export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Props) {
   const [busy, setBusy] = useState(false)
@@ -58,8 +58,8 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
     }
   }
 
-  const button = (label: string, call: (sessionId: string) => Promise<void>) => (
-    <button type="button" disabled={busy} onClick={() => act(call)} className={`${linkClass} disabled:opacity-50`}>
+  const button = (label: string, call: (sessionId: string) => Promise<void>, variant = 'btn-secondary') => (
+    <button type="button" disabled={busy} onClick={() => act(call)} className={`btn ${variant} btn-sm`}>
       {label}
     </button>
   )
@@ -72,7 +72,7 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
     actions = (
       <>
         {button('Retry now', retrySession)}
-        {button('Stop retrying', interruptSession)}
+        {button('Stop retrying', interruptSession, 'btn-ghost')}
       </>
     )
   } else {
@@ -100,11 +100,16 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
   }
 
   return (
-    <div role="alert" className="mx-auto max-w-md rounded-2xl border border-neutral-800 bg-neutral-900 px-4 py-3">
-      <p className="text-sm text-neutral-200">{text}</p>
+    <div
+      role="alert"
+      className={`mx-auto max-w-md rounded-card border px-4 py-3 ${
+        notice.kind === 'sleeping' ? 'border-line bg-sunk' : 'border-danger bg-surface'
+      }`}
+    >
+      <p className="text-sm text-ink">{text}</p>
       <div className="mt-2 flex flex-wrap gap-2">{actions}</div>
       {picking && notice.kind === 'error' && <div className="mt-2">{picker}</div>}
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   )
 }

@@ -35,7 +35,7 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
   }
 
   return (
-    <div className="mr-auto max-w-md space-y-2 rounded-2xl bg-neutral-900 px-3 py-1 text-sm text-neutral-400">
+    <div className="mr-auto max-w-md space-y-2 rounded-card border border-line bg-surface px-3 py-2 text-sm text-muted">
       <p>
         memory · {op} {path}
         {memories && !current && ' · removed'}
@@ -45,11 +45,11 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
         <MemoryActions key={current.version} memory={current} onChanged={onChanged} onUnauthorized={onUnauthorized} />
       )}
       {((current?.status === 'active' && current.version === version) || (op === 'delete' && memories && !current)) && (
-        <button onClick={undo} className="rounded-lg bg-neutral-800 px-3 py-1 text-neutral-200 hover:bg-neutral-700">
+        <button onClick={undo} className="btn btn-ghost btn-sm">
           Undo
         </button>
       )}
-      {error && <p className="text-red-400">{error}</p>}
+      {error && <p className="text-danger">{error}</p>}
     </div>
   )
 }

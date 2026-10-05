@@ -30,13 +30,14 @@
   --color-waiting: var(--waiting);
 }
 
+:root,
 [data-theme="jellyfish-light"] {
   color-scheme: light;
   --bg: #fafaf7;
   --surface: #ffffff;
   --sunk: #f4f3ef;
   --line: #e8e6e0;
-  --line2: #ddd9d3;
+  --line2: #dddad3;
   --ink: #161616;
   --ink2: #3a3a37;
   --muted: #6b6a65;
@@ -76,24 +77,24 @@
 
 [data-theme="classic"] {
   color-scheme: dark;
-  --bg: var(--color-neutral-950);
-  --surface: var(--color-neutral-900);
-  --sunk: var(--color-neutral-800);
-  --line: var(--color-neutral-800);
-  --line2: var(--color-neutral-700);
-  --ink: var(--color-neutral-100);
-  --ink2: var(--color-neutral-300);
-  --muted: var(--color-neutral-400);
-  --accent: var(--color-sky-400);
-  --accent-ink: var(--color-sky-300);
+  --bg: #0a0a0a;
+  --surface: #171717;
+  --sunk: #262626;
+  --line: #262626;
+  --line2: #404040;
+  --ink: #f5f5f5;
+  --ink2: #d4d4d4;
+  --muted: #a3a3a3;
+  --accent: #38bdf8;
+  --accent-ink: #7dd3fc;
   --accent-tint: rgb(56 189 248 / 0.1);
   --accent-line: rgb(56 189 248 / 0.3);
-  --attention: var(--color-amber-400);
+  --attention: #fbbf24;
   --attention-tint: rgb(251 191 36 / 0.08);
   --attention-line: rgb(251 191 36 / 0.38);
-  --danger: var(--color-red-400);
-  --success: var(--color-green-400);
-  --waiting: var(--color-indigo-300);
+  --danger: #f87171;
+  --success: #4ade80;
+  --waiting: #a5b4fc;
 }
 
 @layer components {

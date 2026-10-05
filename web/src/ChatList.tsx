@@ -24,7 +24,7 @@ export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged
       <div className="p-4">
         <button
           onClick={onNewChat}
-          className="w-full rounded-xl bg-neutral-100 px-4 py-2 font-medium text-neutral-900"
+          className="btn btn-jelly w-full"
         >
           New chat
         </button>
@@ -32,14 +32,14 @@ export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged
 
       <nav aria-label="Chats" className="flex-1 overflow-y-auto px-2">
         {chats.length === 0 ? (
-          <p className="px-2 py-4 text-center text-sm text-neutral-500">No chats yet</p>
+          <p className="px-2 py-4 text-center text-sm text-muted">No chats yet</p>
         ) : (
           <ul>
             {chats.map((c) => (
               <li
                 key={c.id}
                 className={`flex items-center rounded-lg ${
-                  c.id === activeId ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-300 hover:bg-neutral-900'
+                  c.id === activeId ? 'bg-accent-tint text-ink' : 'text-ink2 hover:bg-sunk'
                 }`}
               >
                 {renamingId === c.id ? (
@@ -74,11 +74,11 @@ export function ChatList({ chats, badges, activeId, onNewChat, onOpen, onChanged
         )}
       </nav>
 
-      <div className="flex gap-4 border-t border-neutral-800 p-4">
-        <a href="/memories" className="text-sm text-neutral-400 hover:text-neutral-200">
+      <div className="flex gap-4 border-t border-line p-4">
+        <a href="/memories" className="text-sm text-muted hover:text-ink">
           Memories
         </a>
-        <a href="/settings" className="text-sm text-neutral-400 hover:text-neutral-200">
+        <a href="/settings" className="text-sm text-muted hover:text-ink">
           Settings
         </a>
       </div>
@@ -95,7 +95,7 @@ function ActivityBadge({ badge }: { badge: Badge | undefined }) {
         <span
           role="img"
           aria-label="running"
-          className="size-3.5 shrink-0 rounded-full border-2 border-neutral-600 border-t-neutral-200 motion-safe:animate-spin"
+          className="size-3.5 shrink-0 rounded-full border-2 border-line2 border-t-accent-ink motion-safe:animate-spin"
         />
       )
     case 'approval':
@@ -103,12 +103,12 @@ function ActivityBadge({ badge }: { badge: Badge | undefined }) {
         <span
           role="img"
           aria-label="needs approval"
-          className="size-2.5 shrink-0 rounded-full bg-amber-400"
+          className="size-2.5 shrink-0 rounded-full bg-attention"
         />
       )
     case 'failed':
       return (
-        <span role="img" aria-label="failed" className="shrink-0 text-red-400">
+        <span role="img" aria-label="failed" className="shrink-0 text-danger">
           <svg aria-hidden="true" viewBox="0 0 12 12" className="size-3">
             <path
               d="M2 2l8 8M10 2l-8 8"
