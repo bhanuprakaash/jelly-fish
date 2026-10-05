@@ -5,6 +5,14 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#17171a" />
+    <script>
+      try {
+        var t = localStorage.getItem('theme')
+        document.documentElement.dataset.theme = /^(jellyfish-light|jellyfish-dark|classic)$/.test(t)
+          ? t
+          : matchMedia('(prefers-color-scheme: dark)').matches ? 'jellyfish-dark' : 'jellyfish-light'
+      } catch (e) {}
+    </script>
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

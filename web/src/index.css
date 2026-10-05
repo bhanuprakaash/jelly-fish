@@ -1,1 +1,179 @@
+@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/jetbrains-mono";
 @import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --radius-btn: 10px;
+  --radius-card: 16px;
+  --radius-panel: 24px;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-line: var(--accent-line);
+  --color-attention: var(--attention);
+  --color-attention-tint: var(--attention-tint);
+  --color-attention-line: var(--attention-line);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-waiting: var(--waiting);
+}
+
+[data-theme="jellyfish-light"] {
+  color-scheme: light;
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --sunk: #f4f3ef;
+  --line: #e8e6e0;
+  --line2: #ddd9d3;
+  --ink: #161616;
+  --ink2: #3a3a37;
+  --muted: #6b6a65;
+  --accent: #9cc9e8;
+  --accent-ink: #2f6e9e;
+  --accent-tint: #eef5fb;
+  --accent-line: #d6e7f4;
+  --attention: #c8352a;
+  --attention-tint: #fff7f4;
+  --attention-line: #ebc2bb;
+  --danger: #8e3326;
+  --success: #4f6b47;
+  --waiting: #2f4f7f;
+}
+
+[data-theme="jellyfish-dark"] {
+  color-scheme: dark;
+  --bg: #0f1012;
+  --surface: #17191c;
+  --sunk: #1e2125;
+  --line: #272a2f;
+  --line2: #363a40;
+  --ink: #f1f0eb;
+  --ink2: #cfcec8;
+  --muted: #9b9a94;
+  --accent: #9cc9e8;
+  --accent-ink: #a9d2ee;
+  --accent-tint: rgb(156 201 232 / 0.1);
+  --accent-line: rgb(156 201 232 / 0.28);
+  --attention: #e0503f;
+  --attention-tint: rgb(224 80 63 / 0.08);
+  --attention-line: rgb(224 80 63 / 0.38);
+  --danger: #e08a7c;
+  --success: #93b88a;
+  --waiting: #a3b8de;
+}
+
+[data-theme="classic"] {
+  color-scheme: dark;
+  --bg: var(--color-neutral-950);
+  --surface: var(--color-neutral-900);
+  --sunk: var(--color-neutral-800);
+  --line: var(--color-neutral-800);
+  --line2: var(--color-neutral-700);
+  --ink: var(--color-neutral-100);
+  --ink2: var(--color-neutral-300);
+  --muted: var(--color-neutral-400);
+  --accent: var(--color-sky-400);
+  --accent-ink: var(--color-sky-300);
+  --accent-tint: rgb(56 189 248 / 0.1);
+  --accent-line: rgb(56 189 248 / 0.3);
+  --attention: var(--color-amber-400);
+  --attention-tint: rgb(251 191 36 / 0.08);
+  --attention-line: rgb(251 191 36 / 0.38);
+  --danger: var(--color-red-400);
+  --success: var(--color-green-400);
+  --waiting: var(--color-indigo-300);
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.5rem;
+    padding: 0 1rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-btn);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      filter 0.15s;
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--bg),
+      0 0 0 4px var(--accent);
+  }
+  .btn:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+  }
+  .btn-sm {
+    height: 2rem;
+    padding: 0 0.75rem;
+  }
+  .btn-lg {
+    height: 3rem;
+  }
+
+  .btn-primary {
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--ink2);
+  }
+  .btn-secondary {
+    background: var(--surface);
+    border-color: var(--line2);
+    color: var(--ink);
+  }
+  .btn-secondary:hover:not(:disabled),
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--sunk);
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink2);
+  }
+  .btn-jelly {
+    background: var(--accent-tint);
+    color: var(--accent-ink);
+  }
+  .btn-jelly:hover:not(:disabled) {
+    background: var(--accent-line);
+  }
+  .btn-attention {
+    background: var(--attention);
+    color: var(--bg);
+  }
+  .btn-attention:hover:not(:disabled) {
+    filter: brightness(0.9);
+  }
+  .btn-danger {
+    background: transparent;
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: var(--sunk);
+  }
+}

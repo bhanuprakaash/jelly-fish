@@ -10,7 +10,7 @@ Prototypes live in [`ui/`](ui/) as Design canvas sources (`*.dc.html` plus `canv
 - Every Session is a **jellyfish** drawn in one ink line with a translucent jelly-blue bell. Delegation shows as tentacles to smaller jellies (Child Sessions).
 - Colour is spent only on state. **Jelly blue** means alive (running). **Vermilion** means the user is needed (approval, budget). Nothing else is loud.
 - One font family: Manrope for UI and text, JetBrains Mono for tools, arguments, events and money.
-- Light and dark themes share one token set (§3).
+- All themes share one set of semantic tokens (§3).
 - The UI never says "Jev"; it says "auto mode".
 
 ## 2. Session status → glyph
@@ -31,7 +31,9 @@ From the status enum in [event-log.md](event-log.md). The glyph is the jellyfish
 
 ## 3. Tokens
 
-| Token | Light | Dark | Use |
+The app has four themes: `system`, `jellyfish-light`, `jellyfish-dark` and `classic` (the earlier neutral dark look). `system` follows the OS. The user picks one per device in Settings → Appearance. Each theme sets the same tokens. The colours below are the jellyfish themes.
+
+| Token | Jellyfish light | Jellyfish dark | Use |
 |---|---|---|---|
 | `bg` | `#FAFAF7` | `#0F1012` | page |
 | `surface` | `#FFFFFF` | `#17191C` | cards, inputs |
@@ -41,31 +43,31 @@ From the status enum in [event-log.md](event-log.md). The glyph is the jellyfish
 | `ink` | `#161616` | `#F1F0EB` | text, primary button |
 | `ink2` | `#3A3A37` | `#CFCEC8` | secondary text |
 | `muted` | `#6B6A65` | `#9B9A94` | captions, meta |
-| `jelly` | `#9CC9E8` | `#9CC9E8` | rings, bars, focus |
-| `jellyInk` | `#2F6E9E` | `#A9D2EE` | running text, links |
-| `jellyTint` | `#EEF5FB` | `rgba(156,201,232,.10)` | user bubble, selected row |
-| `jellyLine` | `#D6E7F4` | `rgba(156,201,232,.28)` | composer, jelly borders |
-| `shu` | `#C8352A` | `#E0503F` | approval fill |
-| `shuTint` | `#FFF7F4` | `rgba(224,80,63,.08)` | approval card |
-| `shuLine` | `#EBC2BB` | `rgba(224,80,63,.38)` | approval border |
-| `rust` | `#8E3326` | `#E08A7C` | danger text, failed |
-| `moss` | `#4F6B47` | `#93B88A` | done |
-| `indigo` | `#2F4F7F` | `#A3B8DE` | waiting on children, files |
+| `accent` | `#9CC9E8` | `#9CC9E8` | rings, bars, focus |
+| `accent-ink` | `#2F6E9E` | `#A9D2EE` | running text, links |
+| `accent-tint` | `#EEF5FB` | `rgba(156,201,232,.10)` | user bubble, selected row |
+| `accent-line` | `#D6E7F4` | `rgba(156,201,232,.28)` | composer, accent borders |
+| `attention` | `#C8352A` | `#E0503F` | approval fill |
+| `attention-tint` | `#FFF7F4` | `rgba(224,80,63,.08)` | approval card |
+| `attention-line` | `#EBC2BB` | `rgba(224,80,63,.38)` | approval border |
+| `danger` | `#8E3326` | `#E08A7C` | danger text, failed |
+| `success` | `#4F6B47` | `#93B88A` | done |
+| `waiting` | `#2F4F7F` | `#A3B8DE` | waiting on children, files |
 
 Type: Manrope 400/500 body (14–15px), 600 titles with `-0.025em` to `-0.035em` tracking; JetBrains Mono 12–13px. Radii: buttons 10px, cards 16px, panels 24px, chips and avatars fully round. Cards use a hairline, no shadow.
 
 ## 4. Buttons
 
-Six variants, each with default, hover, pressed, focus, disabled and loading states. Focus is a 2px `bg` gap then a 2px `jelly` ring. Disabled is 38% opacity.
+Six variants, each with default, hover, pressed, focus, disabled and loading states. Focus is a 2px `bg` gap then a 2px `accent` ring. Disabled is 38% opacity.
 
 | Variant | Look | Use |
 |---|---|---|
 | Primary | `ink` fill, inverted text | the one main action per card: Send, Save, Keep |
 | Secondary | `surface`, `line2` border | alternatives: Open, For this project, Retry now |
 | Ghost | text only, `sunk` on hover | Not now, Collapse, Approve all |
-| Jelly | `jellyTint` fill, `jellyInk` text | live things: Open swarm, Start a session |
-| Attention | `shu` fill, white text | only Approve and Allow more |
-| Danger | transparent, `rust` text and border | Stop, Deny, Delete |
+| Jelly | `accent-tint` fill, `accent-ink` text | live things: Open swarm, Start a session |
+| Attention | `attention` fill, `bg` text | only Approve and Allow more |
+| Danger | transparent, `danger` text and border | Stop, Deny, Delete |
 
 Sizes: 32px (dense desktop rows), 40px (default), 48px; mobile primary 52px. Icon buttons are 40px round and always carry `aria-label`. The permission mode control is a segmented group (Ask, Auto, Full-auto). Status chips look like pills but are never buttons.
 
@@ -73,7 +75,7 @@ Sizes: 32px (dense desktop rows), 40px (default), 48px; mobile primary 52px. Ico
 
 Every card: header (icon, title, meta on the right), body, then actions with the primary first. Prototype: `Components.dc.html` (light and dark).
 
-- **Messages**: the user's message is a `jellyTint` bubble on the right; the assistant's text is plain prose, no card. Thinking is a collapsed pill ("Thought for 6s").
+- **Messages**: the user's message is an `accent-tint` bubble on the right; the assistant's text is plain prose, no card. Thinking is a collapsed pill ("Thought for 6s").
 - **Tool calls**: one card per turn, one row per call with a state icon, mono name, note and an `approved_by` chip (rule, auto mode, you, sandbox). States: done, running, denied ("denied by user: …"), timed out, outcome unknown (interrupted), skipped. A row expands to show arguments and result in a code block.
 - **Web search**: query line plus numbered sources with their domain.
 - **Child Session**: jelly avatar, Agent name, task, status chip, the latest step, then Open (secondary) and Stop (danger), with tokens and dollars on the right.

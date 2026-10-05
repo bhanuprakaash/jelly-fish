@@ -14,6 +14,7 @@ import {
   type Me,
   type ProviderKey,
 } from './lib/api'
+import { getTheme, setTheme, themes, type Theme } from './lib/theme'
 
 type Props = {
   // onSignedOut is called once this device has no Login Session left.
@@ -81,6 +82,8 @@ export function Settings({ onSignedOut }: Props) {
         {me && <p className="text-neutral-300">{me.email}</p>}
         {error && <p className="text-sm text-red-400">{error}</p>}
 
+        <Appearance />
+
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Devices</h2>
           {devices?.map((d) => (
@@ -124,6 +127,39 @@ export function Settings({ onSignedOut }: Props) {
         </button>
       </main>
     </div>
+  )
+}
+
+const themeLabels: Record<Theme, string> = {
+  system: 'System',
+  'jellyfish-light': 'Jellyfish light',
+  'jellyfish-dark': 'Jellyfish dark',
+  classic: 'Classic',
+}
+
+// Appearance picks the theme for this device only.
+function Appearance() {
+  const [theme, setChoice] = useState(getTheme)
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-medium">Appearance</h2>
+      <div role="group" aria-label="Theme" className="flex flex-wrap gap-2">
+        {themes.map((t) => (
+          <button
+            key={t}
+            aria-pressed={theme === t}
+            onClick={() => {
+              setTheme(t)
+              setChoice(t)
+            }}
+            className={`btn ${theme === t ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            {themeLabels[t]}
+          </button>
+        ))}
+      </div>
+    </section>
   )
 }
 
