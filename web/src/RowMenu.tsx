@@ -126,7 +126,7 @@ export function RenameForm({ initial, onSave, onCancel, onUnauthorized }: FormPr
         value={value}
         onChange={(e) => setValue(e.target.value)}
         autoFocus
-        className="w-full rounded-btn border border-line2 bg-surface px-2 py-1 text-sm outline-none"
+        className="input w-full px-2 py-1 text-sm"
       />
       <div className="mt-1 flex gap-2">
         <button

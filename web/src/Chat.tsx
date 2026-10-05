@@ -261,7 +261,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
         )}
         <div className="flex gap-2">
           <input
-            className="flex-1 rounded-card border border-accent-line bg-surface px-4 py-2 outline-none disabled:opacity-50"
+            className="input flex-1 rounded-card border-accent-line"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Message"

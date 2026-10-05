@@ -58,8 +58,8 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
     }
   }
 
-  const button = (label: string, call: (sessionId: string) => Promise<void>, variant = 'btn-secondary') => (
-    <button type="button" disabled={busy} onClick={() => act(call)} className={`btn ${variant} btn-sm`}>
+  const button = (label: string, call: (sessionId: string) => Promise<void>, className = linkClass) => (
+    <button type="button" disabled={busy} onClick={() => act(call)} className={className}>
       {label}
     </button>
   )
@@ -72,7 +72,7 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
     actions = (
       <>
         {button('Retry now', retrySession)}
-        {button('Stop retrying', interruptSession, 'btn-ghost')}
+        {button('Stop retrying', interruptSession, 'btn btn-ghost btn-sm')}
       </>
     )
   } else {

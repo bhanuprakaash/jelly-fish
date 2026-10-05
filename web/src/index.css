@@ -121,7 +121,7 @@
     outline: none;
     box-shadow:
       0 0 0 2px var(--bg),
-      0 0 0 4px var(--accent);
+      0 0 0 4px var(--accent-ink);
   }
   .btn:disabled {
     opacity: 0.38;
@@ -133,6 +133,22 @@
   }
   .btn-lg {
     height: 3rem;
+  }
+
+  .input {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-btn);
+    background: var(--surface);
+    outline: none;
+  }
+  .input:focus-visible {
+    box-shadow:
+      0 0 0 2px var(--bg),
+      0 0 0 4px var(--accent-ink);
+  }
+  .input:disabled {
+    opacity: 0.5;
   }
 
   .btn-primary {

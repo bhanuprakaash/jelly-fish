@@ -31,7 +31,7 @@ From the status enum in [event-log.md](event-log.md). The glyph is the jellyfish
 
 ## 3. Tokens
 
-The app has four themes: `system`, `jellyfish-light`, `jellyfish-dark` and `classic` (the earlier neutral dark look). `system` follows the OS. The user picks one per device in Settings → Appearance. Each theme sets the same tokens. The colours below are the jellyfish themes.
+The app has four themes: `system`, `jellyfish-light`, `jellyfish-dark` and `classic` (a neutral dark theme with a sky accent). `system` follows the OS. The user picks one per device in Settings → Appearance. Each theme sets the same tokens. The colours below are the jellyfish themes.
 
 | Token | Jellyfish light | Jellyfish dark | Use |
 |---|---|---|---|
@@ -58,7 +58,7 @@ Type: Manrope 400/500 body (14–15px), 600 titles with `-0.025em` to `-0.035em`
 
 ## 4. Buttons
 
-Six variants, each with default, hover, pressed, focus, disabled and loading states. Focus is a 2px `bg` gap then a 2px `accent` ring. Disabled is 38% opacity.
+Six variants, each with default, hover, pressed, focus, disabled and loading states. Focus is a 2px `bg` gap then a 2px `accent-ink` ring. Disabled is 38% opacity.
 
 | Variant | Look | Use |
 |---|---|---|
@@ -108,5 +108,12 @@ The slash menu opens inside the composer and pushes the transcript up; it never 
 ## 7. Open
 
 - `Main`, `Swarm`, `MobileList` and `MobileApproval` still use their own button styles; move them to §4.
-- Desktop dark mode is drawn only for the components and the mobile chat.
-- Login, Settings → Account, Provider Keys and Admin screens are not drawn yet.
+- Login, Settings → Account, Provider Keys and Admin screens are restyled in code with the same tokens, but not drawn.
+- Buttons have no loading state.
+- The mobile primary button is not 52px high.
+- The round icon button (RowMenu ⋯) is not 40px.
+- The §3 type scale and title tracking are not applied.
+- The provider-error notice has no danger tint.
+- In `jellyfish-dark`, the Pending review chip text has 4.2:1 contrast. The target is 4.5:1.
+- The PWA manifest and launch splash stay dark for the light themes.
+- The service worker precaches every font subset. Latin only would save about 100 KB.

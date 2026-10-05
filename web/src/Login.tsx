@@ -5,7 +5,6 @@ type Props = {
   onSignedIn: () => void
 }
 
-const inputClass = 'w-full rounded-btn border border-line2 bg-surface px-4 py-2 outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50'
 const buttonClass = 'btn btn-primary btn-lg mt-4 w-full'
 
 export function Login({ onSignedIn }: Props) {
@@ -49,7 +48,7 @@ export function Login({ onSignedIn }: Props) {
               Check your email. If you're invited, a 6-digit code is on its way.
             </p>
             <input
-              className={`${inputClass} mt-4 text-center tracking-widest`}
+              className="input mt-4 w-full text-center tracking-widest"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               inputMode="numeric"
@@ -62,7 +61,7 @@ export function Login({ onSignedIn }: Props) {
           </>
         ) : (
           <input
-            className={`${inputClass} mt-6`}
+            className="input mt-6 w-full"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
