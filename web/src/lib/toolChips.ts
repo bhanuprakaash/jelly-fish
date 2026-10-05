@@ -6,8 +6,7 @@ export type ToolChip = {
   state: 'running' | 'done' | 'failed' | 'interrupted'
   // error is the error text of a failed or interrupted call.
   error?: string
-  // memory is set for a finished memory write that left a memory behind; a
-  // delete leaves none.
+  // memory is set for a finished memory write.
   memory?: { id: string; version: number; op: string; path: string }
 }
 
@@ -22,7 +21,7 @@ type Payload = {
   result?: { parts: { tr?: { parts: Part[] } }[] }
 }
 
-const memoryWrites = ['create', 'str_replace', 'insert', 'rename']
+const memoryWrites = ['create', 'str_replace', 'insert', 'delete', 'rename']
 
 // toolChips is one chip per tool call in the stream, in the order the calls
 // were requested.

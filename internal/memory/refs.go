@@ -77,7 +77,7 @@ type call struct {
 }
 
 // Resolve returns msgs with every memory ref and redacted arg replaced by
-// text from memory_revisions. A ref whose memory was hard-deleted renders as
+// text from memory_revisions. A ref whose memory was deleted renders as
 // "(this memory was deleted)", and drops out of an index. msgs is not changed.
 func Resolve(ctx context.Context, pool *pgxpool.Pool, msgs []msg.Message) ([]msg.Message, error) {
 	calls := map[string]*call{}
@@ -138,7 +138,7 @@ func loadRevisions(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID, ver
 		SELECT r.memory_id, r.version, m.scope, r.path, r.title, r.content, coalesce(p.name, '')
 		FROM unnest($1::uuid[], $2::int[]) AS k(id, v)
 		JOIN memory_revisions r ON r.memory_id = k.id AND r.version = k.v
-		JOIN memories m ON m.id = r.memory_id
+		JOIN memories m ON m.id = r.memory_id AND m.status <> 'deleted'
 		LEFT JOIN projects p ON p.id = m.project_id`, ids, versions)
 	if err != nil {
 		return nil, fmt.Errorf("load memory revisions: %w", err)

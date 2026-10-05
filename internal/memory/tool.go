@@ -35,6 +35,7 @@ const (
 
 	statusActive  = "active"
 	statusPending = "pending_review"
+	statusDeleted = "deleted"
 )
 
 const (

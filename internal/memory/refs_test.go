@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -96,6 +97,30 @@ func TestResolveRendersRefsFromRevisionsAndMarksDeletedOnes(t *testing.T) {
 	wantIndex = "<project_memory project=\"Personal\">\nNotes about this project, " + notice + "/memories/b.md — Beta\n</project_memory>"
 	if results[1] != "(this memory was deleted)" || results[2] != wantIndex {
 		t.Fatalf("results after delete = %q", results)
+	}
+}
+
+func TestResolveRendersRefsOfAnAgentDeletedMemoryAsDeleted(t *testing.T) {
+	e := newEnv(t)
+	e.create("/memories/a.md", "alpha body")
+	viewArgs := map[string]any{"command": "view", "scope": "user", "path": "/memories/a.md"}
+	viewed, _ := e.run(viewArgs)
+	deleteArgs := map[string]any{"command": "delete", "scope": "user", "path": "/memories/a.md"}
+	removed, _ := e.run(deleteArgs)
+	history := []msg.Message{
+		{Role: msg.RoleAssistant, Parts: []msg.Part{use("c1", viewArgs), use("c2", deleteArgs)}},
+		{Role: msg.RoleUser, Parts: []msg.Part{answer("c1", viewed), answer("c2", removed)}},
+	}
+	out, err := memory.Resolve(t.Context(), e.pool, history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, p := range out[1].Parts {
+		got = append(got, msg.Message{Parts: p.ToolResult.Parts}.Text())
+	}
+	if fmt.Sprint(got) != "[(this memory was deleted) deleted /memories/a.md]" {
+		t.Fatalf("results = %q", got)
 	}
 }
 

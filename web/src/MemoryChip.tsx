@@ -12,8 +12,8 @@ type Props = {
 }
 
 // MemoryChip is the chat chip of one memory write: [Undo] while the memory is
-// still as the write left it, and [Approve] [Edit] [Delete] while it waits for
-// review.
+// still as the write left it (for a delete, while it is absent from the list),
+// and [Approve] [Edit] [Delete] while it waits for review.
 export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props) {
   const [error, setError] = useState<string | null>(null)
   const { id, version, op, path } = chip.memory
@@ -44,7 +44,7 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
       {current?.status === 'pending_review' && (
         <MemoryActions key={current.version} memory={current} onChanged={onChanged} onUnauthorized={onUnauthorized} />
       )}
-      {current?.status === 'active' && current.version === version && (
+      {((current?.status === 'active' && current.version === version) || (op === 'delete' && memories && !current)) && (
         <button onClick={undo} className="rounded-lg bg-neutral-800 px-3 py-1 text-neutral-200 hover:bg-neutral-700">
           Undo
         </button>

@@ -44,7 +44,8 @@ CREATE TABLE memories (
   kind              text NOT NULL CHECK (kind IN ('preference','fact','feedback','reference')),
   title             text NOT NULL,          -- one line, shown in the index
   content           text NOT NULL,          -- markdown, max 4 KB
-  status            text NOT NULL DEFAULT 'active' CHECK (status IN ('active','pending_review')),
+  status            text NOT NULL DEFAULT 'active' CHECK (status IN ('active','pending_review','deleted')),
+  deleted_at        timestamptz,            -- set while status='deleted'; purged after 24 h
   tainted           bool NOT NULL DEFAULT false,  -- written after untrusted tool output
   written_by        text NOT NULL,          -- agent|user|tidy
   source_session_id uuid,                   -- last writer; SET NULL on session delete
@@ -110,6 +111,8 @@ One function-schema tool named `memory`, sent identically to every Provider. One
 - `view /memories`: returns the live index in the prompt's format (§5.1). It includes this session's writes, so after a mid-session write it differs from the frozen prompt index.
 - `view <path>`: returns full content; bumps `last_read_at` and `read_count`. A `pending_review` entry is treated as nonexistent (same not-found error as a missing path; no counters bumped) until it is approved.
 - `create` / `str_replace` / `insert` / `delete` / `rename`: mutate the row, append a revision, bump `version`, emit `memory.written`.
+- `delete`: soft delete. The row gets `status='deleted'` and `deleted_at`, and a revision with its last path, title and content. The result is `deleted <path>` plus a `{memory_id, version}` ref, so the chip can offer Undo. A `deleted` memory is hidden everywhere: `view` and every write answer `no memory at <path>`, and it is out of the index, the prompt and the Memories page. It does not count toward the caps. After 24 hours it is purged for good (§5.6).
+- `create` or `rename` onto a path held by a `deleted` memory hard-deletes that row first, then goes ahead as if the path were free; the agent never learns it was there.
 - `create` at a path already held by a `pending_review` entry: succeeds, overwriting that entry's content (see §5.2); the agent gets a plain success, never learning a hidden entry existed at that path.
 
 **Paths**
@@ -156,7 +159,7 @@ Steps:
 
 Refresh only at session start and after a Compaction. Never rewrite the index mid-session; the model already sees its own write in the tool result, and the cached prefix must survive.
 
-**Freezing**: at the first turn (and after a Compaction) the loaded entries are saved as `sessions.memory_index = [{memory_id, version}]`. Every turn, on any Worker, renders the blocks from those `memory_revisions` rows (`path`, `title`), never from live `memories`. A hard-deleted entry has no revision left, so its line drops out (one cache miss in that session).
+**Freezing**: at the first turn (and after a Compaction) the loaded entries are saved as `sessions.memory_index = [{memory_id, version}]`. Every turn, on any Worker, renders the blocks from those `memory_revisions` rows (`path`, `title`), never from live `memories`. A hard-deleted or `deleted` entry drops out, so its line is gone (one cache miss in that session). An Undo of a `deleted` entry brings the line back unchanged.
 
 ### 5.2 Write path
 1. Validate command, scope, kind; normalize path; reject `..`.
@@ -165,7 +168,7 @@ Refresh only at session start and after a Compaction. Never rewrite the index mi
 4. Check caps; on overflow return the consolidate error.
 5. Compute taint: tainted if untrusted tool output arrived since the last user message. Untrusted = all tool output except the `memory` tool's own results and the user's own messages. That includes web tools, shell/files, and every Connector, local or remote.
 6. Write the row: `status = tainted ? 'pending_review' : 'active'`, `tainted`, `written_by='agent'`, `source_session_id` = this session. Append a revision, bump `version`. Same transaction.
-7. Emit `memory.written {memory_id, path, op, version}`. The stored tool-call events never hold memory text. In stored write inputs, `title`, `content`, `old_str` and `new_str` become the placeholder `(memory text not stored)`; the real args stay in Worker memory until the call runs. A write result is stored as its `{memory_id, version}`, a `view <path>` result as the viewed `{memory_id, version}`, and a `view /memories` result as one ref per index line. The prompt projection resolves these refs from `memory_revisions`: a `create` gets its `title` and `content` back; `str_replace` and `insert` keep the placeholder in their args, because a revision can't rebuild them, and their result gains a text part `It now reads:` plus the content of the revision they wrote, so the model sees what it saved. A hard-deleted ref renders `(this memory was deleted)` and drops out of a `view /memories` result. A Worker that crashes after storing the request but before running the write has lost the args, so the call ends with an error result and nothing is written.
+7. Emit `memory.written {memory_id, path, op, version}`. The stored tool-call events never hold memory text. In stored write inputs, `title`, `content`, `old_str` and `new_str` become the placeholder `(memory text not stored)`; the real args stay in Worker memory until the call runs. A write result is stored as its `{memory_id, version}`, a `view <path>` result as the viewed `{memory_id, version}`, and a `view /memories` result as one ref per index line. The prompt projection resolves these refs from `memory_revisions`: a `create` gets its `title` and `content` back; `str_replace` and `insert` keep the placeholder in their args, because a revision can't rebuild them, and their result gains a text part `It now reads:` plus the content of the revision they wrote, so the model sees what it saved. A ref to a hard-deleted or `deleted` memory renders `(this memory was deleted)` and drops out of a `view /memories` result. A Worker that crashes after storing the request but before running the write has lost the args, so the call ends with an error result and nothing is written.
 8. Render a chip in chat (undoable; tainted writes show [Approve] [Edit] [Delete]).
 
 **Contradiction mid-chat**: when the agent notices one, it updates the memory itself through this path. Shown as an undoable chip.
@@ -200,13 +203,14 @@ Refresh only at session start and after a Compaction. Never rewrite the index mi
 5. **Apply**: accepted changes are written with `written_by='tidy'` and get revisions like any other write. Their `memory.written` events go to the Tidy run's session (the System Session when started from the Memories page).
 
 ### 5.5 Memories page edits
-Manual edits, approvals, and deletes on the Memories page make no LLM call and need no session. They emit no event; their only record is `memory_revisions` rows with `written_by='user'` (`session_id` NULL). A hard delete removes the row and its revisions. Approve and edit carry the version the card showed and are refused (409) if the memory has moved on.
+Manual edits, approvals, and deletes on the Memories page make no LLM call and need no session. They emit no event; their only record is `memory_revisions` rows with `written_by='user'` (`session_id` NULL). A hard delete removes the row and its revisions. An agent `delete` is not hard: the chip's Undo restores a `deleted` memory as a new `active` version written by `user` (see §10). Approve and edit carry the version the card showed and are refused (409) if the memory has moved on.
 
 ### 5.6 Clearing old memories
 - **Size pressure**: caps force the agent to merge or delete (§4).
 - **Stale**: UI badge, plus Tidy's [Delete][Keep] proposal. A human decides.
 - **Contradictions**: overwritten in place (agent mid-chat or Tidy). The revision keeps the old value.
-- **Hard delete**: removes the row and its revisions (CASCADE).
+- **Hard delete**: removes the row and its revisions (CASCADE). Memories page deletes are hard and immediate.
+- **Agent delete**: recoverable for 24 hours through the chip's Undo, then purged. Rows with `status='deleted'` and `deleted_at` older than 24 hours are hard-deleted, lazily and per user, at the start of an agent write and when the Memories page lists.
 
 ### 5.7 Memory flush turn
 Before Tier 2 Compaction the agent gets one turn to save durable facts with this tool. Defined in [context.md](context.md) §5.4. Writes follow §5.2 and §5.3.
@@ -223,7 +227,7 @@ Before Tier 2 Compaction the agent gets one turn to save durable facts with this
 - `<user_memory>` never appears when the Project's `use_user_memory` is false.
 - Incognito sessions never read or write memory (no tool, no index).
 - Child Sessions may only `view`. They report findings to the parent; the parent decides what to save.
-- The index is never rewritten mid-session; only at session start and after Compaction. It is frozen as `sessions.memory_index` refs, so a Worker change or crash doesn't change it; only a hard delete drops a line.
+- The index is never rewritten mid-session; only at session start and after Compaction. It is frozen as `sessions.memory_index` refs, so a Worker change or crash doesn't change it; only a delete drops a line.
 - Memory must never create Approval Rules or change the Permission Mode (ADR 0004).
 - Provider Keys never enter the prompt. A write containing a secret is rejected, never masked.
 - Every memory tool call is shown as a visible chip, even though it skips the Approver.
@@ -235,7 +239,7 @@ Before Tier 2 Compaction the agent gets one turn to save durable facts with this
 - User Memory and Project Memory are tidied separately; one Tidy run covers one scope.
 - Deleting a Session keeps memories derived from it; `source_session_id` becomes NULL.
 - Deleting a Project deletes its Project Memory. User Memory is unaffected.
-- Hard delete removes the row and all revisions. Export includes both `memories` and `memory_revisions`.
+- Hard delete removes the row and all revisions. An agent `delete` keeps both for 24 hours, hidden. Export includes both `memories` and `memory_revisions`.
 
 ## 7. Event types emitted
 
@@ -261,7 +265,7 @@ All decided 2026-09-24.
 5. **Our own `memory` function on all Providers** (view/create/str_replace/insert/delete/rename; fields scope, path, title, kind, content). No native `memory_20250818`: it lacks scope/title/kind, and we want provider neutrality. May be added later as a per-provider tweak if evals show a gain.
 6. **Tainted memories** are saved `status='pending_review'` and excluded from the index until approved (Memories page or chip [Approve][Edit][Delete]). Approve sets `active`. Untainted go straight to `active`. Why: memory poisoning via tool output (research §7).
 7. **Incognito sessions: yes.** No memory reads or writes.
-8. **`memory.written` stores only a reference and version.** Tool-call input content is redacted in the stored event; content lives only in `memory_revisions`. Hard delete really removes the text.
+8. **`memory.written` stores only a reference and version.** Tool-call input content is redacted in the stored event; content lives only in `memory_revisions`. Hard delete really removes the text. An agent `delete` is the exception: it hides the memory and keeps its text for 24 hours so the user can undo it from the chip, then purges it. Memories page deletes stay immediate hard deletes.
 9. **Stale** = `last_read_at` older than 90 days, computed. UI badge only; no flag column; never auto-deleted. `view <path>` bumps `last_read_at` and `read_count`.
 10. **Session search (recall) is deferred.**
 11. **Storage is a Postgres `text` column**, not object storage. Why: small, transactional with revisions, simple hard delete/export, FTS/pgvector on columns. Object storage is for Uploads and Artifacts only.
@@ -305,6 +309,7 @@ All decided 2026-09-24.
 - **Child Session write attempt**: refused; it should report to the parent instead.
 - **Memory flush turn in incognito or Child Session**: skipped (see [context.md](context.md) §5.4).
 - **Undo**: writes a new version with the previous content; it does not delete revisions. Undo of a `create` hard-deletes the memory.
+- **Undo of an agent `delete`**: allowed at the version the delete left. It sets `status='active'`, clears `deleted_at`, bumps `version`, and adds a revision with `written_by='user'` and no session. If the path was taken meanwhile it is refused (422 `<path> is used by another memory`). A create or rename onto the path hard-deletes the `deleted` row, so after that Undo finds no memory (404). After the 24-hour purge it also finds none. Undo of any other op on a `deleted` memory is refused (409).
 - **Hard delete while an old session references it**: that session's index drops the line on its next turn, and its earlier `view` results project as `(this memory was deleted)`.
 - **Any non-`memory` tool output then a write, no user message in between**: tainted → `pending_review`.
 - **`create` at a path held by a `pending_review` entry**: overwrites its content (new revision, version bump), stays `pending_review`/tainted; the agent gets a plain success.

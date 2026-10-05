@@ -88,11 +88,14 @@ func (p *Pages) List(ctx context.Context, scope eventlog.TenantScope) (Overview,
 	if err != nil {
 		return Overview{}, fmt.Errorf("load project: %w", err)
 	}
+	if err := purge(ctx, p.pool, scope.UserID); err != nil {
+		return Overview{}, err
+	}
 	rows, err := p.pool.Query(ctx, `
 		SELECT id, scope, path, title, kind, content, status, version,
 		  coalesce(last_read_at, created_at) < now() - interval '90 days', source_session_id, updated_at
 		FROM memories
-		WHERE user_id = $1 AND (scope = 'user' OR project_id = $2)
+		WHERE user_id = $1 AND status <> 'deleted' AND (scope = 'user' OR project_id = $2)
 		ORDER BY scope = 'project', path`, scope.UserID, o.Project.ID)
 	if err != nil {
 		return Overview{}, fmt.Errorf("list memories: %w", err)
@@ -116,7 +119,7 @@ func (p *Pages) Revisions(ctx context.Context, scope eventlog.TenantScope, id uu
 	rows, err := p.pool.Query(ctx, `
 		SELECT r.version, r.path, r.title, r.content, r.written_by, r.created_at
 		FROM memory_revisions r JOIN memories m ON m.id = r.memory_id
-		WHERE m.id = $1 AND m.user_id = $2
+		WHERE m.id = $1 AND m.user_id = $2 AND m.status <> 'deleted'
 		ORDER BY r.version`, id, scope.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("list revisions: %w", err)
@@ -147,6 +150,9 @@ func (p *Pages) Edit(ctx context.Context, scope eventlog.TenantScope, id uuid.UU
 		if err != nil {
 			return err
 		}
+		if cur.status == statusDeleted {
+			return ErrNotFound
+		}
 		if cur.version != version {
 			return ErrChanged
 		}
@@ -161,6 +167,9 @@ func (p *Pages) Approve(ctx context.Context, scope eventlog.TenantScope, id uuid
 		cur, path, err := lockOwned(ctx, tx, scope, id)
 		if err != nil {
 			return err
+		}
+		if cur.status == statusDeleted {
+			return ErrNotFound
 		}
 		if cur.version != version {
 			return ErrChanged
@@ -185,17 +194,24 @@ func (p *Pages) Delete(ctx context.Context, scope eventlog.TenantScope, id uuid.
 }
 
 // Undo reverses the chat write that left the memory at version. A create is
-// hard-deleted; any other write is restored to the revision before it. It
-// returns ErrChanged when the memory has moved past version.
+// hard-deleted; a delete brings the memory back; any other write is restored to
+// the revision before it. It returns ErrChanged when the memory has moved past
+// version.
 func (p *Pages) Undo(ctx context.Context, scope eventlog.TenantScope, id uuid.UUID, version int) error {
 	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
-		cur, _, err := lockOwned(ctx, tx, scope, id)
+		cur, path, err := lockOwned(ctx, tx, scope, id)
 		if err != nil {
 			return err
 		}
+		if cur.version != version {
+			return ErrChanged
+		}
+		if cur.status == statusDeleted {
+			return save(ctx, tx, id, cur.version, path, cur.title, cur.body)
+		}
 		// A pending memory is settled by approve, edit or delete; undo would
 		// activate it.
-		if cur.version != version || cur.status != statusActive {
+		if cur.status != statusActive {
 			return ErrChanged
 		}
 		if version == 1 {
@@ -204,7 +220,7 @@ func (p *Pages) Undo(ctx context.Context, scope eventlog.TenantScope, id uuid.UU
 			}
 			return nil
 		}
-		var path, title, content string
+		var title, content string
 		err = tx.QueryRow(ctx, `SELECT path, title, content FROM memory_revisions WHERE memory_id = $1 AND version = $2`, id, version-1).Scan(&path, &title, &content)
 		if err != nil {
 			return fmt.Errorf("load previous revision: %w", err)
@@ -249,7 +265,7 @@ func lockOwned(ctx context.Context, tx pgx.Tx, scope eventlog.TenantScope, id uu
 func save(ctx context.Context, tx pgx.Tx, id uuid.UUID, from int, path, title, content string) error {
 	version := from + 1
 	_, err := tx.Exec(ctx, `
-		UPDATE memories SET path = $2, title = $3, content = $4, status = 'active', tainted = false,
+		UPDATE memories SET path = $2, title = $3, content = $4, status = 'active', tainted = false, deleted_at = NULL,
 		  written_by = 'user', version = $5, updated_at = now()
 		WHERE id = $1`, id, path, title, content, version)
 	var pgErr *pgconn.PgError

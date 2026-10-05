@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -467,16 +468,197 @@ func TestSecretsAreRefused(t *testing.T) {
 	}
 }
 
-func TestDeleteIsHard(t *testing.T) {
+func (e env) pages() *memory.Pages { return memory.NewPages(e.pool) }
+
+func (e env) scope() eventlog.TenantScope {
+	return eventlog.TenantScope{WorkspaceID: e.sess.WorkspaceID, UserID: e.sess.UserID}
+}
+
+func (e env) deleteByAgent(path string) tool.Result {
+	e.t.Helper()
+	res, _ := e.run(map[string]any{"command": "delete", "scope": "user", "path": path})
+	return res
+}
+
+func TestPageDeleteIsHard(t *testing.T) {
 	e := newEnv(t)
-	e.create("/memories/a.md", "one")
+	id := uuid.MustParse(ref(t, e.create("/memories/a.md", "one")).MemoryID)
 	e.run(map[string]any{"command": "str_replace", "scope": "user", "path": "/memories/a.md", "old_str": "one", "new_str": "two"})
-	res, evs := e.run(map[string]any{"command": "delete", "scope": "user", "path": "/memories/a.md"})
-	if res.IsError || len(evs) != 1 || evs[0].Payload.(map[string]any)["op"] != "delete" {
-		t.Fatalf("result = %+v events %v", res, evs)
+	if err := e.pages().Delete(t.Context(), e.scope(), id); err != nil {
+		t.Fatal(err)
 	}
 	if n := count(t, e.pool, `SELECT count(*) FROM memories`) + count(t, e.pool, `SELECT count(*) FROM memory_revisions`); n != 0 {
 		t.Fatalf("%d rows left", n)
+	}
+}
+
+func TestAgentDeleteHidesTheMemoryAndUndoRestoresIt(t *testing.T) {
+	e := newEnv(t)
+	id := ref(t, e.create("/memories/a.md", "one")).MemoryID
+	e.run(map[string]any{"command": "str_replace", "scope": "user", "path": "/memories/a.md", "old_str": "one", "new_str": "two"})
+
+	res, evs := e.run(map[string]any{"command": "delete", "scope": "user", "path": "/memories/a.md"})
+	if got := ref(t, res); res.IsError || text(res) != "deleted /memories/a.md" || got != (msg.MemoryRef{MemoryID: id, Version: 3}) {
+		t.Fatalf("result = %+v ref %+v", res, got)
+	}
+	want := map[string]any{"memory_id": uuid.MustParse(id), "path": "/memories/a.md", "op": "delete", "version": 3}
+	if len(evs) != 1 || fmt.Sprint(evs[0].Payload) != fmt.Sprint(want) {
+		t.Fatalf("events = %+v, want memory.written %v", evs, want)
+	}
+	var status, content, by string
+	var hasDeletedAt bool
+	err := e.pool.QueryRow(t.Context(), `
+		SELECT m.status, m.deleted_at IS NOT NULL, r.content, r.written_by FROM memories m
+		JOIN memory_revisions r ON r.memory_id = m.id AND r.version = 3 WHERE m.id = $1`, id).Scan(&status, &hasDeletedAt, &content, &by)
+	if err != nil || status != "deleted" || !hasDeletedAt || content != "two" || by != "agent" {
+		t.Fatalf("after delete: %q deleted_at set %v, revision 3 %q by %q (%v)", status, hasDeletedAt, content, by, err)
+	}
+
+	for _, args := range []map[string]any{
+		{"command": "view", "scope": "user", "path": "/memories/a.md"},
+		{"command": "str_replace", "scope": "user", "path": "/memories/a.md", "old_str": "two", "new_str": "x"},
+		{"command": "delete", "scope": "user", "path": "/memories/a.md"},
+	} {
+		if res, _ := e.run(args); !res.IsError || text(res) != "no memory at /memories/a.md" {
+			t.Fatalf("%v = %+v, want the not-found error", args["command"], res)
+		}
+	}
+	if res, _ := e.run(map[string]any{"command": "view", "path": "/memories"}); text(res) != "(no memories)" {
+		t.Fatalf("index = %q", text(res))
+	}
+	o, err := e.pages().List(t.Context(), e.scope())
+	if err != nil || len(o.Memories) != 0 {
+		t.Fatalf("Memories page lists %+v (%v)", o.Memories, err)
+	}
+
+	if err := e.pages().Undo(t.Context(), e.scope(), uuid.MustParse(id), 3); err != nil {
+		t.Fatal(err)
+	}
+	var session *uuid.UUID
+	var deletedAt *string
+	var version int
+	err = e.pool.QueryRow(t.Context(), `
+		SELECT m.status, m.version, m.content, m.deleted_at::text, r.written_by, r.session_id
+		FROM memories m JOIN memory_revisions r ON r.memory_id = m.id AND r.version = m.version WHERE m.id = $1`, id).Scan(&status, &version, &content, &deletedAt, &by, &session)
+	if err != nil || status != "active" || version != 4 || content != "two" || deletedAt != nil || by != "user" || session != nil {
+		t.Fatalf("after undo: %q v%d %q deleted_at %v by %q session %v (%v)", status, version, content, deletedAt, by, session, err)
+	}
+	if res, _ := e.run(map[string]any{"command": "view", "scope": "user", "path": "/memories/a.md"}); res.IsError {
+		t.Fatalf("view after undo: %s", text(res))
+	}
+}
+
+func TestUndoOfDeleteNeedsItsVersionAndItsRow(t *testing.T) {
+	e := newEnv(t)
+	id := uuid.MustParse(ref(t, e.create("/memories/a.md", "one")).MemoryID)
+	e.deleteByAgent("/memories/a.md")
+	if err := e.pages().Undo(t.Context(), e.scope(), id, 1); !errors.Is(err, memory.ErrChanged) {
+		t.Fatalf("undo of the create after a delete = %v, want ErrChanged", err)
+	}
+
+	e.create("/memories/a.md", "again")
+	if err := e.pages().Undo(t.Context(), e.scope(), id, 2); !errors.Is(err, memory.ErrNotFound) {
+		t.Fatalf("undo after the path was reused = %v, want ErrNotFound", err)
+	}
+}
+
+func TestCreateAndRenameOverDeletedPathDropTheOldRow(t *testing.T) {
+	e := newEnv(t)
+	old := ref(t, e.create("/memories/a.md", "old")).MemoryID
+	e.deleteByAgent("/memories/a.md")
+	res := e.create("/memories/a.md", "new")
+	if res.IsError || text(res) != "created /memories/a.md" || ref(t, res).Version != 1 {
+		t.Fatalf("create = %+v", res)
+	}
+	if n := count(t, e.pool, `SELECT count(*) FROM memories WHERE id = $1`, old) + count(t, e.pool, `SELECT count(*) FROM memory_revisions WHERE memory_id = $1`, old); n != 0 {
+		t.Fatalf("%d rows of the deleted memory left", n)
+	}
+	if n := count(t, e.pool, `SELECT count(*) FROM memories WHERE path = '/memories/a.md' AND status = 'active'`); n != 1 {
+		t.Fatalf("%d active memories at the path", n)
+	}
+
+	e.create("/memories/b.md", "b")
+	gone := ref(t, e.create("/memories/c.md", "c")).MemoryID
+	e.deleteByAgent("/memories/c.md")
+	res, _ = e.run(map[string]any{"command": "rename", "scope": "user", "path": "/memories/b.md", "new_path": "/memories/c.md"})
+	if res.IsError || text(res) != "renamed /memories/b.md to /memories/c.md" {
+		t.Fatalf("rename = %+v", res)
+	}
+	if n := count(t, e.pool, `SELECT count(*) FROM memories WHERE id = $1`, gone); n != 0 {
+		t.Fatal("the deleted memory survived the rename")
+	}
+	if n := count(t, e.pool, `SELECT count(*) FROM memories WHERE path = '/memories/c.md' AND status = 'active'`); n != 1 {
+		t.Fatalf("%d active memories at the renamed path", n)
+	}
+}
+
+func TestDeletedMemoriesDoNotCountTowardTheCap(t *testing.T) {
+	e := newEnv(t)
+	e.seed("user", 199, "t")
+	e.create("/memories/last.md", "x")
+	e.deleteByAgent("/memories/last.md")
+	if res := e.create("/memories/other.md", "x"); res.IsError {
+		t.Fatalf("create with a deleted memory in the scope: %s", text(res))
+	}
+}
+
+func TestDeletedMemoryIsPurgedAfterADay(t *testing.T) {
+	e := newEnv(t)
+	for _, path := range []string{"/memories/old.md", "/memories/recent.md"} {
+		e.create(path, "x")
+		e.deleteByAgent(path)
+	}
+	age := func(path, ago string) {
+		t.Helper()
+		if _, err := e.pool.Exec(t.Context(), `UPDATE memories SET deleted_at = now() - $2::interval WHERE path = $1`, path, ago); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paths := func() string {
+		t.Helper()
+		var s string
+		if err := e.pool.QueryRow(t.Context(), `SELECT coalesce(string_agg(path, ',' ORDER BY path), '') FROM memories`).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	age("/memories/old.md", "25 hours")
+	age("/memories/recent.md", "1 hour")
+
+	if _, err := e.pages().List(t.Context(), e.scope()); err != nil {
+		t.Fatal(err)
+	}
+	if got := paths(); got != "/memories/recent.md" {
+		t.Fatalf("after the page list: %q, want only recent.md", got)
+	}
+	if n := count(t, e.pool, `SELECT count(*) FROM memory_revisions`); n != 2 {
+		t.Fatalf("%d revisions left, want the 2 of recent.md", n)
+	}
+
+	age("/memories/recent.md", "25 hours")
+	e.create("/memories/new.md", "x")
+	if got := paths(); got != "/memories/new.md" {
+		t.Fatalf("after a write: %q, want only new.md", got)
+	}
+}
+
+func TestFrozenPromptDropsADeletedMemory(t *testing.T) {
+	e := newEnv(t)
+	id := uuid.MustParse(ref(t, e.create("/memories/a.md", "x")).MemoryID)
+	before, err := memory.Prompt(t.Context(), e.pool, e.sess.ID, e.sess.UserID, e.sess.ProjectID)
+	if err != nil || !strings.Contains(before, "/memories/a.md") {
+		t.Fatalf("prompt = %q (%v)", before, err)
+	}
+	e.deleteByAgent("/memories/a.md")
+	after, err := memory.Prompt(t.Context(), e.pool, e.sess.ID, e.sess.UserID, e.sess.ProjectID)
+	if err != nil || after != "" {
+		t.Fatalf("prompt after delete = %q (%v), want none", after, err)
+	}
+	if err := e.pages().Undo(t.Context(), e.scope(), id, 2); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := memory.Prompt(t.Context(), e.pool, e.sess.ID, e.sess.UserID, e.sess.ProjectID); err != nil || again != before {
+		t.Fatalf("prompt after undo = %q (%v), want the frozen bytes back", again, err)
 	}
 }
 

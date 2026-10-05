@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/tool"
@@ -52,11 +53,20 @@ func (w write) commit(ctx context.Context, tx pgx.Tx) (tool.Result, []tool.Event
 	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE`, w.sess.UserID); err != nil {
 		return tool.Result{}, nil, fmt.Errorf("lock user: %w", err)
 	}
+	if err := purge(ctx, tx, w.sess.UserID); err != nil {
+		return tool.Result{}, nil, err
+	}
 	cur, found, err := w.load(ctx, tx, w.path)
 	if err != nil {
 		return tool.Result{}, nil, err
 	}
 	a := w.args
+	if a.Command == cmdCreate && found && cur.status == statusDeleted {
+		if _, err := tx.Exec(ctx, `DELETE FROM memories WHERE id = $1`, cur.id); err != nil {
+			return tool.Result{}, nil, fmt.Errorf("delete memory: %w", err)
+		}
+		found = false
+	}
 	status, tainted := statusActive, false
 	if w.sess.Tainted {
 		status, tainted = statusPending, true
@@ -103,11 +113,13 @@ func (w write) commit(ctx context.Context, tx pgx.Tx) (tool.Result, []tool.Event
 		case taken && target.status == statusActive:
 			return refuse(newPath + " already exists"), nil, nil
 		case taken:
-			// Like create: replaces the hidden entry and stays hidden.
+			// Like create: replaces the hidden entry. A pending one stays hidden.
 			if _, err := tx.Exec(ctx, `DELETE FROM memories WHERE id = $1`, target.id); err != nil {
 				return tool.Result{}, nil, fmt.Errorf("delete memory: %w", err)
 			}
-			status, tainted = statusPending, true
+			if target.status == statusPending {
+				status, tainted = statusPending, true
+			}
 		}
 	case cmdDelete:
 		return w.remove(ctx, tx, cur)
@@ -165,12 +177,37 @@ func written(id uuid.UUID, p, op string, version int) []tool.Event {
 	return []tool.Event{{Type: eventlog.TypeMemoryWritten, Payload: map[string]any{"memory_id": id, "path": p, "op": op, "version": version}}}
 }
 
-// remove hard-deletes cur; its revisions go with it.
+// remove hides cur as a new version. The user can undo it from the chip until
+// purge drops it.
 func (w write) remove(ctx context.Context, tx pgx.Tx, cur row) (tool.Result, []tool.Event, error) {
-	if _, err := tx.Exec(ctx, `DELETE FROM memories WHERE id = $1`, cur.id); err != nil {
+	version := cur.version + 1
+	_, err := tx.Exec(ctx, `
+		UPDATE memories SET status = 'deleted', deleted_at = now(), written_by = 'agent', source_session_id = $2,
+		  version = $3, updated_at = now()
+		WHERE id = $1`, cur.id, w.sess.ID, version)
+	if err == nil {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO memory_revisions (memory_id, version, path, title, content, written_by, session_id)
+			VALUES ($1, $2, $3, $4, $5, 'agent', $6)`, cur.id, version, w.path, cur.title, cur.body, w.sess.ID)
+	}
+	if err != nil {
 		return tool.Result{}, nil, fmt.Errorf("delete memory: %w", err)
 	}
-	return tool.TextResult("deleted "+w.path, false), written(cur.id, w.path, cmdDelete, cur.version), nil
+	return refRes(cur.id, version, "deleted "+w.path), written(cur.id, w.path, cmdDelete, version), nil
+}
+
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// purge hard-deletes userID's memories that were deleted over a day ago; their
+// revisions go with them.
+func purge(ctx context.Context, db execer, userID uuid.UUID) error {
+	_, err := db.Exec(ctx, `DELETE FROM memories WHERE user_id = $1 AND status = 'deleted' AND deleted_at < now() - interval '24 hours'`, userID)
+	if err != nil {
+		return fmt.Errorf("purge deleted memories: %w", err)
+	}
+	return nil
 }
 
 // checkCaps returns why a write must not go ahead, or "". id is the row being
@@ -179,7 +216,7 @@ func (w write) checkCaps(ctx context.Context, tx pgx.Tx, id uuid.UUID, exists bo
 	if !exists {
 		var n int
 		err := tx.QueryRow(ctx, `
-			SELECT count(*) FROM memories WHERE user_id = $1 AND scope = $2 AND project_id IS NOT DISTINCT FROM $3`,
+			SELECT count(*) FROM memories WHERE user_id = $1 AND scope = $2 AND project_id IS NOT DISTINCT FROM $3 AND status <> 'deleted'`,
 			w.sess.UserID, w.args.Scope, w.project).Scan(&n)
 		if err != nil {
 			return "", fmt.Errorf("count memories: %w", err)

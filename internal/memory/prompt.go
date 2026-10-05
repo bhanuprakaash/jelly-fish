@@ -23,7 +23,7 @@ type frozen struct {
 // has none. The first call saves the active index on the session; every call,
 // on any Worker, renders that saved list from memory_revisions, so a later
 // write never changes the bytes (memory.md §5.1). use_user_memory is read at
-// freeze time. A hard-deleted memory drops out.
+// freeze time. A deleted memory drops out.
 func Prompt(ctx context.Context, pool *pgxpool.Pool, sessionID, userID, projectID uuid.UUID) (string, error) {
 	var useUser bool
 	if err := pool.QueryRow(ctx, `SELECT use_user_memory FROM projects WHERE id = $1`, projectID).Scan(&useUser); err != nil {

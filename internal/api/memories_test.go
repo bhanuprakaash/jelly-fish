@@ -165,6 +165,19 @@ func TestMemoryChipUndo(t *testing.T) {
 	if code, body := undo(pending, 2); code != http.StatusConflict {
 		t.Errorf("undo pending: %d %s, want 409", code, body)
 	}
+	removed := e.seedMemory(t, u, "/memories/d.md", "deleted", "kept", "kept")
+	if got := len(e.overview(t, c).Memories); got != 3 {
+		t.Errorf("page lists %d memories, want 3 without the deleted one", got)
+	}
+	if code, body := undo(removed, 1); code != http.StatusConflict {
+		t.Errorf("undo of a delete at a stale version: %d %s, want 409", code, body)
+	}
+	if code, body := undo(removed, 2); code != http.StatusNoContent {
+		t.Fatalf("undo delete: %d %s", code, body)
+	}
+	if n := e.count(t, `SELECT count(*) FROM memories WHERE id = $1 AND status = 'active' AND version = 3 AND deleted_at IS NULL`, removed); n != 1 {
+		t.Errorf("deleted memory not restored by undo")
+	}
 	if code, body := undo(created, 1); code != http.StatusNoContent {
 		t.Fatalf("undo create: %d %s", code, body)
 	}
