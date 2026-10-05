@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Memory</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#FAFAF7}button{font:inherit;cursor:pointer}</style>
+</helmet>
+<div style="min-height: 1100px; background: #FAFAF7; color: #161616; font-family: 'Manrope', system-ui, sans-serif; font-size: 14px; line-height: 1.55">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 28px 56px 0">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3E7CB1" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+    <span style="font-weight: 600; letter-spacing: -0.02em; font-size: 17px">jelly-fish</span>
+    <span style="color: #C9C6BE">/</span>
+    <button type="button" style="min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: #3A3A37; font-weight: 500">Personal ▾</button>
+    <a href="Main.dc.html" style="margin-left: auto; color: #3A3A37; font-size: 13px; text-decoration: none; min-height: 36px; display: inline-flex; align-items: center">← Back to chat</a>
+  </header>
+  <nav aria-label="Project settings" style="display: flex; gap: 36px; padding: 32px 56px 0; border-bottom: 1px solid #E8E6E0; overflow-x: auto">
+    <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="6">
+      <a href="{{tb.href}}" style="display: inline-flex; align-items: baseline; gap: 8px; padding-bottom: 16px; border-bottom: 2px solid {{tb.line}}; color: {{tb.color}}; text-decoration: none; white-space: nowrap; font-size: 15px; font-weight: 500"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #77766F">{{tb.n}}</span>{{tb.label}}</a>
+    </sc-for>
+  </nav>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 40px; padding: 40px 56px 56px">
+    <section style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px">
+        <div style="flex: 1 1 300px">
+          <h1 style="margin: 0; font-size: 44px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.05">What the swarm remembers</h1>
+          <p style="margin: 6px 0 0; color: #6B6A65">Notes agents keep across sessions. You can read, edit or delete every one.</p>
+        </div>
+        <button type="button" role="switch" aria-checked="true" style="display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px; border: 0; background: none; color: #3A3A37; font-size: 13px">Use what I've told you about me <span style="width: 44px; height: 26px; border-radius: 999px; padding: 3px; box-sizing: border-box; background: #2F6E9E; display: inline-flex; justify-content: flex-end"><span style="width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF"></span></span></button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px">
+        <sc-for list="{{cols}}" as="col" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: baseline; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid #161616"><strong style="font-size: 18px; font-weight: 600; letter-spacing: -0.02em">{{col.title}}</strong><span style="font-size: 12px; color: #6B6A65">{{col.count}}</span></div>
+            <sc-for list="{{col.items}}" as="m" hint-placeholder-count="3">
+              <article style="padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid {{m.border}}; display: flex; flex-direction: column; gap: 8px; opacity: {{m.opacity}}">
+                <div style="display: flex; align-items: center; gap: 8px"><span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #6B6A65">{{m.kind}}</span><sc-if value="{{m.hasBadge}}" hint-placeholder-val="{{ false }}"><span style="margin-left: auto; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: {{m.badgeBg}}; color: {{m.badgeFg}}">{{m.badge}}</span></sc-if></div>
+                <strong style="font-weight: 600; font-size: 15px">{{m.title}}</strong>
+                <span style="font-size: 13px; color: #3A3A37">{{m.body}}</span>
+                <span style="font-size: 12px; color: #77766F">{{m.meta}}</span>
+                <sc-if value="{{m.pending}}" hint-placeholder-val="{{ false }}">
+                  <div style="display: flex; gap: 8px; padding-top: 4px">
+                    <button type="button" style="min-height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid transparent; background: #161616; color: #FFFFFF; font-weight: 600; font-size: 13px">Keep</button>
+                    <button type="button" style="min-height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid #DDDAD3; background: #FFFFFF; color: #161616; font-weight: 600; font-size: 13px">Edit</button>
+                    <button type="button" style="min-height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid #E5C7C0; background: transparent; color: #8E3326; font-weight: 600; font-size: 13px">Delete</button>
+                  </div>
+                </sc-if>
+              </article>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <aside style="flex: 1 1 380px; max-width: 460px; align-self: flex-start; padding: 28px; border-radius: 24px; background: #F3F8FC; border: 1px solid #D6E7F4; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #2F6E9E; font-weight: 600">Tidy memory</span>
+        <strong style="font-size: 24px; font-weight: 600; letter-spacing: -0.03em">3 suggestions</strong>
+        <span style="font-size: 13px; color: #3A3A37">Ran with General on claude-sonnet-5-5 · 2 min ago</span>
+      </div>
+      <sc-for list="{{tidy}}" as="p" hint-placeholder-count="3">
+        <div style="padding: 16px; border-radius: 16px; background: #FFFFFF; border: 1px solid #E8E6E0; display: flex; flex-direction: column; gap: 10px">
+          <span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #6B6A65">{{p.kind}}</span>
+          <span style="font-size: 14px">{{p.text}}</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <sc-for list="{{p.actions}}" as="a" hint-placeholder-count="2"><button type="button" style="{{a.style}}">{{a.l}}</button></sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var tabs = [['01', 'Agents', 'Agents.dc.html'], ['02', 'Skills', 'Skills.dc.html'], ['03', 'Connectors', 'Connectors.dc.html'], ['04', 'Permissions', 'Permissions.dc.html'], ['05', 'Memory', 'Memory.dc.html'], ['06', 'Usage', 'Usage.dc.html']];
+    function m(kind, title, body, meta, badge) {
+      var b = { stale: ['#F4F3EF', '#6B6A65'], 'pending review': ['#FFF7F4', '#A32C22'] }[badge] || ['', ''];
+      return { kind: kind, title: title, body: body, meta: meta, badge: badge || '', hasBadge: !!badge, badgeBg: b[0], badgeFg: b[1], pending: badge === 'pending review', border: badge === 'pending review' ? '#EBC2BB' : '#E8E6E0', opacity: badge === 'stale' ? '.72' : '1' };
+    }
+    var base = 'min-height: 32px; padding: 0 12px; border-radius: 10px; font-weight: 600; font-size: 13px; ';
+    var pri = base + 'border: 1px solid transparent; background: #161616; color: #FFFFFF';
+    var sec = base + 'border: 1px solid #DDDAD3; background: #FFFFFF; color: #161616';
+    var dan = base + 'border: 1px solid #E5C7C0; background: transparent; color: #8E3326';
+    return {
+      tabs: tabs.map(function (x, i) { return { n: x[0], label: x[1], href: x[2], line: i === 4 ? '#161616' : 'transparent', color: i === 4 ? '#161616' : '#6B6A65' }; }),
+      cols: [
+        { title: 'About me', count: '12 of 200 · every project', items: [
+          m('preference', 'Prefers tables over prose', 'When comparing options, answer with a table first.', 'by agent · read 31× · 2 days ago'),
+          m('fact', 'Lives in Berlin, pays in EUR', 'Use EUR and German sources first for local questions.', 'by you · read 12× · Sep 3'),
+          m('feedback', 'Too many follow-up questions', 'Make a reasonable assumption and say it, instead of asking.', 'by agent · last read 97 days ago', 'stale')
+        ] },
+        { title: 'This project', count: '7 of 200 · Personal', items: [
+          m('fact', 'Subsidy research lives in Notion', 'Page: Research / Subsidies. Append, never overwrite.', 'by Researcher · read 6× · today'),
+          m('reference', 'Subsidy capped at €21,000', 'Read on a web page during “Compare EU heat-pump subsidies”.', 'by Germany · from a web page', 'pending review'),
+          m('preference', 'Weekly summary on Fridays', 'Background sessions should report on Friday mornings.', 'by you · read 2× · Sep 19')
+        ] }
+      ],
+      tidy: [
+        { kind: 'Duplicate', text: '“Prefers tables” and “Answer in tables” say the same thing.', actions: [{ l: 'Merge', style: pri }, { l: 'Keep both', style: sec }] },
+        { kind: 'Contradiction', text: '“Pays in EUR” vs. “Show prices in USD”.', actions: [{ l: 'Keep EUR', style: sec }, { l: 'Keep USD', style: sec }, { l: 'Write new', style: sec }] },
+        { kind: 'Stale', text: '“Too many follow-up questions” hasn’t been read in 97 days.', actions: [{ l: 'Delete', style: dan }, { l: 'Keep', style: sec }] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

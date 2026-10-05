@@ -1,0 +1,27 @@
+{"v":3,"createdOnFiles":{"v":1,"at":"2026-10-03T10:00:00Z"},"title":"Jelly-fish UI Prototypes","launch":{"view":"canvas"},"pages":[],
+"boards":{
+"Language.dc.html":{"x":0,"y":0,"w":1280,"h":1180,"title":"0 · Ink & vermilion design language"},
+"Inventory.dc.html":{"x":1360,"y":0,"w":1440,"h":2160,"title":"0 · Element inventory (docs → UI)"},
+"Main.dc.html":{"x":0,"y":2600,"w":1440,"h":980,"title":"A · The Reef — chat workspace","expand":"fill","is_interactive":true},
+"Swarm.dc.html":{"x":1520,"y":2600,"w":1440,"h":980,"title":"B · The Swarm — live agent tree","expand":"fill"},
+"MobileList.dc.html":{"x":3040,"y":2600,"w":390,"h":844,"title":"C1 · Mobile — chat list"},
+"MobileChat.dc.html":{"x":3510,"y":2600,"w":390,"h":844,"title":"C2 · Mobile — chat (light)"},
+"MobileChatDark.dc.html":{"x":3980,"y":2600,"w":390,"h":844,"title":"C3 · Mobile — chat (dark)"},
+"MobileApproval.dc.html":{"x":4450,"y":2600,"w":390,"h":844,"title":"C4 · Mobile — approval from push","is_interactive":true},
+"Agents.dc.html":{"x":0,"y":3980,"w":1440,"h":1100,"title":"D1 · Agents — the school","expand":"fill","is_interactive":true},
+"Skills.dc.html":{"x":1520,"y":3980,"w":1440,"h":1100,"title":"D2 · Skills","expand":"fill"},
+"Connectors.dc.html":{"x":3040,"y":3980,"w":1440,"h":1100,"title":"D3 · Connectors","expand":"fill"},
+"Permissions.dc.html":{"x":4560,"y":3980,"w":1440,"h":1100,"title":"D4 · Permissions","expand":"fill","is_interactive":true},
+"Memory.dc.html":{"x":6080,"y":3980,"w":1440,"h":1100,"title":"D5 · Memory","expand":"fill"},
+"Usage.dc.html":{"x":7600,"y":3980,"w":1440,"h":1000,"title":"D6 · Usage — depth gauge","expand":"fill"},
+"Components.dc.html":{"x":0,"y":5500,"w":1440,"h":2900,"title":"F1 · Chat cards & buttons — light"},
+"ComponentsDark.dc.html":{"x":1520,"y":5500,"w":1440,"h":2900,"title":"F2 · Chat cards & buttons — dark"}
+},
+"order":["Language.dc.html","Inventory.dc.html","Main.dc.html","Swarm.dc.html","MobileList.dc.html","MobileChat.dc.html","MobileChatDark.dc.html","MobileApproval.dc.html","Agents.dc.html","Skills.dc.html","Connectors.dc.html","Permissions.dc.html","Memory.dc.html","Usage.dc.html","Components.dc.html","ComponentsDark.dc.html"],
+"notes":{
+"t0":{"x":0,"y":-300,"text":"Foundations — theme + every element the docs imply","kind":"title1","maxW":2800},
+"t1":{"x":0,"y":2300,"text":"Prototypes — sessions as jellyfish, delegation as tentacles","kind":"title1","maxW":4840},
+"t2":{"x":0,"y":3680,"text":"Project settings — one page each","kind":"title1","maxW":9040},
+"t3":{"x":0,"y":5220,"text":"Components — chat cards and buttons, light and dark","kind":"title1","maxW":2960}
+},
+"designSystems":[]}

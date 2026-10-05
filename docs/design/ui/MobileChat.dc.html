@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mobile chat</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font:inherit}
+@keyframes jfSpin{to{transform:rotate(360deg)}}
+@keyframes jfPulse{0%,100%{box-shadow:0 0 0 0 rgba(110,168,212,.5)}50%{box-shadow:0 0 0 6px rgba(110,168,212,0)}}
+@keyframes jfBeacon{0%,100%{box-shadow:0 0 0 0 rgba(200,53,42,.45)}50%{box-shadow:0 0 0 6px rgba(200,53,42,0)}}
+.jf-spin{animation:jfSpin .9s linear infinite}
+.jf-run{animation:jfPulse 2s ease-in-out infinite}
+.jf-ask{animation:jfBeacon 1.4s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: {{t.bg}}; color: {{t.ink}}; font-family: 'Manrope', system-ui, sans-serif; font-size: 15px; line-height: 1.5; display: flex; flex-direction: column; overflow: hidden">
+  <header style="padding: 52px 12px 10px; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid {{t.line}}; background: {{t.bg}}">
+    <a href="MobileList.dc.html" aria-label="Back to chats" style="width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; color: {{t.ink}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center">
+      <strong style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px">EU heat-pump subsidies</strong>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: {{t.jellyInk}}"><span class="jf-run" style="width: 6px; height: 6px; border-radius: 50%; background: {{t.jelly}}"></span>Swimming · 3 sub-agents</span>
+    </div>
+    <button type="button" aria-label="Session options" style="width: 44px; height: 44px; border: 0; background: none; color: {{t.ink}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+  </header>
+
+  <div style="flex: 1; overflow: hidden; padding: 18px 16px; display: flex; flex-direction: column; gap: 14px">
+    <div style="align-self: flex-end; max-width: 84%; padding: 11px 15px; border-radius: 20px 20px 6px 20px; background: {{t.jellyTint}}; border: 1px solid {{t.jellyLine}}">Compare the 2026 heat-pump subsidy in DE, FR and NL. One sub-agent per country.</div>
+
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: {{t.muted}}">
+      <span style="width: 18px; height: 18px; border-radius: 50%; background: {{t.mossTint}}; color: {{t.moss}}; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700">✓</span>
+      Searched the web · 3 sources
+    </div>
+
+    <p style="margin: 0; line-height: 1.6">I'll send out three researchers and merge what they find.</p>
+
+    <div style="border: 1px solid {{t.line}}; border-radius: 16px; background: {{t.surface}}; overflow: hidden">
+      <sc-for list="{{kids}}" as="k" hint-placeholder-count="3">
+        <a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 14px; border-top: 1px solid {{k.sep}}; text-decoration: none; color: {{t.ink}}">
+          <span class="{{k.anim}}" style="width: 30px; height: 30px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; background: {{k.tint}}; color: {{k.color}}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path fill="{{t.jellyFill}}" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+          </span>
+          <span style="flex: 1; display: flex; flex-direction: column"><strong style="font-weight: 600; font-size: 14px">{{k.name}}</strong><span style="font-size: 12px; color: {{k.color}}">{{k.status}}</span></span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.muted}}" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+      </sc-for>
+    </div>
+
+    <div style="border: 1px solid {{t.shuLine}}; border-radius: 18px; background: {{t.shuTint}}; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 8px"><span class="jf-ask" style="width: 7px; height: 7px; border-radius: 50%; background: {{t.shu}}"></span><strong style="font-weight: 600; font-size: 14px; color: {{t.shuInk}}">Germany wants approval</strong><span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{t.muted}}">1 of 2</span></div>
+      <code style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; padding: 8px 10px; border-radius: 10px; background: {{t.surface}}; border: 1px solid {{t.line}}">notion__update_page</code>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+        <button type="button" style="min-height: 44px; border-radius: 12px; border: 0; background: {{t.shu}}; color: #FFFFFF; font-weight: 600">Approve</button>
+        <button type="button" style="min-height: 44px; border-radius: 12px; border: 1px solid {{t.line2}}; background: {{t.surface}}; color: {{t.ink}}; font-weight: 600">More options</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 10px 12px 30px; border-top: 1px solid {{t.line}}; background: {{t.bg}}">
+    <div style="display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 8px; border-radius: 24px; background: {{t.surface}}; border: 1px solid {{t.jellyLine}}">
+      <button type="button" aria-label="Attach" style="width: 40px; height: 40px; border-radius: 50%; border: 0; background: none; color: {{t.muted}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      <label style="flex: 1; display: flex"><span style="position: absolute; left: -9999px">Message</span><input type="text" placeholder="Steer the swarm…" style="flex: 1; min-width: 0; min-height: 40px; border: 0; outline: none; background: transparent; color: {{t.ink}}; font: inherit"></label>
+      <button type="button" aria-label="Stop" style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid {{t.line2}}; background: {{t.surface}}; color: {{t.ink}}; display: inline-flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/></svg></button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var TK = {
+      light: { bg: '#FAFAF7', surface: '#FFFFFF', sunk: '#F4F3EF', line: '#E8E6E0', line2: '#DDDAD3', ink: '#161616', muted: '#6B6A65', jelly: '#9CC9E8', jellyInk: '#2F6E9E', jellyTint: '#EEF5FB', jellyLine: '#D6E7F4', jellyFill: 'rgba(156,201,232,.30)', shu: '#C8352A', shuTint: '#FFF7F4', shuLine: '#EBC2BB', shuInk: '#A32C22', moss: '#4F6B47', mossTint: '#F1F5EF', muted2: '#77766F' },
+      dark: { bg: '#0F1012', surface: '#17191C', sunk: '#1E2125', line: '#272A2F', line2: '#363A40', ink: '#F1F0EB', muted: '#9B9A94', jelly: '#9CC9E8', jellyInk: '#A9D2EE', jellyTint: 'rgba(156,201,232,.10)', jellyLine: 'rgba(156,201,232,.28)', jellyFill: 'rgba(156,201,232,.22)', shu: '#E0503F', shuTint: 'rgba(224,80,63,.08)', shuLine: 'rgba(224,80,63,.38)', shuInk: '#F2907F', moss: '#93B88A', mossTint: 'rgba(147,184,138,.12)', muted2: '#8A8982' }
+    };
+    var t = TK[this.props.theme === 'dark' ? 'dark' : 'light'];
+    var k = [
+      ['Germany', 'Needs approval', t.shuInk, t.shuTint, 'jf-ask'],
+      ['France', 'Swimming · turn 4', t.jellyInk, t.jellyTint, 'jf-run'],
+      ['Netherlands', 'Resting · retry 14:32', t.muted, t.sunk, '']
+    ];
+    return { t: t, kids: k.map(function (r, i) { return { name: r[0], status: r[1], color: r[2], tint: r[3], anim: r[4], sep: i ? t.line : 'transparent' }; }) };
+  }
+}
+</script>
+</body>
+</html>

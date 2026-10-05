@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agents — the school</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FAFAF7}
+button{font:inherit;cursor:pointer}
+@keyframes jfBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.jf-bob{animation:jfBob 4s ease-in-out infinite}
+.jf-bob2{animation:jfBob 5.2s ease-in-out infinite}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: #FAFAF7; color: #161616; font-family: 'Manrope', system-ui, sans-serif; font-size: 14px; line-height: 1.55">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 28px 56px 0">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3E7CB1" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.30)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+    <span style="font-weight: 600; letter-spacing: -0.02em; font-size: 17px">jelly-fish</span>
+    <span style="color: #C9C6BE">/</span>
+    <button type="button" style="min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: #3A3A37; font-weight: 500">Personal ▾</button>
+    <a href="Main.dc.html" style="margin-left: auto; color: #3A3A37; font-size: 13px; text-decoration: none; min-height: 36px; display: inline-flex; align-items: center">← Back to chat</a>
+  </header>
+  <nav aria-label="Project settings" style="display: flex; gap: 36px; padding: 32px 56px 0; border-bottom: 1px solid #E8E6E0; overflow-x: auto">
+    <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="6">
+      <a href="{{tb.href}}" style="display: inline-flex; align-items: baseline; gap: 8px; padding-bottom: 16px; border-bottom: 2px solid {{tb.line}}; color: {{tb.color}}; text-decoration: none; white-space: nowrap; font-size: 15px; font-weight: 500"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #77766F">{{tb.n}}</span>{{tb.label}}</a>
+    </sc-for>
+  </nav>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 40px; padding: 40px 56px 56px">
+    <section style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px">
+        <div style="flex: 1 1 300px">
+          <h1 style="margin: 0; font-size: 44px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.05">The school</h1>
+          <p style="margin: 6px 0 0; color: #6B6A65; max-width: 480px">Five agents swim in this project. Dotted lines show who can delegate to whom. Tap one to read its spec.</p>
+        </div>
+        <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent; background: #161616; color: #FFFFFF; font-weight: 600">New agent</button>
+      </div>
+      <div style="overflow-x: auto; border-radius: 28px; border: 1px solid #D6E7F4; background-color: #F3F8FC; background-image: radial-gradient(circle, rgba(62,124,177,.14) 1px, transparent 1.5px); background-size: 34px 34px">
+        <div style="position: relative; width: 760px; height: 600px; margin: 0 auto">
+          <svg width="760" height="600" viewBox="0 0 760 600" fill="none" style="position: absolute; inset: 0" aria-hidden="true">
+            <path d="M380 250 C 300 210, 230 170, 175 140" stroke="#9CC9E8" stroke-width="1.5" stroke-dasharray="3 6"/>
+            <path d="M380 250 C 470 200, 540 160, 610 120" stroke="#9CC9E8" stroke-width="1.5" stroke-dasharray="3 6"/>
+            <path d="M380 250 C 300 330, 230 400, 175 440" stroke="#9CC9E8" stroke-width="1.5" stroke-dasharray="3 6"/>
+            <path d="M380 250 C 460 330, 530 400, 595 450" stroke="#9CC9E8" stroke-width="1.5" stroke-dasharray="3 6"/>
+            <path d="M175 140 C 330 520, 450 500, 590 450" stroke="#C9D1DE" stroke-width="1.2" stroke-dasharray="3 6"/>
+            <path d="M610 120 C 640 250, 630 360, 600 440" stroke="#C9D1DE" stroke-width="1.2" stroke-dasharray="3 6"/>
+          </svg>
+          <sc-for list="{{nodes}}" as="n" hint-placeholder-count="5">
+            <button type="button" onClick="{{n.pick}}" aria-pressed="{{n.pressed}}" class="{{n.bob}}" style="position: absolute; left: {{n.x}}px; top: {{n.y}}px; width: {{n.w}}px; padding: 0; border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 8px; color: #161616">
+              <span style="width: {{n.size}}px; height: {{n.size}}px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #FFFFFF; border: {{n.ring}}; box-shadow: 0 10px 30px rgba(47,110,158,.10); color: {{n.color}}">
+                <svg width="{{n.glyph}}" height="{{n.glyph}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path fill="rgba(156,201,232,.32)" d="M4 12a8 8 0 0 1 16 0c-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0-1.3 1-2.7 1-4 0z"/><path d="M8 13.5c-1 2 1 3.5 0 6M12 13.5c-1 2.5 1 4 0 7M16 13.5c-1 2 1 3.5 0 6"/></svg>
+              </span>
+              <span style="font-weight: 600; font-size: 14px">{{n.name}}</span>
+              <span style="font-size: 11px; color: #6B6A65; margin-top: -6px">{{n.tag}}</span>
+            </button>
+          </sc-for>
+          <button type="button" style="position: absolute; left: 640px; top: 540px; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px dashed #9CC9E8; background: rgba(255,255,255,.7); color: #2F6E9E; font-weight: 600; font-size: 13px">+ Hatch one</button>
+        </div>
+      </div>
+    </section>
+
+    <aside style="flex: 1 1 400px; max-width: 520px; display: flex; flex-direction: column; gap: 22px; padding: 32px; border-radius: 24px; background: #FFFFFF; border: 1px solid #E8E6E0; box-sizing: border-box">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #77766F">No. {{a.no}}</span>
+        <span style="font-size: 12px; padding: 2px 10px; border-radius: 999px; background: #F4F3EF; color: #3A3A37">{{a.scope}}</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h2 style="margin: 0; font-size: 40px; font-weight: 600; letter-spacing: -0.035em; line-height: 1">{{a.name}}</h2>
+        <p style="margin: 0; color: #3A3A37; font-size: 15px">{{a.desc}}</p>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #E8E6E0; border-bottom: 1px solid #E8E6E0">
+        <sc-for list="{{a.budget}}" as="bg" hint-placeholder-count="4">
+          <div style="padding: 14px 0; display: flex; flex-direction: column"><span style="font-size: 22px; font-weight: 600; letter-spacing: -0.02em">{{bg.v}}</span><span style="font-size: 12px; color: #6B6A65">{{bg.l}}</span></div>
+        </sc-for>
+      </div>
+      <dl style="margin: 0; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px 16px; font-size: 14px">
+        <dt style="color: #6B6A65">Model</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 13px">{{a.model}}</dd>
+        <dt style="color: #6B6A65">Mode</dt><dd style="margin: 0"><span style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; background: #EEF5FB; color: #2F6E9E; font-weight: 500">{{a.mode}}</span></dd>
+        <dt style="color: #6B6A65">Tools</dt><dd style="margin: 0; display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{a.tools}}" as="x" hint-placeholder-count="3"><code style="font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #F4F3EF">{{x}}</code></sc-for></dd>
+        <dt style="color: #6B6A65">Skills</dt><dd style="margin: 0; display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{a.skills}}" as="x" hint-placeholder-count="2"><code style="font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #EEF1F7; color: #2F4F7F">{{x}}</code></sc-for></dd>
+        <dt style="color: #6B6A65">Delegates to</dt><dd style="margin: 0; color: #3A3A37">{{a.delegates}}</dd>
+        <dt style="color: #6B6A65">Result cap</dt><dd style="margin: 0; color: #3A3A37">2,000 tokens; longer becomes an artifact</dd>
+      </dl>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 8px">
+        <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent; background: #161616; color: #FFFFFF; font-weight: 600">Edit</button>
+        <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #D6E7F4; background: #EEF5FB; color: #2F6E9E; font-weight: 600">Start a session</button>
+        <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #DDDAD3; background: #FFFFFF; color: #161616; font-weight: 600">Duplicate</button>
+        <sc-if value="{{a.deletable}}" hint-placeholder-val="{{ true }}">
+          <button type="button" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #E5C7C0; background: transparent; color: #8E3326; font-weight: 600; margin-left: auto">Delete</button>
+        </sc-if>
+        <sc-if value="{{a.locked}}" hint-placeholder-val="{{ false }}">
+          <span style="margin-left: auto; align-self: center; font-size: 12px; color: #6B6A65">Default agent, can't be deleted</span>
+        </sc-if>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { sel: 1 }; }
+  renderVals() {
+    var self = this;
+    var A = [
+      { name: 'General', tag: 'default', x: 310, y: 170, size: 120, glyph: 70, scope: 'Everywhere', desc: 'Everyday chats. Hands work to the specialists when it helps.', model: 'Same as session', mode: 'Auto', tools: ['web_search', 'web_fetch', 'delegate'], skills: ['/summarize'], delegates: 'Researcher, Coder, Translator, Reviewer', budget: [['500k', 'tokens'], ['$2', 'dollars'], ['50', 'turns'], ['30m', 'wall clock']], locked: true },
+      { name: 'Researcher', tag: 'this project', x: 110, y: 70, size: 88, glyph: 52, scope: 'This project', desc: 'Splits a question into one sub-agent per source, then merges what comes back into a table.', model: 'claude-sonnet-5-5', mode: 'Auto', tools: ['web_search', 'notion', 'delegate'], skills: ['/cite', '/table'], delegates: 'Reviewer', budget: [['1M', 'tokens'], ['$5', 'dollars'], ['80', 'turns'], ['45m', 'wall clock']] },
+      { name: 'Coder', tag: 'sandbox', x: 545, y: 50, size: 88, glyph: 52, scope: 'Everywhere', desc: 'Works inside the sandbox: shell, files, git. Asks before touching anything outside.', model: 'claude-opus-5-5', mode: 'Ask', tools: ['shell', 'files', 'github'], skills: ['/tests'], delegates: 'Reviewer', budget: [['800k', 'tokens'], ['$4', 'dollars'], ['60', 'turns'], ['30m', 'wall clock']] },
+      { name: 'Translator', tag: 'everywhere', x: 120, y: 400, size: 72, glyph: 42, scope: 'Everywhere', desc: 'Translates uploads and keeps the tone. Never delegates.', model: 'gemini-[model]', mode: 'Full-auto', tools: ['files'], skills: ['/glossary'], delegates: 'Nobody', budget: [['200k', 'tokens'], ['$1', 'dollars'], ['20', 'turns'], ['15m', 'wall clock']] },
+      { name: 'Reviewer', tag: 'this project', x: 540, y: 410, size: 72, glyph: 42, scope: 'This project', desc: 'Reads another agent’s result and lists what is wrong or missing.', model: 'gpt-[model]', mode: 'Auto', tools: ['web_fetch'], skills: ['/checklist'], delegates: 'Nobody', budget: [['300k', 'tokens'], ['$1.5', 'dollars'], ['20', 'turns'], ['15m', 'wall clock']] }
+    ];
+    var sel = this.state.sel, a = A[sel];
+    var tabs = [['01', 'Agents', 'Agents.dc.html'], ['02', 'Skills', 'Skills.dc.html'], ['03', 'Connectors', 'Connectors.dc.html'], ['04', 'Permissions', 'Permissions.dc.html'], ['05', 'Memory', 'Memory.dc.html'], ['06', 'Usage', 'Usage.dc.html']];
+    return {
+      tabs: tabs.map(function (x, i) { return { n: x[0], label: x[1], href: x[2], line: i === 0 ? '#161616' : 'transparent', color: i === 0 ? '#161616' : '#6B6A65' }; }),
+      nodes: A.map(function (n, i) { return { name: n.name, tag: n.tag, x: n.x, y: n.y, size: n.size, glyph: n.glyph, w: n.size + 40, bob: i % 2 ? 'jf-bob2' : 'jf-bob', pressed: i === sel ? 'true' : 'false', ring: i === sel ? '2px solid #2F6E9E' : '1px solid #D6E7F4', color: i === sel ? '#2F6E9E' : '#3E7CB1', pick: function () { self.setState({ sel: i }); } }; }),
+      a: { no: '0' + (sel + 1), name: a.name, scope: a.scope, desc: a.desc, model: a.model, mode: a.mode, tools: a.tools, skills: a.skills, delegates: a.delegates, budget: a.budget.map(function (b) { return { v: b[0], l: b[1] }; }), locked: !!a.locked, deletable: !a.locked }
+    };
+  }
+}
+</script>
+</body>
+</html>
