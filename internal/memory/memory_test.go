@@ -280,6 +280,29 @@ func TestCreateOverPendingKeepsItPending(t *testing.T) {
 	}
 }
 
+func TestRenameOverPendingKeepsItPending(t *testing.T) {
+	e := newEnv(t)
+	e.sess.Tainted = true
+	hidden := ref(t, e.create("/memories/p.md", "from a web page")).MemoryID
+
+	e.sess.Tainted = false
+	id := ref(t, e.create("/memories/a.md", "mine")).MemoryID
+	res, _ := e.run(map[string]any{"command": "rename", "scope": "user", "path": "/memories/a.md", "new_path": "/memories/p.md"})
+	if res.IsError || text(res) != "renamed /memories/a.md to /memories/p.md" {
+		t.Fatalf("result = %+v, want a plain success", res)
+	}
+	var status, content string
+	if err := e.pool.QueryRow(t.Context(), `SELECT status, content FROM memories WHERE id = $1`, id).Scan(&status, &content); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending_review" || content != "mine" {
+		t.Fatalf("row = %q %q", status, content)
+	}
+	if n := count(t, e.pool, `SELECT count(*) FROM memories WHERE id = $1`, hidden); n != 0 {
+		t.Fatalf("hidden entry rows = %d, want 0", n)
+	}
+}
+
 func TestCapsRefuseAndWriteNothing(t *testing.T) {
 	tests := []struct {
 		name  string

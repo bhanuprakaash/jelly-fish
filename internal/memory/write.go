@@ -95,12 +95,19 @@ func (w write) commit(ctx context.Context, tx pgx.Tx) (tool.Result, []tool.Event
 		next.body = strings.Join(append(append(lines[:a.InsertLine:a.InsertLine], a.Content), lines[a.InsertLine:]...), "\n")
 	case cmdRename:
 		newPath, next.body = w.newPath, cur.body
-		_, taken, err := w.load(ctx, tx, newPath)
+		target, taken, err := w.load(ctx, tx, newPath)
 		if err != nil {
 			return tool.Result{}, nil, err
 		}
-		if taken {
+		switch {
+		case taken && target.status == statusActive:
 			return refuse(newPath + " already exists"), nil, nil
+		case taken:
+			// Like create: replaces the hidden entry and stays hidden.
+			if _, err := tx.Exec(ctx, `DELETE FROM memories WHERE id = $1`, target.id); err != nil {
+				return tool.Result{}, nil, fmt.Errorf("delete memory: %w", err)
+			}
+			status, tainted = statusPending, true
 		}
 	case cmdDelete:
 		return w.remove(ctx, tx, cur)

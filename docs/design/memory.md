@@ -102,7 +102,7 @@ One function-schema tool named `memory`, sent identically to every Provider. One
 
 **Commands**: `view`, `create`, `str_replace`, `insert`, `delete`, `rename`.
 
-**Fields**: `scope` (`user` | `project`), `path`, `title`, `kind` (`preference` | `fact` | `feedback` | `reference`), `content`.
+**Fields**: `scope` (`user` | `project`), `path`, `title`, `kind` (`preference` | `fact` | `feedback` | `reference`), `content`; `old_str` and `new_str` (`str_replace`), `insert_line` (`insert`), `new_path` (`rename`).
 
 **Tool instructions must say**: `user` = facts about the person, true everywhere; `project` = facts about this Project. The agent picks the scope.
 
@@ -163,7 +163,7 @@ Refresh only at session start and after a Compaction. Never rewrite the index mi
 4. Check caps; on overflow return the consolidate error.
 5. Compute taint: tainted if untrusted tool output arrived since the last user message. Untrusted = all tool output except the `memory` tool's own results and the user's own messages. That includes web tools, shell/files, and every Connector, local or remote.
 6. Write the row: `status = tainted ? 'pending_review' : 'active'`, `tainted`, `written_by='agent'`, `source_session_id` = this session. Append a revision, bump `version`. Same transaction.
-7. Emit `memory.written {memory_id, path, op, version}`. The stored tool-call events never hold memory text: write inputs keep `path` and `op` and replace `content` with `{memory_id, version}`; `view <path>` results are stored as `{memory_id, version}` too. The prompt projection resolves these refs from `memory_revisions`; a hard-deleted one renders `(this memory was deleted)`.
+7. Emit `memory.written {memory_id, path, op, version}`. The stored tool-call events never hold memory text. In stored write inputs, `title`, `content`, `old_str` and `new_str` become the placeholder `(memory text not stored)`; the real args stay in Worker memory until the call runs. A write result is stored as its `{memory_id, version}`, a `view <path>` result as the viewed `{memory_id, version}`, and a `view /memories` result as one ref per index line. The prompt projection resolves these refs from `memory_revisions`: a `create` gets its `title` and `content` back; `str_replace` and `insert` keep the placeholder, because a revision can't rebuild their args. A hard-deleted ref renders `(this memory was deleted)` and drops out of a `view /memories` result. A Worker that crashes after storing the request but before running the write has lost the args, so the call ends with an error result and nothing is written.
 8. Render a chip in chat (undoable; tainted writes show [Approve] [Edit] [Delete]).
 
 **Contradiction mid-chat**: when the agent notices one, it updates the memory itself through this path. Shown as an undoable chip.
@@ -306,6 +306,7 @@ All decided 2026-09-24.
 - **Hard delete while an old session references it**: that session's index drops the line on its next turn, and its earlier `view` results project as `(this memory was deleted)`.
 - **Any non-`memory` tool output then a write, no user message in between**: tainted → `pending_review`.
 - **`create` at a path held by a `pending_review` entry**: overwrites its content (new revision, version bump), stays `pending_review`/tainted; the agent gets a plain success.
+- **`rename` onto a path held by a `pending_review` entry**: the hidden entry is hard-deleted and the renamed memory becomes `pending_review`/tainted; the agent gets a plain success. `rename` onto an `active` path fails with `already exists`.
 
 ## 11. Acceptance criteria
 
