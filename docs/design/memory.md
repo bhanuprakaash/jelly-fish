@@ -94,7 +94,7 @@ Prefers trains over flights for trips under 8 hours.
 
 Undoing v2 writes v3 with v1's content.
 
-**Stale** is computed, not stored: `last_read_at` older than 90 days. No flag column.
+**Stale** is computed, not stored: `last_read_at` older than 90 days, or `created_at` if never read. No flag column.
 
 ## 4. Tool contract: `memory`
 
