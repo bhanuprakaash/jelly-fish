@@ -91,7 +91,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   // closedAt is the draft the slash menu was dismissed at; typing opens it again.
   const [closedAt, setClosedAt] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
-  const modelRef = useRef<HTMLSelectElement>(null)
+  const modelRef = useRef<HTMLButtonElement>(null)
   const transcriptRef = useRef<HTMLElement>(null)
   const transcriptBody = useRef<HTMLDivElement>(null)
   // following is whether the transcript is scrolled to its end, so new messages scroll into view.
@@ -206,7 +206,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       setSwitching(false)
     }
   }
-  const renderPicker = (ref?: Ref<HTMLSelectElement>) =>
+  const renderPicker = (ref?: Ref<HTMLButtonElement>) =>
     models && current && (
       <ModelPicker ref={ref} models={models} current={current} onPick={pick} disabled={switching || loading} />
     )
@@ -252,9 +252,8 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       void stop()
       return
     }
-    const select = modelRef.current
-    select?.focus()
-    if (select && !select.disabled && 'showPicker' in select) select.showPicker()
+    modelRef.current?.focus()
+    modelRef.current?.click()
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
