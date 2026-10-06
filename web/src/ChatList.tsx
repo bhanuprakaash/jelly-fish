@@ -21,7 +21,6 @@ const ring = 'focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--b
 function rowStatus(c: ChatSummary, badge: Badge | undefined, ready: boolean): JellyStatus {
   if (badge) return badgeStatus[badge]
   if (!ready) {
-    if (c.status === 'awaiting_children') return 'running'
     return c.status in statusLabel ? (c.status as JellyStatus) : 'awaiting_user'
   }
   return c.status === 'completed' ? 'completed' : 'awaiting_user'
