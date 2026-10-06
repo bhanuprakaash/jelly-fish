@@ -64,7 +64,7 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
           {canUndo && (
             <button
               onClick={undo}
-              className="h-[26px] shrink-0 cursor-pointer rounded-full bg-surface px-2.5 text-xs font-semibold text-ink focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)]"
+              className="h-[26px] shrink-0 cursor-pointer rounded-full bg-surface px-2.5 text-xs font-semibold text-ink focus-ring"
             >
               Undo
             </button>

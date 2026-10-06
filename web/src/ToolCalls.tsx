@@ -10,7 +10,7 @@ export function Thought({ text }: { text: string }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className={`inline-flex min-h-8 items-center gap-2 rounded-full border border-line bg-sunk px-3 text-sm text-muted ${ring}`}
+        className="inline-flex min-h-8 items-center gap-2 rounded-full border border-line bg-sunk px-3 text-sm text-muted focus-ring"
       >
         <svg
           width="14"
@@ -31,10 +31,6 @@ export function Thought({ text }: { text: string }) {
     </div>
   )
 }
-
-const ring = 'focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)]'
-const insetRing =
-  'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--bg),inset_0_0_0_4px_var(--accent-ink)]'
 
 const stateWords = {
   running: 'running',
@@ -139,7 +135,7 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className={`flex w-full items-start gap-3 px-4 py-3 text-left text-sm ${insetRing}`}
+        className="flex w-full items-start gap-3 px-4 py-3 text-left text-sm focus-ring-inset"
       >
         <span className={`mt-px flex size-5 shrink-0 items-center justify-center rounded-full ${stateCircles[call.state]}`}>
           <StateIcon state={call.state} />

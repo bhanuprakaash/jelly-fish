@@ -281,7 +281,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               e.preventDefault()
               navigate('/')
             }}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-btn text-ink focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] md:hidden"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-btn text-ink focus-ring md:hidden"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
               <path d="M15 5l-7 7 7 7" />
@@ -457,7 +457,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
                   type="button"
                   onClick={stop}
                   disabled={stopping}
-                  className="cursor-pointer rounded-sm font-semibold text-ink2 underline underline-offset-2 hover:text-ink focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] disabled:opacity-50"
+                  className="cursor-pointer rounded-sm font-semibold text-ink2 underline underline-offset-2 hover:text-ink focus-ring disabled:opacity-50"
                 >
                   Interrupt
                 </button>

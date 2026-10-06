@@ -12,8 +12,6 @@ const badgeStatus: Record<Badge, JellyStatus> = {
   sleeping: 'sleeping',
 }
 
-const ring = 'focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)]'
-
 // rowStatus is the live badge's status. The Activity Stream lists every
 // session that is not awaiting_user or completed, so once it is ready a chat
 // with no badge is done or waiting on the User. Until then the stored status
@@ -181,7 +179,7 @@ export function ChatList({ chats, error, badges, ready, email, activeId, onNewCh
                                   disabled={retryingId === c.id}
                                   onClick={() => retry(c.id)}
                                   aria-label={`Retry ${c.title}`}
-                                  className={`relative rounded-btn font-medium underline disabled:opacity-60 ${ring}`}
+                                  className="relative rounded-btn font-medium underline disabled:opacity-60 focus-ring"
                                 >
                                   Retry?
                                 </button>
@@ -224,7 +222,7 @@ export function ChatList({ chats, error, badges, ready, email, activeId, onNewCh
           <a
             href="/memories"
             aria-label="Memories"
-            className={`inline-flex rounded-btn p-2.5 text-muted hover:text-ink ${ring}`}
+            className="inline-flex rounded-btn p-2.5 text-muted hover:text-ink focus-ring"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M6 3h12v18l-6-4-6 4z" />
@@ -233,7 +231,7 @@ export function ChatList({ chats, error, badges, ready, email, activeId, onNewCh
           <a
             href="/settings"
             aria-label="Settings"
-            className={`inline-flex rounded-btn p-2.5 text-muted hover:text-ink ${ring}`}
+            className="inline-flex rounded-btn p-2.5 text-muted hover:text-ink focus-ring"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
               <circle cx="12" cy="12" r="3" />

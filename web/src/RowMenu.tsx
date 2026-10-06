@@ -47,7 +47,7 @@ export function RowMenu({ renaming, onRename }: MenuProps) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="rounded-btn px-2 py-1 text-muted hover:text-ink focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)]"
+        className="rounded-btn px-2 py-1 text-muted hover:text-ink focus-ring"
       >
         ⋯
       </button>
@@ -64,7 +64,7 @@ export function RowMenu({ renaming, onRename }: MenuProps) {
               setOpen(false)
               onRename()
             }}
-            className="w-full px-3 py-1.5 text-left text-sm hover:bg-sunk focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--bg),inset_0_0_0_4px_var(--accent-ink)]"
+            className="w-full px-3 py-1.5 text-left text-sm hover:bg-sunk focus-ring-inset"
           >
             Rename
           </button>
