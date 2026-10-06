@@ -15,6 +15,7 @@ function App() {
   const [signIn, setSignIn] = useState<SignIn>('checking')
   const [path, setPath] = useState(window.location.pathname)
   const [justCreated, setJustCreated] = useState(false)
+  const [email, setEmail] = useState('')
 
   const unauthorized = useCallback(() => setSignIn('signed-out'), [])
 
@@ -26,10 +27,18 @@ function App() {
 
   const checkMe = useCallback(() => {
     getMe().then(
-      () => setSignIn('signed-in'),
+      (me) => {
+        setEmail(me.email)
+        setSignIn('signed-in')
+      },
       (err) => setSignIn(err instanceof UnauthorizedError ? 'signed-out' : 'error'),
     )
   }, [])
+
+  const recheck = useCallback(() => {
+    setSignIn('checking')
+    checkMe()
+  }, [checkMe])
 
   useEffect(checkMe, [checkMe])
 
@@ -49,7 +58,7 @@ function App() {
         <LinkSignIn
           token={token}
           onSignedIn={() => {
-            setSignIn('signed-in')
+            recheck()
             setPath('/')
           }}
         />
@@ -63,13 +72,7 @@ function App() {
       <main className="flex min-h-svh items-center justify-center bg-bg px-4 text-ink">
         <div className="w-full max-w-sm space-y-4 rounded-panel border border-line bg-surface p-8 text-center">
           <p className="text-danger">Could not reach the server.</p>
-          <button
-            className="btn btn-secondary"
-            onClick={() => {
-              setSignIn('checking')
-              checkMe()
-            }}
-          >
+          <button className="btn btn-secondary" onClick={recheck}>
             Retry
           </button>
         </div>
@@ -77,7 +80,7 @@ function App() {
     )
   }
   if (signIn === 'signed-out') {
-    return <Login onSignedIn={() => setSignIn('signed-in')} />
+    return <Login onSignedIn={recheck} />
   }
 
   if (path === '/memories') return <Memories onUnauthorized={unauthorized} />
@@ -99,6 +102,7 @@ function App() {
     <Shell
       sessionId={sessionPath.exec(path)?.[1] ?? null}
       isNew={justCreated}
+      email={email}
       navigate={navigate}
       onNewChat={startChat}
       onUnauthorized={unauthorized}

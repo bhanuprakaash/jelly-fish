@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { Badge } from './lib/activity'
 import { JellyGlyph } from './JellyGlyph'
-import { getMe, renameSession, retrySession, UnauthorizedError, type ChatSummary } from './lib/api'
+import { renameSession, retrySession, UnauthorizedError, type ChatSummary } from './lib/api'
 import { statusLabel, statusTone, type JellyStatus } from './lib/status'
 import { RenameForm, RowMenu } from './RowMenu'
 
@@ -46,6 +46,8 @@ type Props = {
   badges: Record<string, Badge>
   // ready is true once the Activity Stream has sent its first snapshot.
   ready: boolean
+  // email is the signed-in User's, shown in the footer.
+  email: string
   activeId: string | null
   onNewChat: () => void
   onOpen: (id: string) => void
@@ -56,7 +58,7 @@ type Props = {
 }
 
 // ChatList is the User's chats, newest activity first, with "New chat" on top.
-export function ChatList({ chats, error, badges, ready, activeId, onNewChat, onOpen, onChanged, onUnauthorized }: Props) {
+export function ChatList({ chats, error, badges, ready, email, activeId, onNewChat, onOpen, onChanged, onUnauthorized }: Props) {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const [retryFailedId, setRetryFailedId] = useState<string | null>(null)
@@ -74,16 +76,6 @@ export function ChatList({ chats, error, badges, ready, activeId, onNewChat, onO
       setRetryingId(null)
     }
   }
-
-  const [email, setEmail] = useState<string | null>(null)
-  useEffect(() => {
-    getMe().then(
-      (me) => setEmail(me.email),
-      (err) => {
-        if (err instanceof UnauthorizedError) onUnauthorized()
-      },
-    )
-  }, [onUnauthorized])
 
   const rows = (chats ?? []).map((c) => ({ chat: c, status: rowStatus(c, badges[c.id], ready) }))
   const todayKey = new Date().toDateString()
