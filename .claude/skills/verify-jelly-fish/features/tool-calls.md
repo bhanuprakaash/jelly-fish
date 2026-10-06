@@ -10,7 +10,9 @@ The model can ask for tools. The Worker records every call, runs parallel-safe o
 
 ## Driving it in the browser
 
-`DATABASE_URL=… node scripts/tool-calls.mjs tool-calls` sends the `batch` message and a `/tool nosuch x` message in two new chats, and checks the chat: one `sleep · done` chip per sleep, a `slow_side_effect · done` chip, a red `nosuch · failed · unknown tool "nosuch"` chip, no empty bubble where the tool-only reply is, and the `tool.call.*` events in the DB.
+`DATABASE_URL=… node scripts/tool-calls.mjs tool-calls` sends the `batch` message and a `/tool nosuch x` message in two new chats, and checks the chat: a done row per call (two `sleep`, one `slow_side_effect`), each with a tinted state circle, an arg summary and a duration; a row expands to its args; a failed `nosuch` row with the danger note line `unknown tool "nosuch"`; no empty bubble where the tool-only reply is; and the `tool.call.*` events in the DB.
+
+Tool calls are rows in one card per turn: `main .rounded-card button[aria-expanded]`. A row holds the state circle, the mono name (`span.font-mono`), a screen-reader state word (`done`, `failed`, …), the muted arg summary (`span.truncate`), a note line (`span.line-clamp-2`: running time, error) and the duration. Clicking it shows the args and result as `pre`. The summary is one of the args' values; assert it is there, not its text.
 
 ## Driving it with curl
 

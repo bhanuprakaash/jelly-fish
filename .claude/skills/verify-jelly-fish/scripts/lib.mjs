@@ -90,7 +90,8 @@ function trackEventSources() {
 // 'desktop' (1280x800 Chrome) or 'pixel7' (Playwright's Pixel 7 emulation:
 // desktop Chromium with a phone viewport, UA, touch and isMobile).
 // Evidence lands in EVIDENCE_ROOT/<dir>/: <name>.webm, <name>-trace.zip, PNGs.
-// contextOptions are passed to browser.newContext (e.g. serviceWorkers: 'block').
+// Service workers are blocked: the PWA's worker would bypass page.route.
+// contextOptions are passed to browser.newContext.
 export async function open({ dir, name, device = 'desktop', signedIn = true, contextOptions = {} }) {
   const out = join(EVIDENCE_ROOT, dir)
   mkdirSync(out, { recursive: true })
@@ -103,6 +104,7 @@ export async function open({ dir, name, device = 'desktop', signedIn = true, con
     ...profile,
     storageState,
     recordVideo: { dir: videoDir, size: profile.viewport },
+    serviceWorkers: 'block',
     ...contextOptions,
   })
   await context.addInitScript(trackEventSources)

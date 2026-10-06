@@ -16,6 +16,7 @@ Always verify against the api running in the local k8s cluster (kubectl context 
 - The cluster api runs `JF_PUBLIC_URL=http://localhost:8080` and no `JF_DEV_INSECURE_COOKIE`, so the cookie is `__Host-jf_login` (`Secure`). curl still sends it to `localhost` over http.
 - The Admin is the `JF_ADMIN_EMAIL` from `deploy/k8s/.env.app`, bootstrapped by the migrate init container. Sign in as that email; to read which one it is, `SELECT email FROM users WHERE is_admin` through `jellyfish_db`.
 - Emails land in the cluster's Mailpit, read at `localhost:8025` (`curl -s localhost:8025/api/v1/messages`, newest first).
+- Drives read `JF_URL` (api, default `http://localhost:8080`), `JF_MAILPIT` (default `http://localhost:8025`) and `JF_EMAIL` (default the Admin from `.env.app`) to override these.
 
 ## Launch
 
@@ -32,7 +33,7 @@ Always verify against the api running in the local k8s cluster (kubectl context 
      && kubectl --context jelly-fish -n jelly-fish rollout status deploy/worker --timeout=120s
    ```
    The migrate init container runs with the api pod, so migrations and the Admin bootstrap are applied by the rollout.
-3. A rollout kills the pod behind an existing `:8080` forward. Kill that forward by its PID (`lsof -iTCP:8080 -sTCP:LISTEN`) and restart it in the background (command above). Confirm the new build answers with a curl only it passes, such as a new route's status.
+3. A rollout kills the pod behind an existing `:8080` forward, and a `:9090` health forward too. Kill each by its PID (`lsof -iTCP:8080 -sTCP:LISTEN`, same for `9090`) and restart it in the background (commands above and in step 4). Confirm the new build answers with a curl only it passes, such as a new route's status.
 4. Health ports are not forwarded by default. For `healthz`/`readyz`, forward `svc/api 9090:9090` in the background.
 
 Ready signal: `curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/me` returns `401` (the api answers and the gate is up).
@@ -75,7 +76,7 @@ Deploy, Doctor and curl drives are plain `docker`/`kubectl`/`curl` commands. Bro
 
 - `node signin.mjs` signs the Admin in once and prints `/api/me`. It reuses `$TMPDIR/jf-verify-auth.json` (Playwright `storageState`) while `/api/me` still accepts it. Login codes are capped at 3 per email per 15 min, so don't delete that file between drives.
 - `lib.mjs` exports the following:
-  - `open({dir, name, device: 'desktop'|'pixel7'})` returns a signed-in, video-recorded, traced page, with `shot(label)` and `close()`.
+  - `open({dir, name, device: 'desktop'|'pixel7'})` returns a signed-in, video-recorded, traced page, with `shot(label)` and `close()`. Service workers are blocked so `page.route` sees every request.
   - `streams(page)` returns every `EventSource` the page opened (url, readyState).
   - `setVisibility(page, 'hidden'|'visible')` fires `visibilitychange`.
   - `psql(sql)` runs a query.

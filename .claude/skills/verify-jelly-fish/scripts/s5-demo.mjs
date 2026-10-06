@@ -14,7 +14,7 @@ const { check, exit } = checker(`[${device}] `)
 const tap = (loc) => (phone ? loc.tap() : loc.click())
 const backToList = async (page) => {
   if (!phone) return
-  await tap(page.getByRole('link', { name: '← Chats' }))
+  await tap(page.getByRole('link', { name: 'Back to chats' }))
   await page.waitForURL(`${BASE}/`)
 }
 

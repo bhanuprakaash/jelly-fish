@@ -49,7 +49,7 @@ async function send(page, text) {
   check('GET /api/sessions newest first', ids[0] === secondId && ids[1] === firstId, `top=${ids.slice(0, 2)}`)
   const sorted = list.every((c, i) => i === 0 || list[i - 1].updated_at >= c.updated_at)
   check('GET /api/sessions ordered by updated_at desc', sorted)
-  check('row JSON keys', JSON.stringify(Object.keys(list[0])) === '["id","title","titled","status","updated_at"]', Object.keys(list[0]).join(','))
+  check('row JSON keys', JSON.stringify(Object.keys(list[0])) === '["id","title","titled","status","updated_at","incognito"]', Object.keys(list[0]).join(','))
   // Placeholder: an untitled chat shows its first user message, whitespace
   // collapsed, cut to 60 runes + "…".
   const untitled = list.find((c) => !c.titled && c.title.endsWith('…')) ?? list.find((c) => !c.titled)
@@ -84,7 +84,7 @@ async function send(page, text) {
   globalThis.chats = { firstId, secondId }
 }
 
-// Phone: list screen at /, tap a chat, back via "← Chats" and via browser back.
+// Phone: list screen at /, tap a chat, back via "Back to chats" and via browser back.
 {
   const { firstId } = globalThis.chats
   const r = await open({ dir, name: 'pixel7', device: 'pixel7' })
@@ -101,9 +101,9 @@ async function send(page, text) {
   check('phone: tap opens /s/{id}, list hidden', !(await nav(page).isVisible()))
   await r.shot('chat')
 
-  await page.getByRole('link', { name: '← Chats' }).tap()
+  await page.getByRole('link', { name: 'Back to chats' }).tap()
   await page.waitForURL(`${BASE}/`)
-  check('phone: ← Chats returns to the list', await nav(page).isVisible())
+  check('phone: Back to chats returns to the list', await nav(page).isVisible())
   await r.shot('back-link')
 
   await row1.tap()
