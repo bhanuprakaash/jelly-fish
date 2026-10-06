@@ -56,6 +56,7 @@ The app has four themes: `system`, `jellyfish-light`, `jellyfish-dark` and `clas
 | `danger` | `#8E3326` | `#E08A7C` | danger text, failed |
 | `danger-tint` | `#FBF0EC` | `rgba(224,138,124,.08)` | danger button hover |
 | `success` | `#4F6B47` | `#93B88A` | done |
+| `success-tint` | `#EEF3EC` | `rgba(147,184,138,.12)` | done chip, done tool icon |
 | `waiting` | `#2F4F7F` | `#A3B8DE` | waiting on children, files |
 
 Type: Manrope 400/500 body (14–15px), 600 titles with `-0.025em` to `-0.035em` tracking; JetBrains Mono 12–13px. Radii: buttons 10px, cards 16px, panels 24px, chips and avatars fully round. Cards use a hairline, no shadow.

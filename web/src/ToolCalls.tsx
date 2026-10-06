@@ -44,11 +44,11 @@ const stateWords = {
   unknown: 'outcome unknown',
 }
 
-const dangerTint = 'bg-[var(--danger-tint)] text-danger'
+const dangerTint = 'bg-danger-tint text-danger'
 
 const stateCircles = {
   running: 'bg-accent-tint text-accent-ink',
-  done: 'bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success',
+  done: 'bg-success-tint text-success',
   failed: dangerTint,
   stopped: dangerTint,
   unknown: 'bg-sunk text-muted',

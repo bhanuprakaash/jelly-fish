@@ -105,7 +105,7 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
     <div
       role={sleeping ? 'status' : 'alert'}
       className={`w-full rounded-[14px] border px-4 py-3 ${
-        sleeping ? 'border-line bg-sunk' : 'border-danger bg-[color-mix(in_srgb,var(--danger)_8%,transparent)]'
+        sleeping ? 'border-line bg-sunk' : 'border-danger bg-danger-tint'
       }`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

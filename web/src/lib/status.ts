@@ -37,6 +37,6 @@ export const statusChipTone: Record<JellyStatus, string> = {
   awaiting_approval: 'bg-attention-tint text-attention',
   sleeping: 'bg-sunk text-muted',
   awaiting_user: 'bg-sunk text-muted',
-  completed: 'bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-success',
-  failed: 'bg-[var(--danger-tint)] text-danger',
+  completed: 'bg-success-tint text-success',
+  failed: 'bg-danger-tint text-danger',
 }

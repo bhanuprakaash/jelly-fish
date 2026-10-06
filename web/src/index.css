@@ -25,8 +25,13 @@
   --color-attention: var(--attention);
   --color-attention-tint: var(--attention-tint);
   --color-attention-line: var(--attention-line);
+  --color-accent-tint2: var(--accent-tint2);
+  --color-ink-hover: var(--ink-hover);
+  --color-ink-press: var(--ink-press);
   --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
   --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
   --color-waiting: var(--waiting);
 }
 
@@ -54,6 +59,7 @@
   --ink-hover: #3a3a37;
   --ink-press: #000000;
   --success: #4f6b47;
+  --success-tint: #eef3ec;
   --waiting: #2f4f7f;
 }
 
@@ -80,6 +86,7 @@
   --ink-hover: #ffffff;
   --ink-press: #dad9d3;
   --success: #93b88a;
+  --success-tint: rgb(147 184 138 / 0.12);
   --waiting: #a3b8de;
 }
 
@@ -106,6 +113,7 @@
   --ink-hover: #ffffff;
   --ink-press: #d4d4d4;
   --success: #4ade80;
+  --success-tint: rgb(74 222 128 / 0.12);
   --waiting: #a5b4fc;
 }
 
