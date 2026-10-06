@@ -12,7 +12,7 @@ type Props = {
   onUnauthorized: () => void
 }
 
-function errorText(code: string, requestId: string, failed: boolean): string {
+function errorText(code: string, failed: boolean): string {
   if (failed) {
     return code === 'provider_down' || code === 'rate_limited'
       ? 'The provider kept failing. Try again.'
@@ -28,7 +28,7 @@ function errorText(code: string, requestId: string, failed: boolean): string {
     case 'too_large':
       return 'File too large'
     default:
-      return `Internal error (ID ${requestId})`
+      return 'Internal error'
   }
 }
 
@@ -76,7 +76,7 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
       </>
     )
   } else {
-    text = errorText(notice.code, notice.requestId, notice.failed)
+    text = errorText(notice.code, notice.failed)
     actions = (
       <>
         {notice.code === 'key_invalid' && !notice.failed && (
@@ -100,10 +100,11 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
   }
 
   const sleeping = notice.kind === 'sleeping'
+  const requestId = notice.kind === 'error' ? notice.requestId : ''
   return (
     <div
-      role="alert"
-      className={`mr-auto w-full max-w-md rounded-card border px-4 py-3 ${
+      role={sleeping ? 'status' : 'alert'}
+      className={`w-full rounded-[14px] border px-4 py-3 ${
         sleeping ? 'border-line bg-sunk' : 'border-danger bg-[color-mix(in_srgb,var(--danger)_8%,transparent)]'
       }`}
     >
@@ -127,6 +128,7 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
         <p className={`min-w-0 flex-1 basis-40 text-sm ${sleeping ? 'text-ink2' : 'font-semibold text-danger'}`}>{text}</p>
         <div className="flex flex-wrap gap-2">{actions}</div>
       </div>
+      {requestId && <p className="mt-2 text-right font-mono text-xs text-muted">ID {requestId}</p>}
       {picking && notice.kind === 'error' && <div className="mt-2">{picker}</div>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
