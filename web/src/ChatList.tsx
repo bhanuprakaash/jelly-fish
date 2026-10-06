@@ -220,7 +220,7 @@ export function ChatList({ chats, error, badges, ready, email, activeId, onNewCh
           <a
             href="/memories"
             aria-label="Memories"
-            className="inline-flex rounded-btn p-2.5 text-muted hover:text-ink focus-ring"
+            className="inline-flex size-10 items-center justify-center rounded-full text-muted hover:text-ink focus-ring"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M6 3h12v18l-6-4-6 4z" />
@@ -229,7 +229,7 @@ export function ChatList({ chats, error, badges, ready, email, activeId, onNewCh
           <a
             href="/settings"
             aria-label="Settings"
-            className="inline-flex rounded-btn p-2.5 text-muted hover:text-ink focus-ring"
+            className="inline-flex size-10 items-center justify-center rounded-full text-muted hover:text-ink focus-ring"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
               <circle cx="12" cy="12" r="3" />

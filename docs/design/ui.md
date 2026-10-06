@@ -117,6 +117,7 @@ The slash menu opens inside the composer and pushes the transcript up; it never 
 - Buttons have no loading state.
 - The mobile primary button is not 52px high.
 - The round icon button (RowMenu ⋯) is not 40px.
+- The phone back button in the chat header is 44px, not 40px: a deliberate exception for the tap target.
 - The §3 type scale is partly applied (page titles).
 - In `jellyfish-dark`, the Pending review chip text has 4.2:1 contrast. The target is 4.5:1.
 - In `jellyfish-dark`, attention text on tints is about 4.1:1.
