@@ -4,7 +4,8 @@ import { badgeFor, needsListRefetch, type ActivityEntry, type Badge } from './ac
 import { useActivityStream } from './useActivityStream'
 
 // useChatList loads the Chat List on mount and again on every refetch, and
-// returns each chat's live badge from the Activity Stream. chats stays null
+// returns each chat's live badge from the Activity Stream, and whether the
+// stream has sent its first snapshot. chats stays null
 // until the first load succeeds; a failed reload keeps the old list.
 export function useChatList(onUnauthorized: () => void) {
   const [chats, setChats] = useState<ChatSummary[] | null>(null)
@@ -61,7 +62,7 @@ export function useChatList(onUnauthorized: () => void) {
     },
     [refetch],
   )
-  const activity = useActivityStream(onFrame)
+  const { activity, ready } = useActivityStream(onFrame)
 
   const badges = useMemo(() => {
     const out: Record<string, Badge> = {}
@@ -72,5 +73,5 @@ export function useChatList(onUnauthorized: () => void) {
     return out
   }, [chats, activity])
 
-  return { chats, error, refetch, badges }
+  return { chats, error, refetch, badges, ready }
 }

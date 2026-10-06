@@ -6,9 +6,14 @@ import { onVisibilityChange } from './visibility'
 // Activity Stream. It closes on tab hide and reopens on show, which starts
 // from a fresh snapshot (docs/design/streaming.md §5.4). onFrame gets the
 // entries of each snapshot and status frame, so the owner can decide to
-// refetch the Chat List. A refused stream (429, 401) stays closed.
-export function useActivityStream(onFrame: (entries: ActivityEntry[]) => void): ActivityMap {
+// refetch the Chat List. A refused stream (429, 401) stays closed. ready is
+// false until the first snapshot: before it, activity is empty, not "idle".
+export function useActivityStream(onFrame: (entries: ActivityEntry[]) => void): {
+  activity: ActivityMap
+  ready: boolean
+} {
   const [activity, setActivity] = useState<ActivityMap>({})
+  const [ready, setReady] = useState(false)
   const onFrameRef = useRef(onFrame)
   useEffect(() => {
     onFrameRef.current = onFrame
@@ -22,6 +27,7 @@ export function useActivityStream(onFrame: (entries: ActivityEntry[]) => void): 
       es.addEventListener('snapshot', (e) => {
         const entries = JSON.parse((e as MessageEvent<string>).data) as ActivityEntry[]
         setActivity(applySnapshot(entries))
+        setReady(true)
         onFrameRef.current(entries)
       })
       es.addEventListener('status', (e) => {
@@ -45,5 +51,5 @@ export function useActivityStream(onFrame: (entries: ActivityEntry[]) => void): 
     }
   }, [])
 
-  return activity
+  return { activity, ready }
 }
