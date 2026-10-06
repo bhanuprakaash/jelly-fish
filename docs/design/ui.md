@@ -41,16 +41,20 @@ The app has four themes: `system`, `jellyfish-light`, `jellyfish-dark` and `clas
 | `line` | `#E8E6E0` | `#272A2F` | hairlines, card borders |
 | `line2` | `#DDDAD3` | `#363A40` | secondary button border |
 | `ink` | `#161616` | `#F1F0EB` | text, primary button |
+| `ink-hover` | `#3A3A37` | `#FFFFFF` | primary button hover |
+| `ink-press` | `#000000` | `#DAD9D3` | primary button pressed |
 | `ink2` | `#3A3A37` | `#CFCEC8` | secondary text |
 | `muted` | `#6B6A65` | `#9B9A94` | captions, meta |
 | `accent` | `#9CC9E8` | `#9CC9E8` | rings, bars, focus |
 | `accent-ink` | `#2F6E9E` | `#A9D2EE` | running text, links |
 | `accent-tint` | `#EEF5FB` | `rgba(156,201,232,.10)` | user bubble, selected row |
+| `accent-tint2` | `#E3EFF8` | `rgba(156,201,232,.16)` | jelly button hover |
 | `accent-line` | `#D6E7F4` | `rgba(156,201,232,.28)` | composer, accent borders |
 | `attention` | `#C8352A` | `#E0503F` | approval fill |
 | `attention-tint` | `#FFF7F4` | `rgba(224,80,63,.08)` | approval card |
 | `attention-line` | `#EBC2BB` | `rgba(224,80,63,.38)` | approval border |
 | `danger` | `#8E3326` | `#E08A7C` | danger text, failed |
+| `danger-tint` | `#FBF0EC` | `rgba(224,138,124,.08)` | danger button hover |
 | `success` | `#4F6B47` | `#93B88A` | done |
 | `waiting` | `#2F4F7F` | `#A3B8DE` | waiting on children, files |
 
@@ -65,7 +69,7 @@ Six variants, each with default, hover, pressed, focus, disabled and loading sta
 | Primary | `ink` fill, inverted text | the one main action per card: Send, Save, Keep |
 | Secondary | `surface`, `line2` border | alternatives: Open, For this project, Retry now |
 | Ghost | text only, `sunk` on hover | Not now, Collapse, Approve all |
-| Jelly | `accent-tint` fill, `accent-ink` text | live things: Open swarm, Start a session |
+| Jelly | `accent-tint` fill, `accent-line` border, `accent-ink` text | live things: Open swarm, Start a session |
 | Attention | `attention` fill, `bg` text | only Approve and Allow more |
 | Danger | transparent, `danger` text and border | Stop, Deny, Delete |
 
@@ -132,3 +136,5 @@ The boards show these elements. They are not built, because the app has no data 
 - Slash commands: /background, /remote, /agent, /mode, /compact, /cost.
 - Transcript: thinking duration, memory read counts, web-page taint.
 - Memory: Tidy suggestions.
+- Chat list: session Delete (no `DELETE /api/sessions/{id}`).
+- Memory list: `written_by` (stored, not in the list API), per-scope cap count "12 of 200" (`maxPerScope` is not exposed).
