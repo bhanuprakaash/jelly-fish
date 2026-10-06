@@ -116,6 +116,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
         setStarted(true)
         onCreated()
       }
+      following.current = true
       setDraft('')
     } catch (err) {
       if (err instanceof UnauthorizedError) {
@@ -179,6 +180,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       if (following.current) el.scrollTop = el.scrollHeight
     })
     observer.observe(body)
+    observer.observe(el)
     return () => observer.disconnect()
   }, [])
   const loading = !isNew && !connected && !failed
