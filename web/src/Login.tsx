@@ -41,7 +41,7 @@ export function Login({ onSignedIn }: Props) {
         onSubmit={submit}
         className="w-full max-w-sm rounded-panel border border-line bg-surface p-8 sm:max-w-md"
       >
-        <h1 className="text-center text-2xl font-semibold sm:text-3xl">Jelly-fish</h1>
+        <h1 className="text-center text-2xl font-semibold sm:text-3xl">jelly-fish</h1>
         {codeSent ? (
           <>
             <p className="mt-6 text-center text-ink2">

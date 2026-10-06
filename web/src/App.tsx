@@ -24,12 +24,14 @@ function App() {
     setSignIn('signed-out')
   }, [])
 
-  useEffect(() => {
+  const checkMe = useCallback(() => {
     getMe().then(
       () => setSignIn('signed-in'),
       (err) => setSignIn(err instanceof UnauthorizedError ? 'signed-out' : 'error'),
     )
   }, [])
+
+  useEffect(checkMe, [checkMe])
 
   useEffect(() => {
     const onPopState = () => {
@@ -58,8 +60,19 @@ function App() {
   if (signIn === 'checking') return null
   if (signIn === 'error') {
     return (
-      <main className="flex min-h-svh items-center justify-center bg-bg text-danger">
-        Could not reach the server.
+      <main className="flex min-h-svh items-center justify-center bg-bg px-4 text-ink">
+        <div className="w-full max-w-sm space-y-4 rounded-panel border border-line bg-surface p-8 text-center">
+          <p className="text-danger">Could not reach the server.</p>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              setSignIn('checking')
+              checkMe()
+            }}
+          >
+            Retry
+          </button>
+        </div>
       </main>
     )
   }
