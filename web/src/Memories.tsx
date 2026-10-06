@@ -70,7 +70,7 @@ export function Memories({ onUnauthorized }: Props) {
                   data.project.use_user_memory ? 'justify-end bg-accent-ink' : 'justify-start bg-sunk ring-1 ring-ink2/60 ring-inset'
                 }`}
               >
-                <span className="size-5 rounded-full bg-surface" />
+                <span className={`size-5 rounded-full ${data.project.use_user_memory ? 'bg-surface' : 'bg-muted'}`} />
               </span>
             </button>
           )}
@@ -149,7 +149,7 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
   return (
     <li
       className={`space-y-2 rounded-card border bg-surface px-4 py-4 ${
-        memory.status === 'pending_review' ? 'border-attention-line' : memory.stale ? 'border-dashed border-line2' : 'border-line'
+        memory.status === 'pending_review' ? 'border-attention-line' : memory.stale ? 'border-line opacity-72' : 'border-line'
       }`}
     >
       <div className="flex items-center gap-2">
@@ -165,10 +165,10 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
           )}
         </div>
       </div>
-      <h3 className="font-semibold">{memory.title}</h3>
-      <p className="text-sm whitespace-pre-wrap text-ink2">{memory.content}</p>
+      <h3 className="text-[15px] font-semibold">{memory.title}</h3>
+      <p className="text-[13px] whitespace-pre-wrap text-ink2">{memory.content}</p>
       <p className="text-xs text-muted">
-        {memory.path} · updated {new Date(memory.updated_at).toLocaleString()}
+        updated <time title={new Date(memory.updated_at).toLocaleString()}>{ago(memory.updated_at)}</time>
         {history && ` · last by ${writers[history[history.length - 1].written_by]}`}
         {memory.source_session_id && (
           <>
@@ -195,6 +195,24 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
       {history && <History revisions={history} />}
     </li>
   )
+}
+
+const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+const units: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 31536000],
+  ['month', 2592000],
+  ['day', 86400],
+  ['hour', 3600],
+  ['minute', 60],
+]
+
+// ago is a timestamp as "2 days ago".
+function ago(iso: string): string {
+  const seconds = (new Date(iso).getTime() - Date.now()) / 1000
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return relative.format(Math.round(seconds / size), unit)
+  }
+  return 'just now'
 }
 
 const writers = { agent: 'Assistant', user: 'You', tidy: 'Tidy' }
