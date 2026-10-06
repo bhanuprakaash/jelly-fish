@@ -87,7 +87,7 @@ export function Settings({ onSignedOut }: Props) {
         <Appearance />
 
         <section className="space-y-3 border-t border-line pt-6">
-          <h2 className={sectionHeading}>Devices</h2>
+          <h2 className="section-heading">Devices</h2>
           {devices?.map((d) => (
             <div key={d.id} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4">
               <div className="min-w-0 flex-1">
@@ -132,8 +132,6 @@ export function Settings({ onSignedOut }: Props) {
   )
 }
 
-const sectionHeading = 'text-[13px] font-medium tracking-[0.14em] text-muted uppercase'
-
 const themeLabels: Record<Theme, string> = {
   system: 'System',
   'jellyfish-light': 'Jellyfish light',
@@ -145,24 +143,38 @@ const themeLabels: Record<Theme, string> = {
 function Appearance() {
   const [theme, setChoice] = useState(getTheme)
 
+  const choose = (t: Theme) => {
+    setTheme(t)
+    setChoice(t)
+  }
+
+  const arrow = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+    if (!step) return
+    e.preventDefault()
+    const next = themes[(themes.indexOf(theme) + step + themes.length) % themes.length]
+    choose(next)
+    e.currentTarget.querySelectorAll<HTMLElement>('[role=radio]')[themes.indexOf(next)].focus()
+  }
+
   return (
     <section className="space-y-3 border-t border-line pt-6">
-      <h2 className={sectionHeading}>Appearance</h2>
+      <h2 className="section-heading">Appearance</h2>
       <div
-        role="group"
+        role="radiogroup"
         aria-label="Theme"
-        className="inline-flex max-w-full overflow-x-auto rounded-btn border border-line2 bg-sunk p-0.5"
+        onKeyDown={arrow}
+        className="inline-flex max-w-full overflow-x-auto rounded-xl border border-line bg-sunk p-0.5"
       >
         {themes.map((t) => (
           <button
             key={t}
-            aria-pressed={theme === t}
-            onClick={() => {
-              setTheme(t)
-              setChoice(t)
-            }}
-            className={`h-9 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] font-medium whitespace-nowrap focus-visible:shadow-[inset_0_0_0_2px_var(--bg),inset_0_0_0_4px_var(--accent-ink)] focus-visible:outline-none sm:px-4 sm:text-sm ${
-              theme === t ? 'bg-surface text-ink shadow-[0_0_0_1px_var(--line2)]' : 'text-muted hover:text-ink'
+            role="radio"
+            aria-checked={theme === t}
+            tabIndex={theme === t ? 0 : -1}
+            onClick={() => choose(t)}
+            className={`h-9 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] whitespace-nowrap focus-visible:shadow-[inset_0_0_0_2px_var(--bg),inset_0_0_0_4px_var(--accent-ink)] focus-visible:outline-none sm:px-4 sm:text-sm ${
+              theme === t ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgb(0_0_0/0.12)]' : 'font-medium text-muted hover:text-ink'
             }`}
           >
             {themeLabels[t]}
@@ -235,7 +247,7 @@ function ProviderKeys({ onSignedOut }: Props) {
 
   return (
     <section className="space-y-3 border-t border-line pt-6">
-      <h2 className={sectionHeading}>Provider Keys</h2>
+      <h2 className="section-heading">Provider Keys</h2>
       <div className="space-y-3 rounded-card border border-line bg-surface p-4">
         <div className="flex items-center gap-3">
           <p className="min-w-0 flex-1">
@@ -292,7 +304,7 @@ function ProviderKeys({ onSignedOut }: Props) {
         {error && <p className="text-sm text-danger">{error}</p>}
       </div>
       {comingSoon.map((name) => (
-        <div key={name} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 opacity-50">
+        <div key={name} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 text-muted">
           <p className="min-w-0 flex-1">{name}</p>
           <span className="text-sm text-muted">Coming soon</span>
         </div>

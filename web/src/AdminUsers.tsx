@@ -86,7 +86,7 @@ export function AdminUsers({ onSignedOut }: Props) {
         </a>
       </header>
       <main className="mx-auto max-w-md space-y-6 px-4 py-6">
-        <h1 className="text-2xl font-semibold">Users</h1>
+        <h1 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Users</h1>
         {error && <p className="text-sm text-danger">{error}</p>}
 
         <form onSubmit={invite} className="flex gap-2">
@@ -105,7 +105,7 @@ export function AdminUsers({ onSignedOut }: Props) {
 
         {data && data.invites.length > 0 && (
           <section className="space-y-3">
-            <h2 className="text-lg font-medium">Invites</h2>
+            <h2 className="section-heading">Invites</h2>
             {data.invites.map((inv) => (
               <div key={inv.id} className="rounded-card border border-line bg-surface p-4">
                 <p className="truncate">{inv.email}</p>
@@ -133,7 +133,7 @@ export function AdminUsers({ onSignedOut }: Props) {
         )}
 
         <section className="space-y-3">
-          <h2 className="text-lg font-medium">Users</h2>
+          <h2 className="section-heading">Users</h2>
           {data?.users.map((u) => (
             <div key={u.id} className="rounded-card border border-line bg-surface p-4">
               <p className="truncate">
