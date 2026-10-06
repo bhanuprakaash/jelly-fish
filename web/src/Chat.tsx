@@ -17,7 +17,7 @@ import { JellyGlyph } from './JellyGlyph'
 import { sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
 import { renamedTitle } from './lib/sessionTitle'
-import { statusLabel, type JellyStatus } from './lib/status'
+import { statusChipTone, statusLabel, type JellyStatus } from './lib/status'
 import { thinkingText, toolChips, type ToolChip } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { MemoryChip } from './MemoryChip'
@@ -92,6 +92,11 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   const [closedAt, setClosedAt] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
   const modelRef = useRef<HTMLSelectElement>(null)
+  const transcriptRef = useRef<HTMLElement>(null)
+  const transcriptBody = useRef<HTMLDivElement>(null)
+  // following is whether the transcript is scrolled to its end, so new messages scroll into view.
+  const following = useRef(true)
+  const lastTop = useRef(0)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -165,6 +170,17 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       transcript.push({ turn: chip.turn, calls })
     }
   }
+  // Growth with no scroll event (late layout, streamed text) must not end following.
+  useEffect(() => {
+    const el = transcriptRef.current
+    const body = transcriptBody.current
+    if (!el || !body) return
+    const observer = new ResizeObserver(() => {
+      if (following.current) el.scrollTop = el.scrollHeight
+    })
+    observer.observe(body)
+    return () => observer.disconnect()
+  }, [])
   const loading = !isNew && !connected && !failed
   const notice = sessionNotice(events)
   const current = hasSession ? sessionModel(events) : (picked ?? models?.default)
@@ -253,35 +269,38 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   }
 
   return (
-    <div className="flex min-h-svh flex-1 flex-col">
-      <header className="flex flex-col gap-1 border-b border-line px-4 py-3">
-        <div className="flex items-center gap-2">
+    <div className="flex h-svh flex-col">
+      <header className="flex flex-col gap-2.5 border-b border-line bg-surface px-3 py-2 md:px-10 md:py-5">
+        <div className="flex items-center gap-1 md:gap-2.5">
           <a
             href="/"
+            aria-label="Back to chats"
             onClick={(e) => {
               e.preventDefault()
               navigate('/')
             }}
-            className="text-sm text-muted hover:text-ink md:hidden"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-btn text-ink focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] md:hidden"
           >
-            ← Chats
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
           </a>
-          <h1 className="min-w-0 flex-1 truncate font-medium">{renamed ?? listTitle ?? 'New chat'}</h1>
-          {hasSession && status && (
-            <span
-              className={`inline-flex items-center gap-2 rounded-full bg-sunk py-0.5 pr-3 pl-1 text-sm ${
-                status === 'failed' ? 'text-danger' : 'text-ink2'
-              }`}
-            >
-              <JellyGlyph status={status} size={12} />
-              {statusLabel[status]}
-            </span>
-          )}
+          <div className="flex min-w-0 flex-1 flex-col items-start md:flex-row md:items-center md:gap-3">
+            <h1 className="max-w-full truncate font-medium md:flex-1">{renamed ?? listTitle ?? 'New chat'}</h1>
+            {hasSession && status && (
+              <span
+                className={`inline-flex shrink-0 items-center gap-2 rounded-full py-0.5 pr-3 pl-1 text-xs md:text-sm ${statusChipTone[status]}`}
+              >
+                <JellyGlyph status={status} size={12} />
+                {statusLabel[status]}
+              </span>
+            )}
+          </div>
           {isIncognito && (
-            <span className="rounded-full bg-sunk px-2 py-0.5 text-xs text-ink2">Incognito</span>
+            <span className="shrink-0 rounded-full bg-sunk px-2 py-0.5 text-xs text-ink2">Incognito</span>
           )}
           {canStop && (
-            <button type="button" onClick={stop} disabled={stopping} className="btn btn-danger btn-sm">
+            <button type="button" onClick={stop} disabled={stopping} className="btn btn-danger btn-sm shrink-0">
               Stop
             </button>
           )}
@@ -295,55 +314,68 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
         )}
       </header>
 
-      <main className="flex-1 space-y-3 overflow-y-auto px-4 py-6">
-        {loading && <p className="text-center text-muted">Loading…</p>}
-        {failed && (
-          <p className="text-center text-danger">Could not open this chat.</p>
-        )}
-        {!loading && !failed && bubbles.length === 0 && (
-          <p className="text-center text-muted">Say something to start the chat.</p>
-        )}
-        {transcript.map((item) => {
-          if ('calls' in item) return <ToolCalls key={item.turn} calls={item.calls} />
-          const e = item
-          const chip = chips.get(e.seq)
-          if (chip?.memory) {
+      <main
+        ref={transcriptRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) following.current = true
+          else if (el.scrollTop < lastTop.current) following.current = false
+          lastTop.current = el.scrollTop
+        }}
+        className="relative min-h-0 flex-1 overflow-y-auto"
+      >
+        <div ref={transcriptBody} className="mx-auto flex w-full max-w-[780px] flex-col gap-6 px-4 py-6 md:px-10">
+          {loading && <p className="text-center text-muted">Loading…</p>}
+          {failed && (
+            <p className="text-center text-danger">Could not open this chat.</p>
+          )}
+          {!loading && !failed && bubbles.length === 0 && (
+            <p className="text-center text-muted">Say something to start the chat.</p>
+          )}
+          {transcript.map((item) => {
+            if ('calls' in item) return <ToolCalls key={item.turn} calls={item.calls} />
+            const e = item
+            const chip = chips.get(e.seq)
+            if (chip?.memory) {
+              return (
+                <MemoryChip
+                  key={e.seq}
+                  chip={{ ...chip, memory: chip.memory }}
+                  memories={memories}
+                  onChanged={loadMemories}
+                  onUnauthorized={onUnauthorized}
+                />
+              )
+            }
+            const text = bubbleText(e.payload)
+            const thought = e.type === 'llm.response' ? thinkingText(e.payload) : ''
             return (
-              <MemoryChip
-                key={e.seq}
-                chip={{ ...chip, memory: chip.memory }}
-                memories={memories}
-                onChanged={loadMemories}
-                onUnauthorized={onUnauthorized}
-              />
+              <Fragment key={e.seq}>
+                {thought && <Thought text={thought} />}
+                {text && (
+                  <div
+                    className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${
+                      e.type === 'user.message'
+                        ? 'ml-auto max-w-[82%] rounded-[20px_20px_6px_20px] border border-accent-line bg-accent-tint px-4 py-3'
+                        : 'mr-auto'
+                    }`}
+                  >
+                    {text}
+                  </div>
+                )}
+              </Fragment>
             )
-          }
-          const text = bubbleText(e.payload)
-          const thought = e.type === 'llm.response' ? thinkingText(e.payload) : ''
-          return (
-            <Fragment key={e.seq}>
-              {thought && <Thought text={thought} />}
-              {text && (
-                <div
-                  className={`max-w-md whitespace-pre-wrap ${
-                    e.type === 'user.message' ? 'ml-auto rounded-card bg-accent-tint px-4 py-2' : 'mr-auto'
-                  }`}
-                >
-                  {text}
-                </div>
-              )}
-            </Fragment>
-          )
-        })}
-        {Object.entries(partials).map(([turnId, text]) => (
-          <div key={turnId} className="mr-auto max-w-md whitespace-pre-wrap">
-            {text}
-          </div>
-        ))}
-        {notice && <SessionNotice sessionId={sessionId} notice={notice} picker={picker} onUnauthorized={onUnauthorized} />}
+          })}
+          {Object.entries(partials).map(([turnId, text]) => (
+            <div key={turnId} className="mr-auto whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {text}
+            </div>
+          ))}
+          {notice && <SessionNotice sessionId={sessionId} notice={notice} picker={picker} onUnauthorized={onUnauthorized} />}
+        </div>
       </main>
 
-      <form onSubmit={send} className="border-t border-line p-4">
+      <form onSubmit={send} className="mx-auto w-full max-w-[780px] shrink-0 p-4 md:px-10 md:pb-6">
         {error && <p className="mb-2 text-sm text-danger">{error}</p>}
         {!hasSession && (
           <label className="mb-2 flex items-center gap-2 text-sm text-muted">
@@ -404,13 +436,33 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             <button
               type="submit"
               disabled={sending || loading || !draft.trim()}
-              className="btn btn-primary"
+              aria-label="Send"
+              className="btn btn-primary size-10 shrink-0 rounded-full p-0"
             >
-              Send
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M12 19V5M6 11l6-6 6 6" />
+              </svg>
             </button>
           </div>
         </div>
-        {steering && <p className="px-2 pt-2 text-xs text-muted">Running · your message steers it</p>}
+        {steering && (
+          <p className="px-2 pt-2 text-xs text-muted">
+            Running · a message now steers at the next tool result.
+            {canStop && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={stop}
+                  disabled={stopping}
+                  className="cursor-pointer rounded-sm font-semibold text-ink2 underline underline-offset-2 hover:text-ink focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] disabled:opacity-50"
+                >
+                  Interrupt
+                </button>
+              </>
+            )}
+          </p>
+        )}
       </form>
     </div>
   )
