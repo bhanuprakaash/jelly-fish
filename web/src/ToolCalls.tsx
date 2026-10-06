@@ -54,12 +54,17 @@ const stateCircles = {
   unknown: 'bg-sunk text-muted',
 }
 
-// argSummary is the first argument's value on one line, for the row's muted text.
+const summaryKeys = ['command', 'path', 'query', 'url', 'input']
+
+// argSummary is the call's main argument on one line, for the row's muted
+// text. The args come from jsonb, whose key order is not the call's, so the
+// value is picked by key name.
 function argSummary(args: unknown): string {
   if (typeof args !== 'object' || args === null) return ''
-  const first = Object.values(args)[0]
-  if (first === undefined) return ''
-  return typeof first === 'string' ? first : JSON.stringify(first)
+  const values = args as Record<string, unknown>
+  const key = summaryKeys.find((k) => typeof values[k] === 'string')
+  const summary = key ? values[key] : Object.values(values).find((v) => typeof v === 'string')
+  return typeof summary === 'string' ? summary : ''
 }
 
 // useElapsedSeconds ticks every second while active.
