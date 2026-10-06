@@ -47,7 +47,7 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
     (current?.status === 'active' && current.version === version) || (op === 'delete' && memories && !current)
 
   return (
-    <div className="mr-auto w-full max-w-md space-y-1 text-sm">
+    <div className="mr-auto w-full space-y-1 text-sm">
       {pending ? (
         <div className="space-y-2 rounded-card border border-attention-line bg-surface px-4 py-3">
           <p className="text-ink2">
@@ -58,11 +58,14 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
       ) : (
         <div className="flex w-fit max-w-full items-center gap-2 rounded-full border border-accent-line bg-accent-tint py-1 pl-3 pr-1 text-ink2">
           <span className="min-w-0 break-words">
-            {memories ? labels[op] : 'Memory'} · {path}
+            {memories ? labels[op] : 'Memory'} · {current?.title || path}
             {memories && !current && ' · removed'}
           </span>
           {canUndo && (
-            <button onClick={undo} className="btn btn-ghost btn-sm shrink-0">
+            <button
+              onClick={undo}
+              className="h-[26px] shrink-0 cursor-pointer rounded-full bg-surface px-2.5 text-xs font-semibold text-ink focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)]"
+            >
               Undo
             </button>
           )}
