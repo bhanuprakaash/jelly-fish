@@ -151,12 +151,10 @@ export function ChatList({ chats, error, badges, ready, email, activeId, onNewCh
                       />
                     ) : (
                       <div className="flex min-w-0 flex-1 items-center gap-3 px-2.5 py-2 md:gap-2.5 md:py-1">
-                        <span className="inline-flex md:hidden">
-                          <JellyGlyph status={status} size={22} disc={36} />
-                        </span>
-                        <span className="hidden md:inline-flex">
-                          <JellyGlyph status={status} size={18} disc={26} />
-                        </span>
+                        <JellyGlyph
+                          status={status}
+                          className="size-9 md:size-[26px] [&>svg]:size-[22px] md:[&>svg]:size-[18px]"
+                        />
                         <span className="flex min-w-0 flex-1 flex-col">
                           <a
                             href={`/s/${c.id}`}
