@@ -44,11 +44,15 @@
   --accent: #9cc9e8;
   --accent-ink: #2f6e9e;
   --accent-tint: #eef5fb;
+  --accent-tint2: #e3eff8;
   --accent-line: #d6e7f4;
   --attention: #c8352a;
   --attention-tint: #fff7f4;
   --attention-line: #ebc2bb;
   --danger: #8e3326;
+  --danger-tint: #fbf0ec;
+  --ink-hover: #3a3a37;
+  --ink-press: #000000;
   --success: #4f6b47;
   --waiting: #2f4f7f;
 }
@@ -66,11 +70,15 @@
   --accent: #9cc9e8;
   --accent-ink: #a9d2ee;
   --accent-tint: rgb(156 201 232 / 0.1);
+  --accent-tint2: rgb(156 201 232 / 0.16);
   --accent-line: rgb(156 201 232 / 0.28);
   --attention: #e0503f;
   --attention-tint: rgb(224 80 63 / 0.08);
   --attention-line: rgb(224 80 63 / 0.38);
   --danger: #e08a7c;
+  --danger-tint: rgb(224 138 124 / 0.08);
+  --ink-hover: #ffffff;
+  --ink-press: #dad9d3;
   --success: #93b88a;
   --waiting: #a3b8de;
 }
@@ -88,11 +96,15 @@
   --accent: #38bdf8;
   --accent-ink: #7dd3fc;
   --accent-tint: rgb(56 189 248 / 0.1);
+  --accent-tint2: rgb(56 189 248 / 0.16);
   --accent-line: rgb(56 189 248 / 0.3);
   --attention: #fbbf24;
   --attention-tint: rgb(251 191 36 / 0.08);
   --attention-line: rgb(251 191 36 / 0.38);
   --danger: #f87171;
+  --danger-tint: rgb(248 113 113 / 0.08);
+  --ink-hover: #ffffff;
+  --ink-press: #d4d4d4;
   --success: #4ade80;
   --waiting: #a5b4fc;
 }
@@ -160,7 +172,7 @@ body {
     border: 1px solid transparent;
     border-radius: var(--radius-btn);
     font-size: 0.875rem;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
     transition:
       background-color 0.15s,
@@ -182,17 +194,32 @@ body {
   .btn-sm {
     height: 2rem;
     padding: 0 0.75rem;
+    font-size: 0.8125rem;
   }
   .btn-lg {
     height: 3rem;
+    padding: 0 1.25rem;
+    font-size: 0.9375rem;
+  }
+
+  .section-heading {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    text-transform: uppercase;
   }
 
   .input {
-    padding: 0.5rem 1rem;
+    height: 2.5rem;
+    padding: 0 1rem;
     border: 1px solid var(--line2);
     border-radius: var(--radius-btn);
     background: var(--surface);
     outline: none;
+  }
+  .input::placeholder {
+    color: var(--muted);
   }
   .input:focus-visible {
     box-shadow:
@@ -208,7 +235,10 @@ body {
     color: var(--bg);
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--ink2);
+    background: var(--ink-hover);
+  }
+  .btn-primary:active:not(:disabled) {
+    background: var(--ink-press);
   }
   .btn-secondary {
     background: var(--surface);
@@ -219,15 +249,23 @@ body {
   .btn-ghost:hover:not(:disabled) {
     background: var(--sunk);
   }
+  .btn-secondary:active:not(:disabled),
+  .btn-ghost:active:not(:disabled) {
+    background: var(--line);
+  }
   .btn-ghost {
     background: transparent;
     color: var(--ink2);
   }
   .btn-jelly {
     background: var(--accent-tint);
+    border-color: var(--accent-line);
     color: var(--accent-ink);
   }
   .btn-jelly:hover:not(:disabled) {
+    background: var(--accent-tint2);
+  }
+  .btn-jelly:active:not(:disabled) {
     background: var(--accent-line);
   }
   .btn-attention {
@@ -237,12 +275,18 @@ body {
   .btn-attention:hover:not(:disabled) {
     filter: brightness(0.9);
   }
+  .btn-attention:active:not(:disabled) {
+    filter: brightness(0.8);
+  }
   .btn-danger {
     background: transparent;
     border-color: var(--danger);
     color: var(--danger);
   }
   .btn-danger:hover:not(:disabled) {
-    background: var(--sunk);
+    background: var(--danger-tint);
+  }
+  .btn-danger:active:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 18%, transparent);
   }
 }

@@ -47,7 +47,7 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
             onChange={(e) => setDraft(e.target.value)}
             rows={6}
             aria-label="Memory text"
-            className="input w-full px-3 py-2 text-sm"
+            className="input h-auto w-full px-3 py-2 text-sm"
           />
           <div className="flex gap-2">
             <button className="btn btn-primary btn-sm" onClick={() => run(() => editMemory(memory.id, draft, memory.version))}>
