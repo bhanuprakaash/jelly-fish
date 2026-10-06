@@ -38,7 +38,9 @@ type Props = {
   ref?: Ref<HTMLSelectElement>
 }
 
-// ModelPicker lists models per Provider. A Provider with no key is greyed
+// ModelPicker lists models per Provider. The closed trigger shows only the
+// current model's name; the select is a transparent native control over it, so
+// the options keep their token and price text. A Provider with no key is greyed
 // out. Only the current Provider's models can be picked, since history
 // isn't replayed across Providers (#5); the Fake Provider, which has no
 // history of its own, is exempt either way.
@@ -47,28 +49,36 @@ export function ModelPicker({ models, current, onPick, disabled, ref }: Props) {
   const pickable = (provider: string) =>
     !from || provider === from || provider === 'fake' || from === 'fake'
 
+  const option = models.providers.flatMap((g) => g.models).find((m) => m.id === current)
+
   return (
-    <select
-      ref={ref}
-      aria-label="Model"
-      value={current}
-      disabled={disabled}
-      onChange={(e) => onPick(e.target.value)}
-      className="field-sizing-content w-auto max-w-full cursor-pointer truncate rounded-btn border border-line2 bg-transparent px-1 py-0.5 font-mono text-sm text-ink2 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {!from && <option value={current}>{current}</option>}
-      {models.providers.map((g) => (
-        <optgroup
-          key={g.provider}
-          label={g.available ? providerName(g.provider) : `${providerName(g.provider)} · Add ${providerName(g.provider)} key`}
-        >
-          {g.models.map((m) => (
-            <option key={m.id} value={m.id} disabled={!g.available || !pickable(g.provider)}>
-              {optionLabel(m)}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
+    <span className="relative inline-flex max-w-full items-center gap-1 rounded-btn font-mono text-sm text-ink2 has-[select:focus-visible]:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] has-[select:disabled]:opacity-50">
+      <span className="truncate">{option?.display_name || current}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="shrink-0">
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+      <select
+        ref={ref}
+        aria-label="Model"
+        value={current}
+        disabled={disabled}
+        onChange={(e) => onPick(e.target.value)}
+        className="absolute inset-0 size-full cursor-pointer opacity-0 focus-visible:outline-none disabled:cursor-not-allowed"
+      >
+        {!from && <option value={current}>{current}</option>}
+        {models.providers.map((g) => (
+          <optgroup
+            key={g.provider}
+            label={g.available ? providerName(g.provider) : `${providerName(g.provider)} · Add ${providerName(g.provider)} key`}
+          >
+            {g.models.map((m) => (
+              <option key={m.id} value={m.id} disabled={!g.available || !pickable(g.provider)}>
+                {optionLabel(m)}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </span>
   )
 }
