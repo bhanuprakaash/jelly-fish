@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ToolChip } from './lib/toolChips'
 
 // Thought is the collapsed pill of a model's reasoning; it opens to the text.
 export function Thought({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="mr-auto max-w-md space-y-2">
+    <div className="mr-auto space-y-2">
       <button
         type="button"
         aria-expanded={open}
@@ -44,12 +44,33 @@ const stateWords = {
   unknown: 'outcome unknown',
 }
 
-const stateColors = {
-  running: 'text-accent-ink',
-  done: 'text-success',
-  failed: 'text-danger',
-  stopped: 'text-danger',
-  unknown: 'text-muted',
+const dangerTint = 'bg-[var(--danger-tint)] text-danger'
+
+const stateCircles = {
+  running: 'bg-accent-tint text-accent-ink',
+  done: 'bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success',
+  failed: dangerTint,
+  stopped: dangerTint,
+  unknown: 'bg-sunk text-muted',
+}
+
+// argSummary is the first argument's value on one line, for the row's muted text.
+function argSummary(args: unknown): string {
+  if (typeof args !== 'object' || args === null) return ''
+  const first = Object.values(args)[0]
+  if (first === undefined) return ''
+  return typeof first === 'string' ? first : JSON.stringify(first)
+}
+
+// useElapsedSeconds ticks every second while active.
+function useElapsedSeconds(since: number, active: boolean): number {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (!active) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [active])
+  return Math.max(0, Math.floor((now - since) / 1000))
 }
 
 function duration(ms: number): string {
@@ -58,8 +79,8 @@ function duration(ms: number): string {
 
 function StateIcon({ state }: { state: ToolChip['state'] }) {
   const common = {
-    width: 14,
-    height: 14,
+    width: 12,
+    height: 12,
     viewBox: '0 0 24 24',
     fill: 'none',
     stroke: 'currentColor',
@@ -72,7 +93,7 @@ function StateIcon({ state }: { state: ToolChip['state'] }) {
       return (
         <span
           aria-hidden="true"
-          className="size-3.5 rounded-full border-2 border-line2 border-t-accent-ink motion-safe:animate-spin"
+          className="size-3 rounded-full border-2 border-accent-line border-t-accent-ink motion-safe:animate-spin"
         />
       )
     case 'done':
@@ -98,21 +119,34 @@ const codeClass =
 function Row({ call, first }: { call: ToolChip; first: boolean }) {
   const [open, setOpen] = useState(false)
   const args = call.args === undefined || call.args === null ? '' : JSON.stringify(call.args, null, 2)
+  const elapsed = useElapsedSeconds(call.startedAt, call.state === 'running')
+  const summary = argSummary(call.args)
+  const note =
+    call.state === 'running'
+      ? `running · ${elapsed}s`
+      : call.state === 'unknown'
+        ? 'outcome unknown — check before retrying'
+        : call.error
+  const noteTone = call.state === 'failed' || call.state === 'stopped' ? 'text-danger' : 'text-muted'
   return (
     <div className={first ? '' : 'border-t border-line'}>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm ${insetRing}`}
+        className={`flex w-full items-start gap-3 px-4 py-3 text-left text-sm ${insetRing}`}
       >
-        <span className={`flex size-5 shrink-0 items-center justify-center ${stateColors[call.state]}`}>
+        <span className={`mt-px flex size-5 shrink-0 items-center justify-center rounded-full ${stateCircles[call.state]}`}>
           <StateIcon state={call.state} />
         </span>
-        <span className="font-mono text-ink">{call.name}</span>
-        <span className="sr-only">{stateWords[call.state]}</span>
-        {call.error && <span className="min-w-0 flex-1 truncate text-muted">{call.error}</span>}
-        {!call.error && <span className="flex-1" />}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex min-w-0 gap-2">
+            <span className="shrink-0 font-mono text-ink">{call.name}</span>
+            <span className="sr-only">{stateWords[call.state]}</span>
+            {summary && <span className="truncate text-muted">{summary}</span>}
+          </span>
+          {note && <span className={`line-clamp-2 text-[12.5px] ${noteTone}`}>{note}</span>}
+        </span>
         {call.durationMs !== undefined && call.durationMs > 0 && (
           <span className="shrink-0 text-xs text-muted">{duration(call.durationMs)}</span>
         )}
@@ -131,7 +165,7 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
 // the call's arguments and result.
 export function ToolCalls({ calls }: { calls: ToolChip[] }) {
   return (
-    <div className="mr-auto w-full max-w-md overflow-hidden rounded-card border border-line bg-surface">
+    <div className="w-full overflow-hidden rounded-card border border-line bg-surface">
       {calls.map((call, i) => (
         <Row key={call.seq} call={call} first={i === 0} />
       ))}

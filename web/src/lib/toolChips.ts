@@ -9,6 +9,8 @@ export type ToolChip = {
   // started, so whether it ran is not known.
   state: 'running' | 'done' | 'failed' | 'stopped' | 'unknown'
   args?: unknown
+  // startedAt is when the call was requested, in epoch milliseconds.
+  startedAt: number
   durationMs?: number
   // result is the text of the call's result.
   result?: string
@@ -46,7 +48,14 @@ export function toolChips(events: UIEvent[]): ToolChip[] {
         turn = p.turn_id ?? String(e.seq)
         break
       case 'tool.call.requested':
-        chips.set(p.tool_call_id, { seq: e.seq, turn, name: p.tool ?? '', state: 'running', args: p.args })
+        chips.set(p.tool_call_id, {
+          seq: e.seq,
+          turn,
+          name: p.tool ?? '',
+          state: 'running',
+          args: p.args,
+          startedAt: Date.parse(e.created_at),
+        })
         break
       case 'tool.call.completed': {
         const chip = chips.get(p.tool_call_id)
