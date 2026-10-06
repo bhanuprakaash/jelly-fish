@@ -12,13 +12,14 @@ const motion: Record<JellyStatus, string> = {
 
 // JellyGlyph is a session's jellyfish, coloured and animated by its status. It
 // is decorative: pair it with a text label so colour is never the only cue.
-// size is the drawing's width in px; the tinted disc around it is 1.5 times that.
-export function JellyGlyph({ status, size = 20 }: { status: JellyStatus; size?: number }) {
+// size is the drawing's width in px; the tinted disc around it is disc px,
+// 1.5 times size unless given.
+export function JellyGlyph({ status, size = 20, disc = size * 1.5 }: { status: JellyStatus; size?: number; disc?: number }) {
   return (
     <span
       aria-hidden="true"
       className={`inline-flex shrink-0 items-center justify-center rounded-full bg-current/12 ${statusTone[status]} ${motion[status]}`}
-      style={{ width: size * 1.5, height: size * 1.5 }}
+      style={{ width: disc, height: disc }}
     >
       <svg
         width={size}

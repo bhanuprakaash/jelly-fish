@@ -14,28 +14,24 @@ type Props = {
 // Shell is the signed-in home: the Chat List beside the open chat. On a phone
 // only one of the two shows, the list at "/" and the chat at "/s/{id}".
 export function Shell({ sessionId, isNew, navigate, onNewChat, onUnauthorized }: Props) {
-  const { chats, error, refetch, badges } = useChatList(onUnauthorized)
+  const { chats, error, refetch, badges, ready } = useChatList(onUnauthorized)
 
   return (
     <div className="flex min-h-svh bg-bg text-ink">
       <aside
-        className={`${sessionId ? 'hidden' : 'flex'} h-svh w-full flex-col border-r border-line bg-surface md:sticky md:top-0 md:flex md:w-72 md:shrink-0`}
+        className={`${sessionId ? 'hidden' : 'flex'} h-svh w-full flex-col border-line md:border-r bg-surface md:sticky md:top-0 md:flex md:w-72 md:shrink-0`}
       >
-        {chats ? (
-          <ChatList
-            chats={chats}
-            badges={badges}
-            activeId={sessionId}
-            onNewChat={onNewChat}
-            onOpen={(id) => navigate(`/s/${id}`)}
-            onChanged={refetch}
-            onUnauthorized={onUnauthorized}
-          />
-        ) : (
-          <p className={`p-4 text-center text-sm ${error ? 'text-danger' : 'text-muted'}`}>
-            {error ? 'Could not load chats.' : 'Loading…'}
-          </p>
-        )}
+        <ChatList
+          chats={chats}
+          error={error}
+          badges={badges}
+          ready={ready}
+          activeId={sessionId}
+          onNewChat={onNewChat}
+          onOpen={(id) => navigate(`/s/${id}`)}
+          onChanged={refetch}
+          onUnauthorized={onUnauthorized}
+        />
       </aside>
 
       <div className={`${sessionId ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col`}>
