@@ -174,7 +174,7 @@ function Appearance() {
             tabIndex={theme === t ? 0 : -1}
             onClick={() => choose(t)}
             className={`h-9 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] whitespace-nowrap focus-ring-inset sm:px-4 sm:text-sm ${
-              theme === t ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgb(0_0_0/0.12)]' : 'font-medium text-muted hover:text-ink'
+              theme === t ? 'bg-surface font-semibold text-ink [&:not(:focus-visible)]:shadow-[0_1px_2px_rgb(0_0_0/0.12)]' : 'font-medium text-muted hover:text-ink'
             }`}
           >
             {themeLabels[t]}
