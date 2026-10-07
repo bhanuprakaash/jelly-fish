@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Badge } from './lib/activity'
 import { JellyGlyph } from './JellyGlyph'
-import { renameSession, retrySession, UnauthorizedError, type ChatSummary } from './lib/api'
+import { renameSession, retrySession, type ChatSummary } from './lib/api'
 import { statusLabel, statusTone, type JellyStatus } from './lib/status'
 import { RenameForm, RowMenu } from './RowMenu'
 
@@ -51,11 +51,10 @@ type Props = {
   // onChanged is called after a rename or a retry, or to retry a failed load,
   // so the list loads again.
   onChanged: () => void
-  onUnauthorized: () => void
 }
 
 // ChatList is the User's chats, newest activity first, with "New chat" on top.
-export function ChatList({ chats, error, badges, ready, email, activeId, onNewChat, onOpen, onChanged, onUnauthorized }: Props) {
+export function ChatList({ chats, error, badges, ready, email, activeId, onNewChat, onOpen, onChanged }: Props) {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const [retryFailedId, setRetryFailedId] = useState<string | null>(null)
@@ -66,9 +65,8 @@ export function ChatList({ chats, error, badges, ready, email, activeId, onNewCh
     try {
       await retrySession(id)
       onChanged()
-    } catch (err) {
-      if (err instanceof UnauthorizedError) onUnauthorized()
-      else setRetryFailedId(id)
+    } catch {
+      setRetryFailedId(id)
     } finally {
       setRetryingId(null)
     }
@@ -147,7 +145,6 @@ export function ChatList({ chats, error, badges, ready, email, activeId, onNewCh
                           onChanged()
                         }}
                         onCancel={() => setRenamingId(null)}
-                        onUnauthorized={onUnauthorized}
                       />
                     ) : (
                       <div className="flex min-w-0 flex-1 items-center gap-3 px-2.5 py-2 md:gap-2.5 md:py-1">

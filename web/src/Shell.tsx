@@ -10,13 +10,12 @@ type Props = {
   email: string
   navigate: (to: string) => void
   onNewChat: () => void
-  onUnauthorized: () => void
 }
 
 // Shell is the signed-in home: the Chat List beside the open chat. On a phone
 // only one of the two shows, the list at "/" and the chat at "/s/{id}".
-export function Shell({ sessionId, isNew, email, navigate, onNewChat, onUnauthorized }: Props) {
-  const { chats, error, refetch, badges, ready } = useChatList(onUnauthorized)
+export function Shell({ sessionId, isNew, email, navigate, onNewChat }: Props) {
+  const { chats, error, refetch, badges, ready } = useChatList()
 
   return (
     <div className="flex min-h-svh bg-bg text-ink">
@@ -33,7 +32,6 @@ export function Shell({ sessionId, isNew, email, navigate, onNewChat, onUnauthor
           onNewChat={onNewChat}
           onOpen={(id) => navigate(`/s/${id}`)}
           onChanged={refetch}
-          onUnauthorized={onUnauthorized}
         />
       </aside>
 
@@ -48,7 +46,6 @@ export function Shell({ sessionId, isNew, email, navigate, onNewChat, onUnauthor
             listIncognito={chats?.find((c) => c.id === sessionId)?.incognito}
             onTitleChanged={refetch}
             onCreated={refetch}
-            onUnauthorized={onUnauthorized}
           />
         ) : (
           <p className="m-auto text-muted">Select a chat or start a new one</p>

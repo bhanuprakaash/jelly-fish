@@ -7,15 +7,9 @@ import {
   resendInvite,
   revokeInvite,
   setUserDisabled,
-  UnauthorizedError,
   type AdminInvite,
   type AdminUser,
 } from './lib/api'
-
-type Props = {
-  // onSignedOut is called when the server says there is no Login Session.
-  onSignedOut: () => void
-}
 
 type Loaded = { users: AdminUser[]; invites: AdminInvite[] }
 
@@ -30,7 +24,7 @@ function actionError(err: unknown): string {
 }
 
 // AdminUsers is the Admin → Users page: invite people and manage who can sign in.
-export function AdminUsers({ onSignedOut }: Props) {
+export function AdminUsers() {
   const [data, setData] = useState<Loaded | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [email, setEmail] = useState('')
@@ -45,16 +39,14 @@ export function AdminUsers({ onSignedOut }: Props) {
       (d) => {
         if (current) setData(d)
       },
-      (err) => {
-        if (!current) return
-        if (err instanceof UnauthorizedError) onSignedOut()
-        else setError('Could not load users. Only admins can see this page.')
+      () => {
+        if (current) setError('Could not load users. Only admins can see this page.')
       },
     )
     return () => {
       current = false
     }
-  }, [reload, onSignedOut])
+  }, [reload])
 
   const run = useCallback(
     async (action: () => Promise<void>) => {
@@ -63,11 +55,10 @@ export function AdminUsers({ onSignedOut }: Props) {
         await action()
         setReload((n) => n + 1)
       } catch (err) {
-        if (err instanceof UnauthorizedError) onSignedOut()
-        else setError(actionError(err))
+        setError(actionError(err))
       }
     },
-    [onSignedOut],
+    [],
   )
 
   const invite = (e: React.FormEvent) => {

@@ -4,7 +4,6 @@ import {
   deleteMemory,
   editMemory,
   HttpError,
-  UnauthorizedError,
   type Memory,
 } from './lib/api'
 
@@ -12,12 +11,11 @@ type Props = {
   memory: Memory
   // onChanged is called after any change, so the caller loads the memories again.
   onChanged: () => void
-  onUnauthorized: () => void
 }
 
 // MemoryActions is [Keep] [Edit] [Delete] for one memory; Keep shows
 // only while the memory waits for review. Editing a pending memory approves it.
-export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
+export function MemoryActions({ memory, onChanged }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(memory.content)
   const [error, setError] = useState<string | null>(null)
@@ -29,8 +27,7 @@ export function MemoryActions({ memory, onChanged, onUnauthorized }: Props) {
       setEditing(false)
       onChanged()
     } catch (err) {
-      if (err instanceof UnauthorizedError) onUnauthorized()
-      else if (err instanceof HttpError && err.status === 422) {
+      if (err instanceof HttpError && err.status === 422) {
         setError('Not saved: the text is empty, over 4 KB, or looks like a secret.')
       } else if (err instanceof HttpError && err.status === 409) {
         setError('Changed since, so it can’t be saved or approved. Reload to see the latest.')

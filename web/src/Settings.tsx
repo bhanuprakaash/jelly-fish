@@ -9,7 +9,6 @@ import {
   logout,
   logoutAll,
   putProviderKey,
-  UnauthorizedError,
   type LoginSession,
   type Me,
   type ProviderKey,
@@ -36,20 +35,16 @@ export function Settings({ onSignedOut }: Props) {
         setMe(m)
         setDevices(list)
       },
-      (err) => {
-        if (err instanceof UnauthorizedError) onSignedOut()
-        else setError('Could not load your account.')
-      },
+      () => setError('Could not load your account.'),
     )
-  }, [reload, onSignedOut])
+  }, [reload])
 
   const run = async (action: () => Promise<void>) => {
     setError(null)
     try {
       await action()
-    } catch (err) {
-      if (err instanceof UnauthorizedError) onSignedOut()
-      else setError('Something went wrong. Try again.')
+    } catch {
+      setError('Something went wrong. Try again.')
     }
   }
 
@@ -110,7 +105,7 @@ export function Settings({ onSignedOut }: Props) {
           ))}
         </section>
 
-        <ProviderKeys onSignedOut={onSignedOut} />
+        <ProviderKeys />
 
         {me?.is_admin && (
           <a
@@ -189,7 +184,7 @@ const comingSoon = ['OpenAI', 'Gemini']
 
 // ProviderKeys is one row per Provider; a saved key shows only its last four
 // characters and can be replaced or deleted, never read back.
-function ProviderKeys({ onSignedOut }: Props) {
+function ProviderKeys() {
   const [saved, setSaved] = useState<ProviderKey | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -204,12 +199,9 @@ function ProviderKeys({ onSignedOut }: Props) {
         setSaved(list.find((k) => k.provider === 'anthropic') ?? null)
         setLoaded(true)
       },
-      (err) => {
-        if (err instanceof UnauthorizedError) onSignedOut()
-        else setError('Could not load your provider keys.')
-      },
+      () => setError('Could not load your provider keys.'),
     )
-  }, [onSignedOut])
+  }, [])
 
   const save = async () => {
     setBusy(true)
@@ -220,8 +212,7 @@ function ProviderKeys({ onSignedOut }: Props) {
       setEditing(false)
       setAdding(false)
     } catch (err) {
-      if (err instanceof UnauthorizedError) onSignedOut()
-      else if (err instanceof HttpError && err.status === 422) setError('Key rejected')
+      if (err instanceof HttpError && err.status === 422) setError('Key rejected')
       else if (err instanceof HttpError && err.status === 502)
         setError("Couldn't reach Anthropic, try again")
       else setError('Something went wrong. Try again.')
@@ -237,9 +228,8 @@ function ProviderKeys({ onSignedOut }: Props) {
       await deleteProviderKey('anthropic')
       setSaved(null)
       setEditing(false)
-    } catch (err) {
-      if (err instanceof UnauthorizedError) onSignedOut()
-      else setError('Something went wrong. Try again.')
+    } catch {
+      setError('Something went wrong. Try again.')
     }
   }
 

@@ -33,9 +33,19 @@ export class HttpError extends Error {
   }
 }
 
+let onUnauthorized = () => {}
+
+// setUnauthorizedHandler registers what runs when any request loses the Login
+// Session, so callers need not handle UnauthorizedError themselves.
+export function setUnauthorizedHandler(fn: () => void) {
+  onUnauthorized = fn
+}
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(path, init)
   if (res.status === 401) {
+    // A 401 from /api/auth/ is bad credentials, not a lost Login Session.
+    if (!path.startsWith('/api/auth/')) onUnauthorized()
     throw new UnauthorizedError(path)
   }
   if (!res.ok) {

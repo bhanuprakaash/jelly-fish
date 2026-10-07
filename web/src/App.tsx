@@ -5,7 +5,7 @@ import { Login } from './Login'
 import { Memories } from './Memories'
 import { Settings } from './Settings'
 import { Shell } from './Shell'
-import { getMe, UnauthorizedError } from './lib/api'
+import { getMe, setUnauthorizedHandler, UnauthorizedError } from './lib/api'
 
 const sessionPath = /^\/s\/([0-9a-f-]{36})$/i
 
@@ -24,6 +24,8 @@ function App() {
     setPath('/')
     setSignIn('signed-out')
   }, [])
+
+  useEffect(() => setUnauthorizedHandler(unauthorized), [unauthorized])
 
   const checkMe = useCallback(() => {
     getMe().then(
@@ -83,9 +85,9 @@ function App() {
     return <Login onSignedIn={recheck} />
   }
 
-  if (path === '/memories') return <Memories onUnauthorized={unauthorized} />
+  if (path === '/memories') return <Memories />
   if (path === '/settings') return <Settings onSignedOut={signedOut} />
-  if (path === '/admin/users') return <AdminUsers onSignedOut={signedOut} />
+  if (path === '/admin/users') return <AdminUsers />
 
   const navigate = (to: string) => {
     window.history.pushState({}, '', to)
@@ -105,7 +107,6 @@ function App() {
       email={email}
       navigate={navigate}
       onNewChat={startChat}
-      onUnauthorized={unauthorized}
     />
   )
 }

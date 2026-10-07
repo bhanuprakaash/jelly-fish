@@ -3,29 +3,21 @@ import {
   getMemories,
   getMemoryRevisions,
   setUseUserMemory,
-  UnauthorizedError,
   type Memory,
   type MemoryProject,
   type MemoryRevision,
 } from './lib/api'
 import { MemoryActions } from './MemoryActions'
 
-type Props = {
-  onUnauthorized: () => void
-}
-
 // Memories is the page of what the assistant remembers: "About me" (User
 // Memory) and Project Memory, each entry with its history and actions.
-export function Memories({ onUnauthorized }: Props) {
+export function Memories() {
   const [data, setData] = useState<{ project: MemoryProject; memories: Memory[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(() => {
-    getMemories().then(setData, (err) => {
-      if (err instanceof UnauthorizedError) onUnauthorized()
-      else setError('Could not load memories.')
-    })
-  }, [onUnauthorized])
+    getMemories().then(setData, () => setError('Could not load memories.'))
+  }, [])
 
   useEffect(load, [load])
 
@@ -35,9 +27,8 @@ export function Memories({ onUnauthorized }: Props) {
     try {
       await setUseUserMemory(data.project.id, use)
       load()
-    } catch (err) {
-      if (err instanceof UnauthorizedError) onUnauthorized()
-      else setError('Could not save the setting. Try again.')
+    } catch {
+      setError('Could not save the setting. Try again.')
     }
   }
 
@@ -83,14 +74,12 @@ export function Memories({ onUnauthorized }: Props) {
               title="About me"
               memories={column('user')}
               onChanged={load}
-              onUnauthorized={onUnauthorized}
             />
             <MemoryColumn
               title="This project"
               subtitle={data.project.name}
               memories={column('project')}
               onChanged={load}
-              onUnauthorized={onUnauthorized}
             />
           </div>
         )}
@@ -102,10 +91,9 @@ export function Memories({ onUnauthorized }: Props) {
 type ListProps = {
   memories: Memory[]
   onChanged: () => void
-  onUnauthorized: () => void
 }
 
-function MemoryColumn({ title, subtitle, memories, onChanged, onUnauthorized }: ListProps & { title: string; subtitle?: string }) {
+function MemoryColumn({ title, subtitle, memories, onChanged }: ListProps & { title: string; subtitle?: string }) {
   return (
     <section className="min-w-0 space-y-3">
       <h2 className="flex items-baseline gap-2.5 border-b border-ink pb-2.5">
@@ -120,7 +108,7 @@ function MemoryColumn({ title, subtitle, memories, onChanged, onUnauthorized }: 
       ) : (
         <ul className="space-y-3">
           {memories.map((m) => (
-            <MemoryCard key={m.id} memory={m} onChanged={onChanged} onUnauthorized={onUnauthorized} />
+            <MemoryCard key={m.id} memory={m} onChanged={onChanged} />
           ))}
         </ul>
       )}
@@ -128,7 +116,7 @@ function MemoryColumn({ title, subtitle, memories, onChanged, onUnauthorized }: 
   )
 }
 
-function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & Omit<ListProps, 'memories'>) {
+function MemoryCard({ memory, onChanged }: { memory: Memory } & Omit<ListProps, 'memories'>) {
   const [history, setHistory] = useState<MemoryRevision[] | null>(null)
   const [historyError, setHistoryError] = useState(false)
 
@@ -140,9 +128,8 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
     setHistoryError(false)
     try {
       setHistory(await getMemoryRevisions(memory.id))
-    } catch (err) {
-      if (err instanceof UnauthorizedError) onUnauthorized()
-      else setHistoryError(true)
+    } catch {
+      setHistoryError(true)
     }
   }
 
@@ -186,7 +173,6 @@ function MemoryCard({ memory, onChanged, onUnauthorized }: { memory: Memory } & 
           setHistory(null)
           onChanged()
         }}
-        onUnauthorized={onUnauthorized}
       />
       <button onClick={showHistory} className="btn btn-ghost btn-sm -ml-3.25">
         {history ? 'Hide history' : 'History'}
