@@ -141,7 +141,7 @@ func providerOf(groups []providerModelsJSON, model string) (prov string, availab
 // has no history of its own to replay, so switching to or from it is fine.
 func (h *modelHandlers) handleChangeModel(repo SessionRepo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, ok := pathUUID(w, r)
+		id, ok := pathID(w, r, "session not found")
 		if !ok {
 			return
 		}

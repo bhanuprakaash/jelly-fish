@@ -85,7 +85,7 @@ func (a *authHandlers) handleCreateInvite(w http.ResponseWriter, r *http.Request
 }
 
 func (a *authHandlers) handleResendInvite(w http.ResponseWriter, r *http.Request) {
-	id, ok := adminPathID(w, r, "invite not found")
+	id, ok := pathID(w, r, "invite not found")
 	if !ok {
 		return
 	}
@@ -121,7 +121,7 @@ func (a *authHandlers) sendInvite(w http.ResponseWriter, r *http.Request, inv au
 }
 
 func (a *authHandlers) handleRevokeInvite(w http.ResponseWriter, r *http.Request) {
-	id, ok := adminPathID(w, r, "invite not found")
+	id, ok := pathID(w, r, "invite not found")
 	if !ok {
 		return
 	}
@@ -184,7 +184,7 @@ func (a *authHandlers) handleMakeAdmin(w http.ResponseWriter, r *http.Request) {
 // userAction runs one Admin action on the User in the path and logs it as
 // event on success.
 func (a *authHandlers) userAction(w http.ResponseWriter, r *http.Request, event string, act func(context.Context, uuid.UUID) error) {
-	id, ok := adminPathID(w, r, "user not found")
+	id, ok := pathID(w, r, "user not found")
 	if !ok {
 		return
 	}
@@ -202,15 +202,4 @@ func (a *authHandlers) userAction(w http.ResponseWriter, r *http.Request, event 
 		a.logger.Info(event, "actor_id", actor.ID, "user_id", id)
 		w.WriteHeader(http.StatusNoContent)
 	}
-}
-
-// adminPathID parses the {id} path value, answering 404 with notFound if it is
-// not a UUID.
-func adminPathID(w http.ResponseWriter, r *http.Request, notFound string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusNotFound, notFound)
-		return uuid.UUID{}, false
-	}
-	return id, true
 }

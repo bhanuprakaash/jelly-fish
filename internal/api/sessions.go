@@ -113,7 +113,7 @@ type postMessageRequest struct {
 
 func handlePostMessage(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sessionID, ok := pathUUID(w, r)
+		sessionID, ok := pathID(w, r, "session not found")
 		if !ok {
 			return
 		}
@@ -147,7 +147,7 @@ type renameRequest struct {
 
 func handleRenameSession(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sessionID, ok := pathUUID(w, r)
+		sessionID, ok := pathID(w, r, "session not found")
 		if !ok {
 			return
 		}
@@ -178,7 +178,7 @@ func handleRenameSession(repo SessionRepo, logger *slog.Logger) http.HandlerFunc
 // answers 204: do is one of the repo's tenant-scoped actions.
 func handleSessionAction(do func(context.Context, eventlog.TenantScope, uuid.UUID) error, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sessionID, ok := pathUUID(w, r)
+		sessionID, ok := pathID(w, r, "session not found")
 		if !ok {
 			return
 		}
@@ -213,7 +213,7 @@ type sessionStreams struct {
 // live via Hub hints, interleaved with text deltas (event-log.md §5.12,
 // streaming.md §5.1).
 func (s *sessionStreams) handle(w http.ResponseWriter, r *http.Request) {
-	sessionID, ok := pathUUID(w, r)
+	sessionID, ok := pathID(w, r, "session not found")
 	if !ok {
 		return
 	}
@@ -430,10 +430,12 @@ func scopeFrom(r *http.Request) eventlog.TenantScope {
 	return u.Scope()
 }
 
-func pathUUID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+// pathID parses the {id} path value, answering 404 with notFound if it is not
+// a UUID.
+func pathID(w http.ResponseWriter, r *http.Request, notFound string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeError(w, http.StatusNotFound, notFound)
 		return uuid.UUID{}, false
 	}
 	return id, true
