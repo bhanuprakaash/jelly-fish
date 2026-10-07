@@ -69,6 +69,7 @@ func Lost(raw json.RawMessage) bool {
 
 type revision struct {
 	scope, path, title, content, project string
+	args                                 map[string]string
 }
 
 type call struct {
@@ -135,7 +136,7 @@ func Resolve(ctx context.Context, pool *pgxpool.Pool, msgs []msg.Message) ([]msg
 
 func loadRevisions(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID, versions []int) (map[msg.MemoryRef]revision, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT r.memory_id, r.version, m.scope, r.path, r.title, r.content, coalesce(p.name, '')
+		SELECT r.memory_id, r.version, m.scope, r.path, r.title, r.content, coalesce(p.name, ''), r.args
 		FROM unnest($1::uuid[], $2::int[]) AS k(id, v)
 		JOIN memory_revisions r ON r.memory_id = k.id AND r.version = k.v
 		JOIN memories m ON m.id = r.memory_id AND m.status <> 'deleted'
@@ -149,7 +150,7 @@ func loadRevisions(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID, ver
 		var id uuid.UUID
 		var version int
 		var r revision
-		if err := rows.Scan(&id, &version, &r.scope, &r.path, &r.title, &r.content, &r.project); err != nil {
+		if err := rows.Scan(&id, &version, &r.scope, &r.path, &r.title, &r.content, &r.project, &r.args); err != nil {
 			return nil, fmt.Errorf("scan memory revision: %w", err)
 		}
 		revs[msg.MemoryRef{MemoryID: id.String(), Version: version}] = r
@@ -160,26 +161,39 @@ func loadRevisions(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID, ver
 	return revs, nil
 }
 
-// restoreArgs puts a create call's title and content back from the revision
-// the call wrote. The other commands' text can't be rebuilt from a revision,
-// so their placeholders stay.
+// restoreArgs puts a write call's redacted text back from the revision the call
+// wrote: create from its title and content, str_replace and insert from the
+// args kept on the revision. A revision without args, from before they were
+// kept, leaves the placeholders.
 func restoreArgs(p msg.Part, c *call, revs map[msg.MemoryRef]revision) msg.Part {
-	if c == nil || c.command != cmdCreate || c.ref == nil {
+	if c == nil || c.ref == nil {
+		return p
+	}
+	rev, ok := revs[*c.ref]
+	var texts map[string]string
+	switch c.command {
+	case cmdCreate:
+		texts = map[string]string{"title": rev.title, "content": rev.content}
+	case cmdStrReplace, cmdInsert:
+		texts = rev.args
+	default:
 		return p
 	}
 	var m map[string]json.RawMessage
 	if json.Unmarshal(p.ToolUse.Args, &m) != nil {
 		return p
 	}
-	rev, ok := revs[*c.ref]
-	for f, text := range map[string]string{"title": rev.title, "content": rev.content} {
+	for f := range m {
 		if !bytes.Equal(m[f], placeholderJSON()) {
 			continue
 		}
+		text, held := texts[f]
 		if !ok {
-			text = deleted
+			text, held = deleted, true
 		}
-		m[f], _ = json.Marshal(text)
+		if held {
+			m[f], _ = json.Marshal(text)
+		}
 	}
 	args, err := json.Marshal(m)
 	if err != nil {
