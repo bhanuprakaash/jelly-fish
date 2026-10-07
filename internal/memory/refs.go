@@ -34,7 +34,7 @@ func Redact(raw json.RawMessage) (json.RawMessage, bool) {
 	}
 	changed := false
 	for _, f := range textFields() {
-		if _, ok := m[f]; ok {
+		if v, ok := m[f]; ok && !bytes.Equal(v, []byte("null")) {
 			m[f], changed = placeholderJSON(), true
 		}
 	}

@@ -23,6 +23,10 @@ func TestRedactSwapsMemoryTextAndLostSpotsIt(t *testing.T) {
 		{"str_replace", `{"command":"str_replace","old_str":"a","new_str":"b"}`,
 			`{"command":"str_replace","new_str":"(memory text not stored)","old_str":"(memory text not stored)"}`, true, true},
 		{"view has no text", `{"command":"view","path":"/memories"}`, `{"command":"view","path":"/memories"}`, false, false},
+		{"strict view keeps nulls", `{"command":"view","path":"/memories","scope":null,"new_path":null,"title":null,"kind":null,"content":null,"old_str":null,"new_str":null,"insert_line":null}`,
+			`{"command":"view","path":"/memories","scope":null,"new_path":null,"title":null,"kind":null,"content":null,"old_str":null,"new_str":null,"insert_line":null}`, false, false},
+		{"strict create swaps only set text", `{"command":"create","scope":"user","path":"/memories/a.md","new_path":null,"title":"T","kind":"fact","content":"secret text","old_str":null,"new_str":null,"insert_line":null}`,
+			`{"command":"create","content":"(memory text not stored)","insert_line":null,"kind":"fact","new_path":null,"new_str":null,"old_str":null,"path":"/memories/a.md","scope":"user","title":"(memory text not stored)"}`, true, true},
 		{"not an object", `"oops secret"`, `{}`, true, false},
 	}
 	for _, tt := range tests {
