@@ -3,9 +3,9 @@ import {
   approveMemory,
   deleteMemory,
   editMemory,
-  HttpError,
   type Memory,
 } from './lib/api'
+import { useAction } from './lib/useAction'
 
 type Props = {
   memory: Memory
@@ -18,22 +18,17 @@ type Props = {
 export function MemoryActions({ memory, onChanged }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(memory.content)
-  const [error, setError] = useState<string | null>(null)
+  const { run: runAction, error } = useAction({
+    422: 'Not saved: the text is empty, over 4 KB, or looks like a secret.',
+    409: 'Changed since, so it can’t be saved or approved. Reload to see the latest.',
+  })
 
-  const run = async (action: () => Promise<void>) => {
-    setError(null)
-    try {
+  const run = (action: () => Promise<void>) =>
+    runAction(async () => {
       await action()
       setEditing(false)
       onChanged()
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 422) {
-        setError('Not saved: the text is empty, over 4 KB, or looks like a secret.')
-      } else if (err instanceof HttpError && err.status === 409) {
-        setError('Changed since, so it can’t be saved or approved. Reload to see the latest.')
-      } else setError('Something went wrong. Try again.')
-    }
-  }
+    })
 
   return (
     <div className="space-y-2">

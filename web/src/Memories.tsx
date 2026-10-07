@@ -7,29 +7,27 @@ import {
   type MemoryProject,
   type MemoryRevision,
 } from './lib/api'
+import { useAction } from './lib/useAction'
 import { MemoryActions } from './MemoryActions'
 
 // Memories is the page of what the assistant remembers: "About me" (User
 // Memory) and Project Memory, each entry with its history and actions.
 export function Memories() {
   const [data, setData] = useState<{ project: MemoryProject; memories: Memory[] } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { run, error, setError } = useAction({}, 'Could not save the setting. Try again.')
 
   const load = useCallback(() => {
     getMemories().then(setData, () => setError('Could not load memories.'))
-  }, [])
+  }, [setError])
 
   useEffect(load, [load])
 
   const toggle = async (use: boolean) => {
     if (!data) return
-    setError(null)
-    try {
+    await run(async () => {
       await setUseUserMemory(data.project.id, use)
       load()
-    } catch {
-      setError('Could not save the setting. Try again.')
-    }
+    })
   }
 
   const column = (scope: Memory['scope']) => data?.memories.filter((m) => m.scope === scope) ?? []

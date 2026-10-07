@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { interruptSession, retrySession } from './lib/api'
 import type { Notice } from './lib/sessionNotice'
+import { useAction } from './lib/useAction'
 
 const BILLING_URL = 'https://console.anthropic.com/settings/billing'
 
@@ -37,21 +38,10 @@ const retryable = (code: string, failed: boolean) =>
 const linkClass = 'btn btn-secondary btn-sm'
 
 export function SessionNotice({ sessionId, notice, picker }: Props) {
-  const [busy, setBusy] = useState(false)
+  const { run, busy, error } = useAction({}, 'Could not do that. Try again.')
   const [picking, setPicking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const act = async (call: (sessionId: string) => Promise<void>) => {
-    setBusy(true)
-    setError(null)
-    try {
-      await call(sessionId)
-    } catch {
-      setError('Could not do that. Try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const act = (call: (sessionId: string) => Promise<void>) => run(() => call(sessionId))
 
   const button = (label: string, call: (sessionId: string) => Promise<void>, className = linkClass) => (
     <button type="button" disabled={busy} onClick={() => act(call)} className={className}>

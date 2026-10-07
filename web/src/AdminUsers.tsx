@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   createInvite,
   getAdminUsers,
-  HttpError,
   makeAdmin,
   resendInvite,
   revokeInvite,
@@ -10,23 +9,17 @@ import {
   type AdminInvite,
   type AdminUser,
 } from './lib/api'
+import { useAction } from './lib/useAction'
 
 type Loaded = { users: AdminUser[]; invites: AdminInvite[] }
-
-function actionError(err: unknown): string {
-  if (err instanceof HttpError && err.status === 409) {
-    return 'Not allowed: that email is already a user, or it is the last active admin.'
-  }
-  if (err instanceof HttpError && err.status === 502) {
-    return 'Invite saved, but the email could not be sent. Try Resend.'
-  }
-  return 'Something went wrong. Try again.'
-}
 
 // AdminUsers is the Admin → Users page: invite people and manage who can sign in.
 export function AdminUsers() {
   const [data, setData] = useState<Loaded | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { run: runAction, error, setError } = useAction({
+    409: 'Not allowed: that email is already a user, or it is the last active admin.',
+    502: 'Invite saved, but the email could not be sent. Try Resend.',
+  })
   const [email, setEmail] = useState('')
 
   // Bumping reload refetches the page's data.
@@ -46,20 +39,13 @@ export function AdminUsers() {
     return () => {
       current = false
     }
-  }, [reload])
+  }, [reload, setError])
 
-  const run = useCallback(
-    async (action: () => Promise<void>) => {
-      setError(null)
-      try {
-        await action()
-        setReload((n) => n + 1)
-      } catch (err) {
-        setError(actionError(err))
-      }
-    },
-    [],
-  )
+  const run = (action: () => Promise<void>) =>
+    runAction(async () => {
+      await action()
+      setReload((n) => n + 1)
+    })
 
   const invite = (e: React.FormEvent) => {
     e.preventDefault()
