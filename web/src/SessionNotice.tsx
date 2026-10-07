@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { interruptSession, retrySession, UnauthorizedError } from './lib/api'
+import { interruptSession, retrySession } from './lib/api'
 import type { Notice } from './lib/sessionNotice'
 
 const BILLING_URL = 'https://console.anthropic.com/settings/billing'
@@ -9,7 +9,6 @@ type Props = {
   notice: Notice
   // picker is the model picker "Switch model" opens.
   picker?: React.ReactNode
-  onUnauthorized: () => void
 }
 
 function errorText(code: string, failed: boolean): string {
@@ -37,7 +36,7 @@ const retryable = (code: string, failed: boolean) =>
 
 const linkClass = 'btn btn-secondary btn-sm'
 
-export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Props) {
+export function SessionNotice({ sessionId, notice, picker }: Props) {
   const [busy, setBusy] = useState(false)
   const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,11 +46,7 @@ export function SessionNotice({ sessionId, notice, picker, onUnauthorized }: Pro
     setError(null)
     try {
       await call(sessionId)
-    } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        onUnauthorized()
-        return
-      }
+    } catch {
       setError('Could not do that. Try again.')
     } finally {
       setBusy(false)

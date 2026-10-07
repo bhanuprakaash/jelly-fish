@@ -7,7 +7,6 @@ import {
   getModels,
   interruptSession,
   postMessage,
-  UnauthorizedError,
   type Memory,
   type Message,
   type Models,
@@ -42,8 +41,6 @@ type Props = {
   onTitleChanged: () => void
   // onCreated is called once the chat's first message has created the session.
   onCreated: () => void
-  // onUnauthorized is called when the server says the Login Session is gone.
-  onUnauthorized: () => void
 }
 
 function bubbleText(payload: unknown): string {
@@ -51,7 +48,7 @@ function bubbleText(payload: unknown): string {
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
 }
 
-export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated, onUnauthorized }: Props) {
+export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated }: Props) {
   const [started, setStarted] = useState(!isNew)
   const { events, partials, connected, failed } = useSessionStream(sessionId, started)
   // A brand-new chat has a session once its first message creates one; a
@@ -62,10 +59,8 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   // EventSource cannot see a 401, so a failed stream is checked with /api/me.
   useEffect(() => {
     if (!failed) return
-    getMe().catch((err) => {
-      if (err instanceof UnauthorizedError) onUnauthorized()
-    })
-  }, [failed, onUnauthorized])
+    getMe().catch(() => {})
+  }, [failed])
 
   const renamed = renamedTitle(events)
   useEffect(() => {
@@ -81,10 +76,8 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   useEffect(() => {
     getModels()
       .then(setModels)
-      .catch((err) => {
-        if (err instanceof UnauthorizedError) onUnauthorized()
-      })
-  }, [onUnauthorized])
+      .catch(() => {})
+  }, [])
 
   const [draft, setDraft] = useState('')
   const [active, setActive] = useState(0)
@@ -118,11 +111,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       }
       following.current = true
       setDraft('')
-    } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        onUnauthorized()
-        return
-      }
+    } catch {
       setError('Could not send. Try again.')
     } finally {
       setSending(false)
@@ -137,13 +126,8 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   )
   const [memories, setMemories] = useState<Memory[] | null>(null)
   const loadMemories = useCallback(() => {
-    getMemories().then(
-      (d) => setMemories(d.memories),
-      (err) => {
-        if (err instanceof UnauthorizedError) onUnauthorized()
-      },
-    )
-  }, [onUnauthorized])
+    getMemories().then((d) => setMemories(d.memories), () => {})
+  }, [])
   const memoryChips = [...chips.values()].filter((c) => c.memory).length
   useEffect(() => {
     if (memoryChips > 0) loadMemories()
@@ -196,11 +180,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
     setError(null)
     try {
       await changeModel(sessionId, model)
-    } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        onUnauthorized()
-        return
-      }
+    } catch {
       setError('Could not switch model. Try again.')
     } finally {
       setSwitching(false)
@@ -226,11 +206,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
     setError(null)
     try {
       await interruptSession(sessionId)
-    } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        onUnauthorized()
-        return
-      }
+    } catch {
       setError('Could not stop. Try again.')
     } finally {
       setStopping(false)
@@ -344,7 +320,6 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
                   chip={{ ...chip, memory: chip.memory }}
                   memories={memories}
                   onChanged={loadMemories}
-                  onUnauthorized={onUnauthorized}
                 />
               )
             }
@@ -372,7 +347,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               {text}
             </div>
           ))}
-          {notice && <SessionNotice sessionId={sessionId} notice={notice} picker={picker} onUnauthorized={onUnauthorized} />}
+          {notice && <SessionNotice sessionId={sessionId} notice={notice} picker={picker} />}
         </div>
       </main>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { HttpError, undoMemory, UnauthorizedError, type Memory } from './lib/api'
+import { HttpError, undoMemory, type Memory } from './lib/api'
 import type { ToolChip } from './lib/toolChips'
 import { MemoryActions } from './MemoryActions'
 
@@ -8,7 +8,6 @@ type Props = {
   // memories is every memory the User has, or null until it has loaded.
   memories: Memory[] | null
   onChanged: () => void
-  onUnauthorized: () => void
 }
 
 const labels: Record<string, string> = {
@@ -22,7 +21,7 @@ const labels: Record<string, string> = {
 // MemoryChip is the chat chip of one memory write: [Undo] while the memory is
 // still as the write left it (for a delete, while it is absent from the list),
 // and [Keep] [Edit] [Delete] while it waits for review.
-export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props) {
+export function MemoryChip({ chip, memories, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null)
   const { id, version, op, path } = chip.memory
   const current = memories?.find((m) => m.id === id)
@@ -32,10 +31,6 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
     try {
       await undoMemory(id, version)
     } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        onUnauthorized()
-        return
-      }
       const changed = err instanceof HttpError && err.status === 409
       setError(changed ? 'Changed since, so it can’t be undone.' : 'Could not undo. Try again.')
     }
@@ -53,7 +48,7 @@ export function MemoryChip({ chip, memories, onChanged, onUnauthorized }: Props)
           <p className="text-ink2">
             Wants to remember <span className="font-mono">{path}</span>: <em>“{current.content}”</em>
           </p>
-          <MemoryActions key={current.version} memory={current} onChanged={onChanged} onUnauthorized={onUnauthorized} />
+          <MemoryActions key={current.version} memory={current} onChanged={onChanged} />
         </div>
       ) : (
         <div className="flex w-fit max-w-full items-center gap-2 rounded-full border border-accent-line bg-accent-tint py-1 pl-3 pr-1 text-ink2">

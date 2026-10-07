@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getSessions, UnauthorizedError, type ChatSummary } from './api'
+import { getSessions, type ChatSummary } from './api'
 import { badgeFor, needsListRefetch, type ActivityEntry, type Badge } from './activity'
 import { useActivityStream } from './useActivityStream'
 
@@ -7,7 +7,7 @@ import { useActivityStream } from './useActivityStream'
 // returns each chat's live badge from the Activity Stream, and whether the
 // stream has sent its first snapshot. chats stays null until the first load
 // succeeds; a failed reload keeps the old list.
-export function useChatList(onUnauthorized: () => void) {
+export function useChatList() {
   const [chats, setChats] = useState<ChatSummary[] | null>(null)
   const [error, setError] = useState(false)
   const chatsRef = useRef<ChatSummary[] | null>(null)
@@ -33,16 +33,15 @@ export function useChatList(onUnauthorized: () => void) {
           chatsRef.current = list
           setChats(list)
           setError(false)
-        } catch (err) {
+        } catch {
           if (!alive.current) return
-          if (err instanceof UnauthorizedError) onUnauthorized()
-          else setError(true)
+          setError(true)
         }
       } while (again.current)
     } finally {
       loading.current = false
     }
-  }, [onUnauthorized])
+  }, [])
 
   useEffect(() => {
     alive.current = true

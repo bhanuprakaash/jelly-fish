@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type SubmitEvent } from 'react'
-import { HttpError, UnauthorizedError } from './lib/api'
+import { HttpError } from './lib/api'
 
 type MenuProps = {
   // renaming is true while the row shows its rename form instead of the link.
@@ -79,11 +79,10 @@ type FormProps = {
   // onSave rejects when the server refuses the title.
   onSave: (title: string) => Promise<void>
   onCancel: () => void
-  onUnauthorized: () => void
 }
 
 // RenameForm replaces a row's link while its chat is being renamed.
-export function RenameForm({ initial, onSave, onCancel, onUnauthorized }: FormProps) {
+export function RenameForm({ initial, onSave, onCancel }: FormProps) {
   const [value, setValue] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -102,10 +101,6 @@ export function RenameForm({ initial, onSave, onCancel, onUnauthorized }: FormPr
     try {
       await onSave(title)
     } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        onUnauthorized()
-        return
-      }
       const refused = err instanceof HttpError && (err.status === 400 || err.status === 422)
       setError(refused ? 'Title must be 1–100 characters' : 'Could not rename. Try again.')
       setSaving(false)
