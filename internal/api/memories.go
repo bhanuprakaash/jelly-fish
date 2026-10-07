@@ -42,7 +42,7 @@ func (h *memoryHandlers) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *memoryHandlers) revisions(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathUUID(w, r)
+	id, ok := pathID(w, r, "not found")
 	if !ok {
 		return
 	}
@@ -60,7 +60,7 @@ type editMemoryRequest struct {
 }
 
 func (h *memoryHandlers) edit(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathUUID(w, r)
+	id, ok := pathID(w, r, "not found")
 	if !ok {
 		return
 	}
@@ -72,7 +72,7 @@ func (h *memoryHandlers) edit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *memoryHandlers) approve(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathUUID(w, r)
+	id, ok := pathID(w, r, "not found")
 	if !ok {
 		return
 	}
@@ -84,7 +84,7 @@ func (h *memoryHandlers) approve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *memoryHandlers) delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathUUID(w, r)
+	id, ok := pathID(w, r, "not found")
 	if !ok {
 		return
 	}
@@ -96,7 +96,7 @@ type versionRequest struct {
 }
 
 func (h *memoryHandlers) undo(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathUUID(w, r)
+	id, ok := pathID(w, r, "not found")
 	if !ok {
 		return
 	}
@@ -116,7 +116,7 @@ type patchProjectRequest struct {
 }
 
 func (h *memoryHandlers) patchProject(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathUUID(w, r)
+	id, ok := pathID(w, r, "not found")
 	if !ok {
 		return
 	}

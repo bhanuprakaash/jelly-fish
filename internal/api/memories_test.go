@@ -276,6 +276,12 @@ func TestMemoryTenancy(t *testing.T) {
 			t.Errorf("status %d, want 404", rr.Code)
 		}
 	})
+	t.Run("bad id", func(t *testing.T) {
+		rr := e.do(http.MethodDelete, "/api/memories/not-a-uuid", nil, ac)
+		if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), `"not found"`) {
+			t.Errorf("status %d, body %s; want 404 \"not found\"", rr.Code, rr.Body)
+		}
+	})
 	t.Run("memory unchanged", func(t *testing.T) {
 		if e.count(t, `SELECT count(*) FROM memories WHERE id = $1 AND status = 'pending_review' AND content = 'secret plans'`, id) != 1 {
 			t.Error("other user's memory changed")

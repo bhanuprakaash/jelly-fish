@@ -77,13 +77,12 @@ func (a *authHandlers) handleListLoginSessions(w http.ResponseWriter, r *http.Re
 }
 
 func (a *authHandlers) handleDeleteLoginSession(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "device not found")
+	id, ok := pathID(w, r, "device not found")
+	if !ok {
 		return
 	}
 	u, _ := auth.UserFrom(r.Context())
-	err = a.cfg.Authenticator.DeleteLoginSession(r.Context(), u.ID, id)
+	err := a.cfg.Authenticator.DeleteLoginSession(r.Context(), u.ID, id)
 	if errors.Is(err, auth.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "device not found")
 		return
