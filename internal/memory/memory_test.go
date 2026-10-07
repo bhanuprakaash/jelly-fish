@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -726,5 +728,81 @@ func TestParallelSafeCallIsViewOnly(t *testing.T) {
 		if got := memory.New(nil).ParallelSafeCall(json.RawMessage(args)); got != want {
 			t.Errorf("ParallelSafeCall(%s) = %v, want %v", args, got, want)
 		}
+	}
+}
+
+func TestSchemaIsInTheStrictDialect(t *testing.T) {
+	def := memory.New(nil).Def()
+	if !def.Strict {
+		t.Fatal("memory is not sent strict")
+	}
+	var s struct {
+		Type                 string                    `json:"type"`
+		Properties           map[string]map[string]any `json:"properties"`
+		Required             []string                  `json:"required"`
+		AdditionalProperties *bool                     `json:"additionalProperties"`
+	}
+	if err := json.Unmarshal(def.Schema, &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.Type != "object" || s.AdditionalProperties == nil || *s.AdditionalProperties {
+		t.Fatalf("schema is not a closed object: type %q, additionalProperties %v", s.Type, s.AdditionalProperties)
+	}
+	if len(s.Required) != len(s.Properties) {
+		t.Fatalf("required = %v, want every one of %d properties", s.Required, len(s.Properties))
+	}
+	for _, name := range s.Required {
+		prop, ok := s.Properties[name]
+		if !ok {
+			t.Fatalf("required %q is not a property", name)
+		}
+		for _, k := range []string{"pattern", "minLength", "maxLength", "minimum", "maximum", "format"} {
+			if _, ok := prop[k]; ok {
+				t.Errorf("%s uses %s", name, k)
+			}
+		}
+		types, _ := prop["type"].([]any)
+		nullable := slices.Contains(types, "null")
+		if (name == "command" || name == "path") == nullable {
+			t.Errorf("%s: type %v; only command and path are non-null", name, prop["type"])
+		}
+		if enum, ok := prop["enum"].([]any); ok && nullable && !slices.Contains(enum, nil) {
+			t.Errorf("%s is nullable but its enum %v has no null", name, enum)
+		}
+	}
+}
+
+// strictArgs is a call as a strict Provider sends it: every field present,
+// the unused ones null.
+func strictArgs(set map[string]any) map[string]any {
+	args := map[string]any{"command": nil, "scope": nil, "path": nil, "new_path": nil, "title": nil, "kind": nil, "content": nil, "old_str": nil, "new_str": nil, "insert_line": nil}
+	maps.Copy(args, set)
+	return args
+}
+
+func TestStrictCallsWithNullFieldsWork(t *testing.T) {
+	e := newEnv(t)
+	res, _ := e.run(strictArgs(map[string]any{"command": "create", "scope": "user", "path": "/memories/diet.md", "title": "Diet", "kind": "fact", "content": "Vegan"}))
+	if res.IsError {
+		t.Fatalf("create: %s", text(res))
+	}
+	res, _ = e.run(strictArgs(map[string]any{"command": "str_replace", "scope": "user", "path": "/memories/diet.md", "old_str": "Vegan", "new_str": "Vegetarian"}))
+	if res.IsError {
+		t.Fatalf("str_replace: %s", text(res))
+	}
+	res, _ = e.run(strictArgs(map[string]any{"command": "view", "scope": "user", "path": "/memories/diet.md"}))
+	if res.IsError || ref(t, res).Version != 2 {
+		t.Fatalf("view: %+v", res)
+	}
+	res, _ = e.run(strictArgs(map[string]any{"command": "view", "path": "/memories"}))
+	if res.IsError || ref(t, res).Version != 2 {
+		t.Fatalf("view index: %+v", res)
+	}
+	var content string
+	if err := e.pool.QueryRow(t.Context(), `SELECT content FROM memories WHERE path = '/memories/diet.md'`).Scan(&content); err != nil {
+		t.Fatal(err)
+	}
+	if content != "Vegetarian" {
+		t.Fatalf("content = %q", content)
 	}
 }

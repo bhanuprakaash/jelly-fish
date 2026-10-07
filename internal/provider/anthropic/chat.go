@@ -144,7 +144,11 @@ func (c chat) params(req provider.Request) (sdk.MessageNewParams, error) {
 	for _, t := range req.Tools {
 		// Sent as given, so every adapter shares the one schema.
 		schema := param.Override[sdk.ToolInputSchemaParam](t.Schema)
-		p.Tools = append(p.Tools, sdk.ToolUnionParam{OfTool: &sdk.ToolParam{Name: t.Name, Description: sdk.String(t.Description), InputSchema: schema}})
+		tp := &sdk.ToolParam{Name: t.Name, Description: sdk.String(t.Description), InputSchema: schema}
+		if t.Strict {
+			tp.Strict = sdk.Bool(true)
+		}
+		p.Tools = append(p.Tools, sdk.ToolUnionParam{OfTool: tp})
 	}
 	if known && !req.NoThinking && info.Thinking == provider.ThinkingAdaptiveOnly {
 		// Newer models default display to "omitted"; summarized is the only

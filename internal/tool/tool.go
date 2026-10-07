@@ -30,6 +30,9 @@ type Def struct {
 	Untrusted bool
 	// Timeout bounds one call; zero means DefaultTimeout.
 	Timeout time.Duration
+	// Strict asks the Provider to enforce Schema exactly. Only a schema in the
+	// intersection dialect may set it (provider-gateway.md §4.5).
+	Strict bool
 }
 
 // CallInput is one call's arguments. IdempotencyKey is stable for the call

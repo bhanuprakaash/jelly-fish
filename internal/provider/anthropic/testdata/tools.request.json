@@ -26,10 +26,26 @@
         },
         "required": [
           "command"
-        ]
+        ],
+        "additionalProperties": false
       },
       "name": "memory",
-      "description": "Read and write memories."
+      "description": "Read and write memories.",
+      "strict": true
+    },
+    {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z]+$",
+            "minLength": 2
+          }
+        }
+      },
+      "name": "lookup",
+      "description": "Look up a code."
     },
     {
       "input_schema": {
