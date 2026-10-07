@@ -23,6 +23,10 @@ func TestRedactSwapsMemoryTextAndLostSpotsIt(t *testing.T) {
 		{"str_replace", `{"command":"str_replace","old_str":"a","new_str":"b"}`,
 			`{"command":"str_replace","new_str":"(memory text not stored)","old_str":"(memory text not stored)"}`, true, true},
 		{"view has no text", `{"command":"view","path":"/memories"}`, `{"command":"view","path":"/memories"}`, false, false},
+		{"strict view keeps nulls", `{"command":"view","path":"/memories","scope":null,"new_path":null,"title":null,"kind":null,"content":null,"old_str":null,"new_str":null,"insert_line":null}`,
+			`{"command":"view","path":"/memories","scope":null,"new_path":null,"title":null,"kind":null,"content":null,"old_str":null,"new_str":null,"insert_line":null}`, false, false},
+		{"strict create swaps only set text", `{"command":"create","scope":"user","path":"/memories/a.md","new_path":null,"title":"T","kind":"fact","content":"secret text","old_str":null,"new_str":null,"insert_line":null}`,
+			`{"command":"create","content":"(memory text not stored)","insert_line":null,"kind":"fact","new_path":null,"new_str":null,"old_str":null,"path":"/memories/a.md","scope":"user","title":"(memory text not stored)"}`, true, true},
 		{"not an object", `"oops secret"`, `{}`, true, false},
 	}
 	for _, tt := range tests {
@@ -151,5 +155,43 @@ func TestResolveShowsWhatAnEditLeft(t *testing.T) {
 	}
 	if parts := render(); len(parts) != 2 || parts[1].Text != "(this memory was deleted)" {
 		t.Fatalf("parts after delete = %+v", parts)
+	}
+}
+
+func TestResolveRestoresEditArgsFromTheRevisionTheyWrote(t *testing.T) {
+	e := newEnv(t)
+	createArgs := map[string]any{"command": "create", "scope": "user", "path": "/memories/a.md", "title": "Diet", "kind": "fact", "content": "Diet: Vegan"}
+	replaceArgs := map[string]any{"command": "str_replace", "scope": "user", "path": "/memories/a.md", "old_str": "Vegan", "new_str": "Vegetarian"}
+	insertArgs := map[string]any{"command": "insert", "scope": "user", "path": "/memories/a.md", "insert_line": 1, "content": "Likes dal"}
+	created, _ := e.run(createArgs)
+	replaced, _ := e.run(replaceArgs)
+	inserted, _ := e.run(insertArgs)
+	history := []msg.Message{
+		{Role: msg.RoleAssistant, Parts: []msg.Part{use("c1", createArgs), use("c2", replaceArgs), use("c3", insertArgs)}},
+		{Role: msg.RoleUser, Parts: []msg.Part{answer("c1", created), answer("c2", replaced), answer("c3", inserted)}},
+	}
+	resolve := func() (replaceArgs, insertArgs string) {
+		t.Helper()
+		out, err := memory.Resolve(t.Context(), e.pool, history)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(out[0].Parts[1].ToolUse.Args), string(out[0].Parts[2].ToolUse.Args)
+	}
+
+	gotReplace, gotInsert := resolve()
+	if !strings.Contains(gotReplace, `"old_str":"Vegan"`) || !strings.Contains(gotReplace, `"new_str":"Vegetarian"`) {
+		t.Fatalf("str_replace args = %s, want the text put back", gotReplace)
+	}
+	if !strings.Contains(gotInsert, `"content":"Likes dal"`) {
+		t.Fatalf("insert args = %s, want the text put back", gotInsert)
+	}
+
+	if _, err := e.pool.Exec(t.Context(), `UPDATE memory_revisions SET args = NULL`); err != nil {
+		t.Fatal(err)
+	}
+	gotReplace, gotInsert = resolve()
+	if !strings.Contains(gotReplace, `"new_str":"(memory text not stored)"`) || !strings.Contains(gotInsert, `"content":"(memory text not stored)"`) {
+		t.Fatalf("args of old revisions = %s, %s, want the placeholder kept", gotReplace, gotInsert)
 	}
 }

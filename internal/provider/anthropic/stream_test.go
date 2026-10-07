@@ -223,7 +223,9 @@ func TestRequestGoldens(t *testing.T) {
 		{"text", userHi()},
 		{"adaptive_thinking", provider.Request{Model: opus, Messages: []msg.Message{msg.UserText("hi")}}},
 		{"tools", provider.Request{Model: haiku, Messages: []msg.Message{msg.UserText("hi")}, Tools: []provider.ToolSpec{
-			{Name: "memory", Description: "Read and write memories.", Schema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}`)},
+			{Name: "memory", Description: "Read and write memories.", Schema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"],"additionalProperties":false}`), Strict: true},
+			// A Connector-style schema: constraints strict mode can't take.
+			{Name: "lookup", Description: "Look up a code.", Schema: json.RawMessage(`{"type":"object","properties":{"code":{"type":"string","pattern":"^[A-Z]+$","minLength":2}}}`)},
 			{Name: "sleep", Description: "Wait.", Schema: json.RawMessage(`{"type":"object"}`)},
 		}}},
 		{"replay", provider.Request{Model: opus, Messages: history}},

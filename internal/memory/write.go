@@ -87,8 +87,10 @@ func (w write) commit(ctx context.Context, tx pgx.Tx) (tool.Result, []tool.Event
 
 	next := row{kind: a.Kind, title: a.Title, body: a.Content}
 	newPath := w.path
+	var text map[string]string
 	switch a.Command {
 	case cmdStrReplace:
+		text = map[string]string{"old_str": a.OldStr, "new_str": a.NewStr}
 		switch n := strings.Count(cur.body, a.OldStr); n {
 		case 0:
 			return refuse("old_str not found in " + w.path), nil, nil
@@ -98,6 +100,7 @@ func (w write) commit(ctx context.Context, tx pgx.Tx) (tool.Result, []tool.Event
 			return refuse(fmt.Sprintf("old_str appears %d times in %s; make it unique", n, w.path)), nil, nil
 		}
 	case cmdInsert:
+		text = map[string]string{"content": a.Content}
 		lines := strings.Split(cur.body, "\n")
 		if a.InsertLine < 0 || a.InsertLine > len(lines) {
 			return refuse(fmt.Sprintf("insert_line must be 0 to %d", len(lines))), nil, nil
@@ -154,8 +157,8 @@ func (w write) commit(ctx context.Context, tx pgx.Tx) (tool.Result, []tool.Event
 	}
 	if err == nil {
 		_, err = tx.Exec(ctx, `
-			INSERT INTO memory_revisions (memory_id, version, path, title, content, written_by, session_id)
-			VALUES ($1, $2, $3, $4, $5, 'agent', $6)`, id, version, newPath, next.title, next.body, w.sess.ID)
+			INSERT INTO memory_revisions (memory_id, version, path, title, content, written_by, session_id, args)
+			VALUES ($1, $2, $3, $4, $5, 'agent', $6, $7)`, id, version, newPath, next.title, next.body, w.sess.ID, text)
 	}
 	if err != nil {
 		return tool.Result{}, nil, fmt.Errorf("write memory: %w", err)

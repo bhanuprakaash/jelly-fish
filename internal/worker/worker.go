@@ -512,7 +512,7 @@ func (w *Worker) system(ctx context.Context, c eventlog.Claim) ([]string, error)
 func toolSpecs(defs []tool.Def) []provider.ToolSpec {
 	specs := make([]provider.ToolSpec, len(defs))
 	for i, d := range defs {
-		specs[i] = provider.ToolSpec{Name: d.Name, Description: d.Description, Schema: d.Schema}
+		specs[i] = provider.ToolSpec{Name: d.Name, Description: d.Description, Schema: d.Schema, Strict: d.Strict}
 	}
 	return specs
 }
