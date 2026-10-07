@@ -9,6 +9,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/config"
 	"github.com/bhanuprakaash/jelly-fish/internal/keyring"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
+	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/worker"
 )
 
@@ -35,7 +36,7 @@ func runKeysRotate(ctx context.Context, cfg config.Config, logger *slog.Logger) 
 		return fmt.Errorf("connect db: %w", err)
 	}
 	defer pool.Close()
-	n, err := worker.RotateKeys(ctx, pool, kr)
+	n, err := worker.RotateKeys(ctx, providerkeys.NewStore(pool), kr)
 	logger.Info("keys rotated", "rows", n, "primary", kr.Primary())
 	if err != nil {
 		return fmt.Errorf("rotate keys: %w", err)

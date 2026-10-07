@@ -48,7 +48,7 @@ func TestRotateKeysMovesEveryRowToThePrimary(t *testing.T) {
 	rotated := parseKeyring(t, keyM2+","+keyM1)
 	insertSealed(t, pool, rotated, u2.ID, "openai", "already-new")
 
-	n, err := RotateKeys(t.Context(), pool, rotated)
+	n, err := RotateKeys(t.Context(), providerkeys.NewStore(pool), rotated)
 	if err != nil || n != 2 {
 		t.Fatalf("RotateKeys = %d, %v; want 2, nil", n, err)
 	}
@@ -74,7 +74,7 @@ func TestRotateKeysMovesEveryRowToThePrimary(t *testing.T) {
 		}
 	}
 
-	if n, err := RotateKeys(t.Context(), pool, rotated); err != nil || n != 0 {
+	if n, err := RotateKeys(t.Context(), providerkeys.NewStore(pool), rotated); err != nil || n != 0 {
 		t.Errorf("second RotateKeys = %d, %v; want 0, nil", n, err)
 	}
 }
@@ -113,7 +113,7 @@ func TestRotateKeysSkipsARowItCannotOpen(t *testing.T) {
 	insertSealed(t, pool, old, u1.ID, "anthropic", "key-one")
 	insertSealed(t, pool, old, u3.ID, "anthropic", "key-three")
 
-	n, err := RotateKeys(t.Context(), pool, parseKeyring(t, keyM2+","+keyM1))
+	n, err := RotateKeys(t.Context(), providerkeys.NewStore(pool), parseKeyring(t, keyM2+","+keyM1))
 	if n != 2 || err == nil {
 		t.Fatalf("RotateKeys = %d, %v; want 2 and an error for the bad row", n, err)
 	}

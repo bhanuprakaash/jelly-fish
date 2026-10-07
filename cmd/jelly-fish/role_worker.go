@@ -54,12 +54,13 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 	}()
 
 	healthSrv := health.NewServer(cfg.HealthAddr, pg.NewReadinessChecker(pool), logger)
+	claude := anthropic.Client{Catalog: cat}
+	keys := providerkeys.NewStore(pool)
+	gw := worker.Gateway{Keyring: kr, Keys: keys, Catalog: cat, Anthropic: claude, Fake: devFake(), Tracer: tp}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
-	claude := anthropic.Client{Catalog: cat}
-	gw := worker.Gateway{Keyring: kr, Keys: providerkeys.NewStore(pool), Catalog: cat, Anthropic: claude, Fake: devFake(), Tracer: tp}
-	g.Go(func() error { worker.RunModelRefresh(gctx, pool, kr, claude, logger); return nil })
+	g.Go(func() error { worker.RunModelRefresh(gctx, keys, kr, claude, logger); return nil })
 	g.Go(func() error {
 		worker.New(pool, gw, tool.NewRegistry(append(devTools(), memory.New(pool))...), stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger).Run(gctx)
 		return nil

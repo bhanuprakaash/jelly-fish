@@ -2,16 +2,12 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/keyring"
@@ -21,10 +17,6 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/tracing"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 )
-
-// modelRefreshInterval is how often each saved key's live models list is
-// fetched again (provider-gateway.md §5.5).
-const modelRefreshInterval = 24 * time.Hour
 
 // Catalog looks up a model's Provider and limits.
 type Catalog interface {
@@ -144,77 +136,4 @@ func openKey(ctx context.Context, keys *providerkeys.Store, kr *keyring.Keyring,
 		return nil, nil, fmt.Errorf("open %s key: %w", prov, err)
 	}
 	return key, sealed.Ciphertext, nil
-}
-
-// ModelLister lists the models a key can use.
-type ModelLister interface {
-	ListModels(ctx context.Context, key string) ([]provider.Model, error)
-}
-
-// RefreshModels re-fetches the live models list of every saved Anthropic key
-// and returns how many rows it updated. A row that fails is left as it was
-// and does not stop the others; the failures come back joined.
-func RefreshModels(ctx context.Context, pool *pgxpool.Pool, kr *keyring.Keyring, lister ModelLister) (int, error) {
-	rows, err := pool.Query(ctx, `SELECT user_id FROM provider_keys WHERE provider = $1`, anthropic.Name)
-	if err != nil {
-		return 0, fmt.Errorf("list provider keys: %w", err)
-	}
-	users, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
-	if err != nil {
-		return 0, fmt.Errorf("list provider keys: %w", err)
-	}
-
-	keys := providerkeys.NewStore(pool)
-	n := 0
-	var errs []error
-	for _, userID := range users {
-		if err := refreshRow(ctx, pool, keys, kr, lister, userID); err != nil {
-			errs = append(errs, fmt.Errorf("refresh models (user %s): %w", userID, err))
-			continue
-		}
-		n++
-	}
-	return n, errors.Join(errs...)
-}
-
-func refreshRow(ctx context.Context, pool *pgxpool.Pool, keys *providerkeys.Store, kr *keyring.Keyring, lister ModelLister, userID uuid.UUID) error {
-	key, ct, err := openKey(ctx, keys, kr, userID, anthropic.Name)
-	if err != nil {
-		return err
-	}
-	models, err := lister.ListModels(ctx, string(key))
-	clear(key)
-	if err != nil {
-		return fmt.Errorf("list models: %w", err)
-	}
-	b, err := json.Marshal(models)
-	if err != nil {
-		return fmt.Errorf("marshal models: %w", err)
-	}
-	// Only the list changes: a key replaced meanwhile keeps its own list.
-	if _, err := pool.Exec(ctx, `UPDATE provider_keys SET models = $3, models_fetched_at = now()
-		WHERE user_id = $1 AND provider = $2 AND ciphertext = $4`, userID, anthropic.Name, b, ct); err != nil {
-		return fmt.Errorf("store models: %w", err)
-	}
-	return nil
-}
-
-// RunModelRefresh calls RefreshModels at start and then daily until ctx ends.
-func RunModelRefresh(ctx context.Context, pool *pgxpool.Pool, kr *keyring.Keyring, lister ModelLister, logger *slog.Logger) {
-	for {
-		n, err := RefreshModels(ctx, pool, kr, lister)
-		if ctx.Err() != nil {
-			return
-		}
-		if err != nil {
-			logger.Warn("refresh models", "updated", n, "error", err)
-		} else {
-			logger.Info("models refreshed", "updated", n)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(modelRefreshInterval):
-		}
-	}
 }
