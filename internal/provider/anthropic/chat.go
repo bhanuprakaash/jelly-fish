@@ -145,7 +145,7 @@ func (c chat) params(req provider.Request) (sdk.MessageNewParams, error) {
 		// Sent as given, so every adapter shares the one schema.
 		schema := param.Override[sdk.ToolInputSchemaParam](t.Schema)
 		tp := &sdk.ToolParam{Name: t.Name, Description: sdk.String(t.Description), InputSchema: schema}
-		if t.Strict {
+		if t.Strict && known && info.Structured {
 			tp.Strict = sdk.Bool(true)
 		}
 		p.Tools = append(p.Tools, sdk.ToolUnionParam{OfTool: tp})

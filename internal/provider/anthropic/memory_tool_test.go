@@ -35,3 +35,20 @@ func TestMemoryToolIsSentAsOurOwnStrictFunctionUnchanged(t *testing.T) {
 		t.Fatal("request uses the native memory tool")
 	}
 }
+
+func TestStrictIsDroppedForModelsOutsideTheCatalog(t *testing.T) {
+	def := memory.New(nil).Def()
+	c, body, _ := sseServer(t, "unknown_stop.sse")
+	req := provider.Request{Model: "claude-not-in-catalog", Messages: []msg.Message{msg.UserText("hi")}, Tools: []provider.ToolSpec{{Name: def.Name, Description: def.Description, Schema: def.Schema, Strict: def.Strict}}}
+	collect(t, c.Provider("k"), req)
+
+	var sent struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal(*body, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := sent.Tools[0]["strict"]; len(sent.Tools) != 1 || ok {
+		t.Fatalf("sent tools = %v, want one tool without strict", sent.Tools)
+	}
+}
