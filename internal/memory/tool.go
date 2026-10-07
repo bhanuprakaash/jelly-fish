@@ -58,15 +58,15 @@ const schema = `{
   "type": "object",
   "properties": {
     "command": {"type": "string", "enum": ["view", "create", "str_replace", "insert", "delete", "rename"]},
-    "scope": {"type": ["string", "null"], "enum": ["user", "project", null], "description": "null only for view /memories."},
+    "scope": {"anyOf": [{"type": "string", "enum": ["user", "project"]}, {"type": "null"}], "description": "null only for view /memories."},
     "path": {"type": "string", "description": "/memories to list everything, or /memories/<name>.md."},
-    "new_path": {"type": ["string", "null"], "description": "rename: the new path."},
-    "title": {"type": ["string", "null"], "description": "One line shown in the index. Set for create; otherwise null."},
-    "kind": {"type": ["string", "null"], "enum": ["preference", "fact", "feedback", "reference", null], "description": "Set for create; otherwise null."},
-    "content": {"type": ["string", "null"], "description": "Markdown, at most 4 KB. create: the whole memory. insert: the text to insert."},
-    "old_str": {"type": ["string", "null"], "description": "str_replace: the text to replace; it must appear exactly once."},
-    "new_str": {"type": ["string", "null"], "description": "str_replace: the replacement text."},
-    "insert_line": {"type": ["integer", "null"], "description": "insert: insert after this line; 0 inserts at the start."}
+    "new_path": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "rename: the new path."},
+    "title": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "One line shown in the index. Set for create; otherwise null."},
+    "kind": {"anyOf": [{"type": "string", "enum": ["preference", "fact", "feedback", "reference"]}, {"type": "null"}], "description": "Set for create; otherwise null."},
+    "content": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Markdown, at most 4 KB. create: the whole memory. insert: the text to insert."},
+    "old_str": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "str_replace: the text to replace; it must appear exactly once."},
+    "new_str": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "str_replace: the replacement text."},
+    "insert_line": {"anyOf": [{"type": "integer"}, {"type": "null"}], "description": "insert: insert after this line; 0 inserts at the start."}
   },
   "required": ["command", "scope", "path", "new_path", "title", "kind", "content", "old_str", "new_str", "insert_line"],
   "additionalProperties": false

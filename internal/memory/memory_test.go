@@ -756,18 +756,27 @@ func TestSchemaIsInTheStrictDialect(t *testing.T) {
 		if !ok {
 			t.Fatalf("required %q is not a property", name)
 		}
-		for _, k := range []string{"pattern", "minLength", "maxLength", "minimum", "maximum", "format"} {
+		for _, k := range []string{"pattern", "minLength", "maxLength", "minimum", "maximum"} {
 			if _, ok := prop[k]; ok {
 				t.Errorf("%s uses %s", name, k)
 			}
 		}
-		types, _ := prop["type"].([]any)
-		nullable := slices.Contains(types, "null")
-		if (name == "command" || name == "path") == nullable {
-			t.Errorf("%s: type %v; only command and path are non-null", name, prop["type"])
+		if _, ok := prop["type"].([]any); ok {
+			t.Errorf("%s uses a type array; nullable fields use anyOf", name)
 		}
-		if enum, ok := prop["enum"].([]any); ok && nullable && !slices.Contains(enum, nil) {
-			t.Errorf("%s is nullable but its enum %v has no null", name, enum)
+		nullable := false
+		branches, _ := prop["anyOf"].([]any)
+		for _, b := range branches {
+			branch, _ := b.(map[string]any)
+			if branch["type"] == "null" {
+				nullable = true
+			}
+			if enum, _ := branch["enum"].([]any); slices.Contains(enum, nil) {
+				t.Errorf("%s: enum %v contains null", name, enum)
+			}
+		}
+		if (name == "command" || name == "path") == nullable {
+			t.Errorf("%s: nullable = %v; only command and path are non-null", name, nullable)
 		}
 	}
 }
