@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -106,15 +105,6 @@ func (h *providerKeyHandlers) handlePutKey(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadGateway, "could not reach provider")
 		return
 	}
-	if models == nil {
-		models = []provider.Model{}
-	}
-	modelsJSON, err := json.Marshal(models)
-	if err != nil {
-		h.logger.Error("encode models", "provider", p, "error", err)
-		writeError(w, http.StatusInternalServerError, "could not save key")
-		return
-	}
 	ct, keyID, err := h.cfg.Sealer.Seal([]byte(key), providerkeys.AAD(u.ID, p))
 	if err != nil {
 		h.logger.Error("seal provider key", "provider", p, "error", err)
@@ -123,7 +113,7 @@ func (h *providerKeyHandlers) handlePutKey(w http.ResponseWriter, r *http.Reques
 	}
 	info, err := h.cfg.Store.Upsert(r.Context(), u.ID, providerkeys.Sealed{
 		Provider: p, Ciphertext: ct, KeyID: keyID, Last4: lastN(key, 4),
-		Models: modelsJSON,
+		Models: models,
 	})
 	if err != nil {
 		h.logger.Error("save provider key", "provider", p, "user_id", u.ID, "error", err)

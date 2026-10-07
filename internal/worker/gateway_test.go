@@ -400,7 +400,7 @@ func TestRefreshModelsUpdatesEachKeysList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := RefreshModels(t.Context(), pool, gw.Keyring, gw.Anthropic)
+	n, err := RefreshModels(t.Context(), gw.Keys, gw.Keyring, gw.Anthropic)
 	if n != 1 || err == nil {
 		t.Fatalf("RefreshModels = %d, %v; want 1 and the bad row's error", n, err)
 	}

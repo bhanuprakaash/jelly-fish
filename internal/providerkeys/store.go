@@ -25,7 +25,7 @@ type Sealed struct {
 	Ciphertext []byte
 	KeyID      string
 	Last4      string
-	Models     []byte
+	Models     []provider.Model
 }
 
 // Info is what a User may see of a saved key.
@@ -51,6 +51,9 @@ func AAD(userID uuid.UUID, provider string) []byte {
 
 // Upsert saves or replaces userID's key for s.Provider.
 func (s *Store) Upsert(ctx context.Context, userID uuid.UUID, k Sealed) (Info, error) {
+	if k.Models == nil {
+		k.Models = []provider.Model{}
+	}
 	var info Info
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO provider_keys (user_id, provider, ciphertext, key_id, last4, models, models_fetched_at)
@@ -131,4 +134,85 @@ func (s *Store) Delete(ctx context.Context, userID uuid.UUID, provider string) e
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Owners returns the Users who saved a key for prov.
+func (s *Store) Owners(ctx context.Context, prov string) ([]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx, `SELECT user_id FROM provider_keys WHERE provider = $1`, prov)
+	if err != nil {
+		return nil, fmt.Errorf("list provider keys: %w", err)
+	}
+	users, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return nil, fmt.Errorf("list provider keys: %w", err)
+	}
+	return users, nil
+}
+
+// SetModels stores models as userID's live list for prov, only while the key
+// is still ct: a key replaced meanwhile keeps its own list.
+func (s *Store) SetModels(ctx context.Context, userID uuid.UUID, prov string, ct []byte, models []provider.Model) error {
+	if models == nil {
+		models = []provider.Model{}
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE provider_keys SET models = $3, models_fetched_at = now()
+		WHERE user_id = $1 AND provider = $2 AND ciphertext = $4`, userID, prov, models, ct); err != nil {
+		return fmt.Errorf("store models: %w", err)
+	}
+	return nil
+}
+
+// Key names one saved key.
+type Key struct {
+	UserID   uuid.UUID
+	Provider string
+}
+
+// Stale returns the keys not sealed under primary.
+func (s *Store) Stale(ctx context.Context, primary string) ([]Key, error) {
+	rows, err := s.pool.Query(ctx, `SELECT user_id, provider FROM provider_keys WHERE key_id <> $1`, primary)
+	if err != nil {
+		return nil, fmt.Errorf("list stale provider keys: %w", err)
+	}
+	stale, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Key, error) {
+		var k Key
+		err := row.Scan(&k.UserID, &k.Provider)
+		return k, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list stale provider keys: %w", err)
+	}
+	return stale, nil
+}
+
+// Reseal replaces k's ciphertext with what reseal returns, in one
+// transaction that holds the row. It reports false when the row is gone or
+// already sealed under primary.
+func (s *Store) Reseal(ctx context.Context, k Key, primary string, reseal func(ct []byte, keyID string) ([]byte, string, error)) (moved bool, err error) {
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var ct []byte
+		var keyID string
+		err := tx.QueryRow(ctx, `SELECT ciphertext, key_id FROM provider_keys WHERE user_id = $1 AND provider = $2 FOR UPDATE`,
+			k.UserID, k.Provider).Scan(&ct, &keyID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("lock row: %w", err)
+		}
+		if keyID == primary {
+			return nil
+		}
+		ct, keyID, err = reseal(ct, keyID)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE provider_keys SET ciphertext = $3, key_id = $4 WHERE user_id = $1 AND provider = $2`,
+			k.UserID, k.Provider, ct, keyID); err != nil {
+			return fmt.Errorf("update: %w", err)
+		}
+		moved = true
+		return nil
+	})
+	return moved, err
 }
