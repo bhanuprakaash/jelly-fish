@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type SubmitEvent } from 'react'
-import { HttpError } from './lib/api'
+import { useAction } from './lib/useAction'
 
 type MenuProps = {
   // renaming is true while the row shows its rename form instead of the link.
@@ -84,8 +84,8 @@ type FormProps = {
 // RenameForm replaces a row's link while its chat is being renamed.
 export function RenameForm({ initial, onSave, onCancel }: FormProps) {
   const [value, setValue] = useState(initial)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const badTitle = 'Title must be 1–100 characters'
+  const { run, busy: saving, error } = useAction({ 400: badTitle, 422: badTitle }, 'Could not rename. Try again.')
   const input = useRef<HTMLInputElement>(null)
   const title = value.trim()
 
@@ -96,15 +96,7 @@ export function RenameForm({ initial, onSave, onCancel }: FormProps) {
   const submit = async (e: SubmitEvent) => {
     e.preventDefault()
     if (!title || saving) return
-    setSaving(true)
-    setError(null)
-    try {
-      await onSave(title)
-    } catch (err) {
-      const refused = err instanceof HttpError && (err.status === 400 || err.status === 422)
-      setError(refused ? 'Title must be 1–100 characters' : 'Could not rename. Try again.')
-      setSaving(false)
-    }
+    await run(() => onSave(title))
   }
 
   return (

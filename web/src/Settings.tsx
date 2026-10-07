@@ -5,7 +5,6 @@ import {
   getLoginSessions,
   getMe,
   getProviderKeys,
-  HttpError,
   logout,
   logoutAll,
   putProviderKey,
@@ -13,6 +12,7 @@ import {
   type Me,
   type ProviderKey,
 } from './lib/api'
+import { useAction } from './lib/useAction'
 import { getTheme, setTheme, themes, type Theme } from './lib/theme'
 
 type Props = {
@@ -24,7 +24,7 @@ type Props = {
 export function Settings({ onSignedOut }: Props) {
   const [me, setMe] = useState<Me | null>(null)
   const [devices, setDevices] = useState<LoginSession[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { run, error, setError } = useAction()
 
   // Bumping reload refetches the page's data.
   const [reload, setReload] = useState(0)
@@ -37,16 +37,7 @@ export function Settings({ onSignedOut }: Props) {
       },
       () => setError('Could not load your account.'),
     )
-  }, [reload])
-
-  const run = async (action: () => Promise<void>) => {
-    setError(null)
-    try {
-      await action()
-    } catch {
-      setError('Something went wrong. Try again.')
-    }
-  }
+  }, [reload, setError])
 
   const logOutDevice = (d: LoginSession) =>
     run(async () => {
@@ -190,8 +181,10 @@ function ProviderKeys() {
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [key, setKey] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { run, busy, error, setError } = useAction({
+    422: 'Key rejected',
+    502: "Couldn't reach Anthropic, try again",
+  })
 
   useEffect(() => {
     getProviderKeys().then(
@@ -201,36 +194,23 @@ function ProviderKeys() {
       },
       () => setError('Could not load your provider keys.'),
     )
-  }, [])
+  }, [setError])
 
-  const save = async () => {
-    setBusy(true)
-    setError(null)
-    try {
+  const save = () =>
+    run(async () => {
       setSaved(await putProviderKey('anthropic', key))
       setKey('')
       setEditing(false)
       setAdding(false)
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 422) setError('Key rejected')
-      else if (err instanceof HttpError && err.status === 502)
-        setError("Couldn't reach Anthropic, try again")
-      else setError('Something went wrong. Try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
+    })
 
   const remove = async () => {
     if (!window.confirm('Chats using this Provider will stop until you add a key.')) return
-    setError(null)
-    try {
+    await run(async () => {
       await deleteProviderKey('anthropic')
       setSaved(null)
       setEditing(false)
-    } catch {
-      setError('Something went wrong. Try again.')
-    }
+    })
   }
 
   const showInput = loaded && ((saved === null && adding) || editing)

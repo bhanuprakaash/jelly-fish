@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { HttpError, undoMemory, type Memory } from './lib/api'
+import { undoMemory, type Memory } from './lib/api'
 import type { ToolChip } from './lib/toolChips'
+import { useAction } from './lib/useAction'
 import { MemoryActions } from './MemoryActions'
 
 type Props = {
@@ -22,18 +22,12 @@ const labels: Record<string, string> = {
 // still as the write left it (for a delete, while it is absent from the list),
 // and [Keep] [Edit] [Delete] while it waits for review.
 export function MemoryChip({ chip, memories, onChanged }: Props) {
-  const [error, setError] = useState<string | null>(null)
+  const { run, error } = useAction({ 409: 'Changed since, so it can’t be undone.' }, 'Could not undo. Try again.')
   const { id, version, op, path } = chip.memory
   const current = memories?.find((m) => m.id === id)
 
   const undo = async () => {
-    setError(null)
-    try {
-      await undoMemory(id, version)
-    } catch (err) {
-      const changed = err instanceof HttpError && err.status === 409
-      setError(changed ? 'Changed since, so it can’t be undone.' : 'Could not undo. Try again.')
-    }
+    await run(() => undoMemory(id, version))
     onChanged()
   }
 
