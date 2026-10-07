@@ -775,7 +775,16 @@ func TestSchemaIsInTheStrictDialect(t *testing.T) {
 // strictArgs is a call as a strict Provider sends it: every field present,
 // the unused ones null.
 func strictArgs(set map[string]any) map[string]any {
-	args := map[string]any{"command": nil, "scope": nil, "path": nil, "new_path": nil, "title": nil, "kind": nil, "content": nil, "old_str": nil, "new_str": nil, "insert_line": nil}
+	var s struct {
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(memory.New(nil).Def().Schema, &s); err != nil {
+		panic(err)
+	}
+	args := map[string]any{}
+	for _, k := range s.Required {
+		args[k] = nil
+	}
 	maps.Copy(args, set)
 	return args
 }
