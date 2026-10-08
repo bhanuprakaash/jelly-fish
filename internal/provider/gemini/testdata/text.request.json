@@ -1,0 +1,29 @@
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "hi"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "thinkingConfig": {
+      "includeThoughts": true
+    }
+  },
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "You are helpful."
+      },
+      {
+        "text": "Project: cats."
+      }
+    ],
+    "role": "user"
+  }
+}
+

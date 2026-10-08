@@ -61,8 +61,9 @@ type providerModelsJSON struct {
 // pickable lists userID's models per Provider from the DB and the catalog
 // only; it never calls a Provider (provider-gateway.md §4.2). A Provider
 // with a key lists what its live list says, with limits from it where it
-// has them and prices from the catalog; for OpenAI, only the catalog models
-// in that list. One without a key lists its catalog models, unavailable.
+// has them and prices from the catalog; for OpenAI and Gemini, only the
+// catalog models in that list. One without a key lists its catalog models,
+// unavailable.
 func (c ModelConfig) pickable(ctx context.Context, userID uuid.UUID) ([]providerModelsJSON, error) {
 	lists, err := c.Lists.Models(ctx, userID)
 	if err != nil {
@@ -73,10 +74,10 @@ func (c ModelConfig) pickable(ctx context.Context, userID uuid.UUID) ([]provider
 		live, ok := lists[p]
 		group := providerModelsJSON{Provider: p, Available: ok, Models: []modelJSON{}}
 		switch {
-		case ok && p == "openai":
-			// OpenAI's list holds every model the key reaches (speech,
-			// images, embeddings) and no capabilities, so only catalog
-			// models are offered (provider-gateway.md §5.5).
+		case ok && p != "anthropic":
+			// OpenAI's and Gemini's lists hold every model the key reaches
+			// (speech, images, embeddings) and no usable capabilities, so
+			// only catalog models are offered (provider-gateway.md §5.5).
 			for _, info := range c.Catalog.All() {
 				if info.Provider == p && slices.ContainsFunc(live, func(m provider.Model) bool { return m.ID == info.ID }) {
 					group.Models = append(group.Models, c.merge(provider.Model{ID: info.ID}))

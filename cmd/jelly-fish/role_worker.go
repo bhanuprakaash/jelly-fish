@@ -54,7 +54,7 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 
 	healthSrv := health.NewServer(cfg.HealthAddr, pg.NewReadinessChecker(pool), logger)
 	keys := providerkeys.NewStore(pool)
-	gw := worker.Gateway{Keyring: kr, Keys: keys, Catalog: cat, Adapters: adapters(cat), Fake: devFake(), Tracer: tp}
+	gw := worker.Gateway{Keyring: kr, Keys: keys, Catalog: cat, Adapters: adapters(cat, logger), Fake: devFake(), Tracer: tp}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })

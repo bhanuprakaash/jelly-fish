@@ -1,0 +1,51 @@
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "find cats"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "parts": [
+        {
+          "text": "Searching.",
+          "thoughtSignature": "c2lnLXRleHQ="
+        },
+        {
+          "functionCall": {
+            "args": {
+              "q": "cats"
+            },
+            "id": "fc_abc",
+            "name": "search"
+          },
+          "thoughtSignature": "c2lnLWNhbGw="
+        }
+      ],
+      "role": "model"
+    },
+    {
+      "parts": [
+        {
+          "functionResponse": {
+            "id": "fc_abc",
+            "name": "search",
+            "response": {
+              "output": "3 cats"
+            }
+          }
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "thinkingConfig": {
+      "includeThoughts": true
+    }
+  }
+}
+
