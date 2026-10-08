@@ -29,7 +29,7 @@ var _ provider.Provider = chat{}
 func (chat) Name() string { return Name }
 
 // Stream implements provider.Provider. On any error the partial reply is
-// dropped: a half-streamed function call can't be replayed.
+// dropped.
 func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {
 	tap := &errorTap{}
 	client, err := c.client.sdk(ctx, c.key, tap)
