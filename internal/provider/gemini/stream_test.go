@@ -291,7 +291,7 @@ func TestToolResultWithoutItsCallIsAnError(t *testing.T) {
 	}
 }
 
-func TestMemoryToolSchemaIsByteIdenticalToTheOtherAdapters(t *testing.T) {
+func TestMemoryToolSchemaMatchesTheOtherAdapters(t *testing.T) {
 	def := memory.New(nil).Def()
 	tools := []provider.ToolSpec{{Name: def.Name, Description: def.Description, Schema: def.Schema, Strict: def.Strict}}
 
