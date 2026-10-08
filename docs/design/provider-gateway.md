@@ -197,7 +197,7 @@ read_upload(id, pages?) -> tool result parts
 - Built-in tools: strict **on**, opt-in, written in the intersection dialect (closed objects, all fields required, nullable instead of optional, no numeric/length/pattern constraints, no recursion).
 - Args are always validated in Go regardless of strict mode.
 - A schema-narrowing pass runs once per tool list and is cached by `tools_hash` (agent-loop.md §3), so the projected prefix stays byte-stable for caching.
-- Gemini always uses `parametersJsonSchema` (JSON Schema), never the OpenAPI `parameters` path.
+- Gemini always uses `parametersJsonSchema` (JSON Schema), never the OpenAPI `parameters` path. The genai SDK re-encodes that schema, so Gemini's copy of a shared schema matches the other adapters' after key sorting, not byte for byte.
 
 ### 4.6 `ResponseSchema` (internal structured output)
 
@@ -239,7 +239,7 @@ Per-Provider event shapes map onto `Delta`:
 1. Accumulate the stream into `msg.Message` + `StopReason` + `Usage` + `RequestID`.
 2. Normalize `Usage.Input` to "uncached, non-written input" so the three Providers add up the same way: Anthropic's `input_tokens` already excludes cache; OpenAI subtracts `input_tokens_details.cached_tokens` and `cache_write_tokens`; Gemini subtracts `cachedContentTokenCount` from `promptTokenCount`.
 3. `exec` writes one `usage.recorded` event per non-zero `Usage` class (`kind=llm`, `provider`, `model` ([usage-metering.md](usage-metering.md) D5), `unit=input_tokens|cache_read_tokens|cache_write_5m_tokens|cache_write_1h_tokens|output_tokens|reasoning_tokens|…`), in the same transaction as `llm.response`. This fits the `UNIQUE(session_id, seq)` shape in event-log.md §3 — one row per event.
-4. Thinking/reasoning tokens are a detail inside `Output`, never billed as a second class.
+4. Thinking/reasoning tokens are a detail inside `Output`, never billed as a second class. Gemini counts them apart from `candidatesTokenCount` (live, gemini-3.8-flash: `thoughtsTokenCount` 95, `candidatesTokenCount` 4 for a 4-character answer), so `Output` is `candidatesTokenCount + thoughtsTokenCount`.
 5. `cost_micros` is computed from the catalog at record time and never recalculated; a later price-table fix never rewrites history (event-log.md §5.9 Budget reads `cost_micros`).
 
 ### 5.4 Upload projection swap rule
@@ -361,7 +361,7 @@ All decided 2026-09-27.
 
 - **Unknown `msg_v` or unknown `Part.Kind` on read**: the Worker releases the Lease immediately, without running `Decide` (event-log.md §5.19); a compatible Worker picks the session up on the next claim.
 - **Unknown Provider finish-reason / error code**: an unmapped finish reason → `StopReason=other` + log; an unmapped error code → `provider_down` if it's a 5xx, otherwise `bug`.
-- **Gemini `functionCall` with no id**: matched by the order guarantee the projection already provides (results re-sorted into tool_use order); the adapter sends no `functionResponse.id` (our own `ToolUse.ID` stays internal).
+- **Gemini `functionCall` id**: Gemini fills it (live, gemini-3.5-flash-lite: `call_136041`). The adapter keeps it in `ToolUse.Opaque` and echoes it as `functionResponse.id`. A call with no id is matched by the order guarantee the projection already provides (results re-sorted into tool_use order), and no `functionResponse.id` is sent. Our own `ToolUse.ID` stays internal.
 - **`/model` switch mid-session, foreign Provider history**: all prior `Thinking` and `Native` parts for the old Provider are dropped from the projection; tool ids are rewritten into the destination Provider's safe charset; Gemini gets the dummy signature on carried-over function calls (agent-loop.md Decision 6, unchanged here).
 - **Upload swap lands exactly at a Compaction boundary**: Compaction wins — the swap happens there rather than waiting for the Nth user message, per §5.4.
 - **Inline budget exceeded before an Upload's N=3 turns are up**: the oldest inline Upload (or oldest stubbed-eligible `read_upload` result) is stubbed early to get back under the 24 MB cap, ahead of the normal swap schedule (§5.4 items 9–10, [uploads-artifacts.md](uploads-artifacts.md)).
@@ -396,7 +396,7 @@ All decided 2026-09-27.
 ## 12. Open gaps
 
 - **Whether OpenAI's `function_call_output` has any error flag.** If not, the adapter prefixes text (e.g. `"Error: …"`) to signal `IsError`; unconfirmed against OpenAI docs.
-- **Gemini `candidatesTokenCount` vs `thoughtsTokenCount` overlap.** The cost formula in §5.3 assumes thinking tokens are billed as output and are not already included in `candidatesTokenCount`; Google's docs don't confirm this either way.
+- **Gemini `candidatesTokenCount` vs `thoughtsTokenCount` overlap.** Settled live: no overlap; `thoughtsTokenCount` is separate and added to `Output` (§5.3).
 - **OpenAI `cache_write_tokens` pricing semantics** are undocumented; the catalog's OpenAI cache-write price is a placeholder until confirmed.
 - **Exhaustive structured-output and strict-schema model-support lists for OpenAI and Gemini** (Anthropic's list is documented; the other two are not) — needed to set the catalog's `structured_outputs` capability flag accurately per model.
 - **Anthropic tool-call id charset requirement** (`^[a-zA-Z0-9_-]+$`) is from a secondary source, not confirmed against the Messages API reference; the foreign-history id-rewrite rule (§5.1) depends on it being right.
