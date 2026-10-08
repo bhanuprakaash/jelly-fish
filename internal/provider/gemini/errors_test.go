@@ -82,6 +82,22 @@ func TestCutStreamKeepsItsRequestIDAndIsProviderDown(t *testing.T) {
 	}
 }
 
+func TestInBandErrorIsClassifiedLikeItsStatus(t *testing.T) {
+	c, _ := sseServer(t, "error_event.sse")
+	if pe := streamErr(t, c); pe.Kind != provider.KindLongWait || pe.RetryAfter != 120*time.Second {
+		t.Fatalf("error = %+v, want long_wait of 120s", pe)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(errBody(429, "RESOURCE_EXHAUSTED", "slow down", retryInfo("120s")) + "\n\n"))
+	}))
+	t.Cleanup(srv.Close)
+	if pe := streamErr(t, Client{BaseURL: srv.URL, Catalog: testCatalog(t)}); pe.Kind != provider.KindLongWait {
+		t.Fatalf("no-prefix error = %+v, want long_wait", pe)
+	}
+}
+
 func TestIdleStreamIsProviderDown(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

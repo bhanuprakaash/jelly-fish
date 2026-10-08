@@ -1,8 +1,11 @@
 package gemini
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -78,4 +81,58 @@ func detail(e genai.APIError, typ, field string) string {
 		}
 	}
 	return ""
+}
+
+// errorTap watches a response body for an in-band error event, which the SDK
+// turns into an empty chunk with no error (provider-gateway.md §5.2). Its
+// Read is called from the goroutine ranging the stream, so err needs no lock.
+type errorTap struct {
+	rt  http.RoundTripper
+	err error
+}
+
+func (t *errorTap) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.rt.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = &tapBody{ReadCloser: resp.Body, tap: t}
+	return resp, nil
+}
+
+type tapBody struct {
+	io.ReadCloser
+	tap  *errorTap
+	line []byte
+}
+
+func (b *tapBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	b.line = append(b.line, p[:n]...)
+	for {
+		i := bytes.IndexByte(b.line, '\n')
+		if i < 0 {
+			break
+		}
+		b.tap.scan(b.line[:i])
+		b.line = b.line[i+1:]
+	}
+	if err != nil {
+		b.tap.scan(b.line)
+		b.line = nil
+	}
+	return n, err
+}
+
+func (t *errorTap) scan(line []byte) {
+	data, ok := bytes.CutPrefix(line, []byte("data:"))
+	if !ok || !bytes.Contains(data, []byte(`"error"`)) {
+		return
+	}
+	var ev struct {
+		Error *genai.APIError `json:"error"`
+	}
+	if json.Unmarshal(data, &ev) == nil && ev.Error != nil {
+		t.err = *ev.Error
+	}
 }

@@ -41,7 +41,7 @@ type Catalog interface {
 // Gemini puts on ids. It is free, so it doubles as the key check. It does
 // not retry: a rejected key must fail at once. Errors never carry key.
 func (c Client) ListModels(ctx context.Context, key string) ([]provider.Model, error) {
-	client, err := c.sdk(ctx, key)
+	client, err := c.sdk(ctx, key, nil)
 	if err != nil {
 		return nil, errors.New("list models: request failed")
 	}
@@ -71,12 +71,17 @@ func (c Client) Provider(key string) provider.Provider {
 
 // sdk builds the SDK client on key. It retries nothing unless asked to:
 // retries belong to our own error layer, which counts them (agent-loop.md
-// §5.3).
-func (c Client) sdk(ctx context.Context, key string) (*genai.Client, error) {
+// §5.3). A non-nil tap sees the in-band errors of the response.
+func (c Client) sdk(ctx context.Context, key string, tap *errorTap) (*genai.Client, error) {
+	hc := provider.WatchedClient(c.HTTPClient, c.IdleTimeout)
+	if tap != nil {
+		tap.rt = hc.Transport
+		hc.Transport = tap
+	}
 	return genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:      key,
 		Backend:     genai.BackendGeminiAPI,
-		HTTPClient:  provider.WatchedClient(c.HTTPClient, c.IdleTimeout),
+		HTTPClient:  hc,
 		HTTPOptions: genai.HTTPOptions{BaseURL: c.BaseURL},
 	})
 }

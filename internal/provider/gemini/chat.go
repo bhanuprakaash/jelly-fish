@@ -31,7 +31,8 @@ func (chat) Name() string { return Name }
 // Stream implements provider.Provider. On any error the partial reply is
 // dropped: a half-streamed function call can't be replayed.
 func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {
-	client, err := c.client.sdk(ctx, c.key)
+	tap := &errorTap{}
+	client, err := c.client.sdk(ctx, c.key, tap)
 	if err != nil {
 		return provider.Response{}, fmt.Errorf("gemini client: %w", err)
 	}
@@ -52,6 +53,10 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 	for chunk, err := range client.Models.GenerateContentStream(ctx, req.Model, contents, c.config(req)) {
 		if err != nil {
 			streamError = err
+			break
+		}
+		if tap.err != nil {
+			streamError = tap.err
 			break
 		}
 		if chunk.ResponseID != "" {
