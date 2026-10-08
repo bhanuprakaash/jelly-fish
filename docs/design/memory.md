@@ -319,7 +319,7 @@ All decided 2026-09-24.
 ## 11. Acceptance criteria
 
 - Schema: inserting `scope='user'` with a `project_id`, or `scope='project'` without one, fails the CHECK. Duplicate `(user_id, scope, project_id, path)` fails, including for user scope with NULL project.
-- Tool schema sent to Anthropic, OpenAI and Gemini adapters is byte-identical and never uses `memory_20250818`.
+- Tool schema sent to Anthropic, OpenAI and Gemini adapters is the same (byte-identical for Anthropic and OpenAI; equal after key sorting for Gemini, whose SDK re-encodes it) and never uses `memory_20250818`.
 - Each write command creates exactly one `memory_revisions` row and increments `version` by 1.
 - `view <path>` increments `read_count` and sets `last_read_at`; at session start `view /memories` output equals the prompt index.
 - Stored Event Log for a `create` and a `view` contains `memory.written {memory_id, path, op, version}` and `{memory_id, version}` refs, and no memory content anywhere.
