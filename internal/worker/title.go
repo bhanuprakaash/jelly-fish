@@ -14,7 +14,7 @@ import (
 
 // defaultTitleTimeout bounds a Title call, so a slow one delays the park by
 // at most this long (event-log.md D45).
-const defaultTitleTimeout = 10 * time.Second
+const defaultTitleTimeout = 30 * time.Second
 
 // titleCall is the Title side call of a session's first Turn. Its methods
 // accept nil, which stands for a session that wants no Title.
@@ -55,6 +55,9 @@ func (w *Worker) runTitle(ctx context.Context, c eventlog.Claim, st State, t *ti
 	if ctx.Err() != nil {
 		// Timed out, or the Turn ended without waiting: nothing may be
 		// written, as the Lease may be gone.
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			logger.Warn("title call timed out", "timeout", w.titleTimeout)
+		}
 		return
 	}
 	usage := resp.Usage
