@@ -235,7 +235,7 @@ function ProviderKeyRow({ provider, name, initial }: RowProps) {
       <div className="flex items-center gap-3">
         <p className="min-w-0 flex-1">
           {name}
-          {saved && <span className="ml-2 font-mono text-sm text-muted">sk-…{saved.last4}</span>}
+          {saved && <span className="ml-2 font-mono text-sm text-muted">…{saved.last4}</span>}
         </p>
         {!saved && !adding && (
           <button
