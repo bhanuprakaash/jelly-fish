@@ -58,12 +58,10 @@ func keyRejected(e genai.APIError) bool {
 	return e.Code == http.StatusUnauthorized || e.Code == http.StatusForbidden || detail(e, "ErrorInfo", "reason") == "API_KEY_INVALID"
 }
 
-// tooLong is the 400 for a prompt over the model's input limit.
 func tooLong(e genai.APIError) bool {
 	return e.Status == "INVALID_ARGUMENT" && strings.Contains(e.Message, "exceeds the maximum")
 }
 
-// retryDelay is the wait Gemini's RetryInfo asks for, or zero.
 func retryDelay(e genai.APIError) time.Duration {
 	d, err := time.ParseDuration(detail(e, "RetryInfo", "retryDelay"))
 	if err != nil || d < 0 {
@@ -72,8 +70,6 @@ func retryDelay(e genai.APIError) time.Duration {
 	return d
 }
 
-// detail is the string field of the first error detail whose type ends in
-// typ, or "".
 func detail(e genai.APIError, typ, field string) string {
 	for _, d := range e.Details {
 		if t, _ := d["@type"].(string); strings.HasSuffix(t, "."+typ) {

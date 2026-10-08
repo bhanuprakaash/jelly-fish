@@ -20,7 +20,6 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/openai"
 )
 
-// updating reports whether JF_UPDATE_GOLDEN=1 asks to rewrite goldens.
 func updating() bool { return os.Getenv("JF_UPDATE_GOLDEN") == "1" }
 
 const flash = "gemini-3.8-flash" // always thinks
@@ -34,8 +33,6 @@ func testCatalog(t *testing.T) catalog.Catalog {
 	return c
 }
 
-// sseServer answers every request with the SSE fixture file and keeps the
-// last request body.
 func sseServer(t *testing.T, fixture string) (Client, *[]byte) {
 	t.Helper()
 	sse, err := os.ReadFile(filepath.Join("testdata", fixture))
@@ -304,7 +301,6 @@ func refusedBody(t *testing.T, newProvider func(baseURL string) provider.Provide
 	return body
 }
 
-// sorted is raw as compact JSON with object keys in order.
 func sorted(t *testing.T, raw json.RawMessage) string {
 	t.Helper()
 	var v any

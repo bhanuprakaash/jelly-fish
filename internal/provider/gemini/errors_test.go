@@ -13,7 +13,6 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 )
 
-// errBody is Gemini's error body; details are raw JSON objects.
 func errBody(code int, status, message string, details ...string) string {
 	return `{"error":{"code":` + strconv.Itoa(code) + `,"message":"` + message + `","status":"` + status + `","details":[` + strings.Join(details, ",") + `]}}`
 }
