@@ -16,14 +16,14 @@ import (
 )
 
 // classify maps err onto a *provider.Error. It keeps only the class,
-// retry-after and request id: Gemini's own message can echo the request. Our
-// own ctx ending is not a Provider failure and passes through; a transport
-// failure is one.
-func classify(ctx context.Context, err error, requestID string) error {
+// retry-after and request id: Gemini's own message can echo the request. u is
+// what the attempt consumed before it failed. Our own ctx ending is not a
+// Provider failure and passes through; a transport failure is one.
+func classify(ctx context.Context, err error, u provider.Usage, requestID string) error {
 	if ctx.Err() != nil {
 		return err
 	}
-	pe := &provider.Error{Kind: provider.KindProviderDown, RequestID: requestID}
+	pe := &provider.Error{Kind: provider.KindProviderDown, RequestID: requestID, Usage: u}
 	var apiErr genai.APIError
 	switch {
 	case errors.As(err, &apiErr):

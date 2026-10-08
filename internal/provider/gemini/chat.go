@@ -91,7 +91,7 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 			// (provider-gateway.md D10).
 			return provider.Response{Message: msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{}}, StopReason: provider.StopReasonContextExceeded, RequestID: responseID}, nil
 		}
-		return provider.Response{}, classify(ctx, streamError, responseID)
+		return provider.Response{}, classify(ctx, streamError, usage(usageMeta), responseID)
 	}
 
 	m := msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: r.parts}

@@ -77,8 +77,12 @@ func TestErrorFixturesMapToClasses(t *testing.T) {
 
 func TestCutStreamKeepsItsRequestIDAndIsProviderDown(t *testing.T) {
 	c, _ := sseServer(t, "cut.sse")
-	if pe := streamErr(t, c); pe.Kind != provider.KindProviderDown || pe.RequestID != "resp_cut" {
+	pe := streamErr(t, c)
+	if pe.Kind != provider.KindProviderDown || pe.RequestID != "resp_cut" {
 		t.Fatalf("error = %+v, want provider_down with request resp_cut", pe)
+	}
+	if want := (provider.Usage{Input: 10, Output: 1}); pe.Usage != want {
+		t.Errorf("usage = %+v, want %+v", pe.Usage, want)
 	}
 }
 
