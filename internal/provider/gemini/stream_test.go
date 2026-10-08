@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/genai"
+
 	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
@@ -174,6 +176,52 @@ func TestRefusalsAreStopsAndLogged(t *testing.T) {
 			}
 			if !strings.Contains(logs.String(), tc.logged) {
 				t.Fatalf("log = %s, want %s", logs.String(), tc.logged)
+			}
+		})
+	}
+}
+
+func TestOtherStopIsLogged(t *testing.T) {
+	var logs bytes.Buffer
+	c, _ := sseServer(t, "malformed_call.sse")
+	c.Logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	resp, err := c.Provider("k").Stream(t.Context(), userHi(), func(provider.Delta) {})
+	if err != nil || resp.StopReason != provider.StopReasonOther {
+		t.Fatalf("resp = %+v, err %v; want an other stop", resp, err)
+	}
+	if !strings.Contains(logs.String(), `"finish_reason":"MALFORMED_FUNCTION_CALL"`) {
+		t.Fatalf("log = %s, want the finish reason", logs.String())
+	}
+}
+
+func TestStopReasonPerFinishReason(t *testing.T) {
+	withCall := msg.Message{Parts: []msg.Part{{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{}}}}
+	text := msg.Message{Parts: []msg.Part{{Kind: msg.KindText, Text: "hi"}}}
+	tests := []struct {
+		name   string
+		finish genai.FinishReason
+		block  genai.BlockedReason
+		m      msg.Message
+		want   provider.StopReason
+	}{
+		{"STOP", "STOP", "", text, provider.StopReasonEndTurn},
+		{"STOP with a call", "STOP", "", withCall, provider.StopReasonToolUse},
+		{"MAX_TOKENS", "MAX_TOKENS", "", text, provider.StopReasonMaxTokens},
+		{"SAFETY", "SAFETY", "", text, provider.StopReasonRefusal},
+		{"PROHIBITED_CONTENT", "PROHIBITED_CONTENT", "", text, provider.StopReasonRefusal},
+		{"BLOCKLIST", "BLOCKLIST", "", text, provider.StopReasonRefusal},
+		{"SPII", "SPII", "", text, provider.StopReasonRefusal},
+		{"RECITATION", "RECITATION", "", text, provider.StopReasonRefusal},
+		{"IMAGE_SAFETY", "IMAGE_SAFETY", "", text, provider.StopReasonRefusal},
+		{"MALFORMED_FUNCTION_CALL", "MALFORMED_FUNCTION_CALL", "", text, provider.StopReasonOther},
+		{"UNEXPECTED_TOOL_CALL", "UNEXPECTED_TOOL_CALL", "", text, provider.StopReasonOther},
+		{"unknown", "SOMETHING_NEW", "", text, provider.StopReasonOther},
+		{"blocked prompt", "", "PROHIBITED_CONTENT", msg.Message{}, provider.StopReasonRefusal},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := stopReason(tc.finish, tc.block, tc.m); got != tc.want {
+				t.Fatalf("stopReason = %q, want %q", got, tc.want)
 			}
 		})
 	}
