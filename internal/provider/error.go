@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -62,6 +63,49 @@ var ErrStreamIdle = errors.New("stream idle")
 // IdleTimeout is how long a stream may send no bytes, pings included, before
 // it is cut (provider-gateway.md D7).
 const IdleTimeout = 300 * time.Second
+
+// ShortWait is the longest retry-after worth an in-process retry; a longer
+// one sleeps the session (provider-gateway.md D9).
+const ShortWait = 60 * time.Second
+
+// WaitKind is k, or KindLongWait when k is retryable but wait is longer than
+// ShortWait: waiting in-process would hold the Lease that long.
+func WaitKind(k ErrorKind, wait time.Duration) ErrorKind {
+	if k.Retryable() && wait > ShortWait {
+		return KindLongWait
+	}
+	return k
+}
+
+// RetryAfter is the wait resp's Retry-After header asks for in seconds, or
+// zero.
+func RetryAfter(resp *http.Response) time.Duration {
+	if resp == nil {
+		return 0
+	}
+	secs, err := strconv.Atoi(resp.Header.Get("Retry-After"))
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	return time.Duration(secs) * time.Second
+}
+
+// WatchedClient is a copy of hc (nil means a default client) with every
+// response body under an idle watchdog of d (zero means IdleTimeout).
+func WatchedClient(hc *http.Client, d time.Duration) *http.Client {
+	out := http.Client{}
+	if hc != nil {
+		out = *hc
+	}
+	if out.Transport == nil {
+		out.Transport = http.DefaultTransport
+	}
+	if d == 0 {
+		d = IdleTimeout
+	}
+	out.Transport = WatchIdle(out.Transport, d)
+	return &out
+}
 
 // WatchIdle wraps rt so a response body that returns no bytes for d is closed
 // and its Read fails with ErrStreamIdle.

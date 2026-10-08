@@ -1,0 +1,52 @@
+{
+  "store": false,
+  "include": [
+    "reasoning.encrypted_content"
+  ],
+  "input": [
+    {
+      "content": "find cats",
+      "role": "user"
+    },
+    {
+      "type": "reasoning",
+      "id": "rs_1",
+      "summary": [
+        {
+          "type": "summary_text",
+          "text": "search it"
+        }
+      ],
+      "encrypted_content": "ENC"
+    },
+    {
+      "content": "Searching.",
+      "role": "assistant"
+    },
+    {
+      "arguments": "{\"q\":\"cats\"}",
+      "call_id": "call_abc",
+      "name": "search",
+      "type": "function_call"
+    },
+    {
+      "output": [
+        {
+          "text": "3 cats",
+          "type": "input_text"
+        },
+        {
+          "text": "and a dog",
+          "type": "input_text"
+        }
+      ],
+      "call_id": "call_abc",
+      "type": "function_call_output"
+    }
+  ],
+  "model": "gpt-6.1-sol",
+  "reasoning": {
+    "summary": "auto"
+  },
+  "stream": true
+}

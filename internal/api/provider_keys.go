@@ -12,11 +12,8 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
-	"github.com/bhanuprakaash/jelly-fish/internal/provider/anthropic"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 )
-
-const providerAnthropic = "anthropic"
 
 // Sealer encrypts a secret under the primary master key. The api role never
 // opens one (auth-keys.md §5.8), so the interface has no Open.
@@ -28,7 +25,7 @@ type Sealer interface {
 // checks the key and returns the models it can use. It returns
 // provider.ErrKeyRejected when the Provider refuses the key.
 type ModelLister interface {
-	ListModels(ctx context.Context, provider, key string) ([]provider.Model, error)
+	ListModels(ctx context.Context, key string) ([]provider.Model, error)
 }
 
 // ProviderKeyStore is what /api/provider-keys needs from storage
@@ -41,22 +38,12 @@ type ProviderKeyStore interface {
 
 var _ ProviderKeyStore = (*providerkeys.Store)(nil)
 
-// AnthropicLister adapts the Anthropic client to ModelLister.
-type AnthropicLister struct{ Client anthropic.Client }
-
-// ListModels lists key's models; only the anthropic provider is supported.
-func (l AnthropicLister) ListModels(ctx context.Context, p, key string) ([]provider.Model, error) {
-	if p != providerAnthropic {
-		return nil, errors.New("unsupported provider")
-	}
-	return l.Client.ListModels(ctx, key)
-}
-
 // ProviderKeyConfig wires Provider Key settings into the server.
 type ProviderKeyConfig struct {
 	Store  ProviderKeyStore
 	Sealer Sealer
-	Models ModelLister
+	// Models has a lister for each Provider a key can be saved for.
+	Models map[string]ModelLister
 }
 
 type providerKeyHandlers struct {
@@ -78,7 +65,8 @@ func toProviderKeyJSON(i providerkeys.Info) providerKeyJSON {
 // key the Provider rejects, or a check that fails, writes nothing.
 func (h *providerKeyHandlers) handlePutKey(w http.ResponseWriter, r *http.Request) {
 	p := r.PathValue("p")
-	if p != providerAnthropic {
+	lister, ok := h.cfg.Models[p]
+	if !ok {
 		writeError(w, http.StatusNotFound, "unknown provider")
 		return
 	}
@@ -95,7 +83,7 @@ func (h *providerKeyHandlers) handlePutKey(w http.ResponseWriter, r *http.Reques
 	}
 	u, _ := auth.UserFrom(r.Context())
 
-	models, err := h.cfg.Models.ListModels(r.Context(), p, key)
+	models, err := lister.ListModels(r.Context(), key)
 	if errors.Is(err, provider.ErrKeyRejected) {
 		writeError(w, http.StatusUnprocessableEntity, "Key rejected")
 		return

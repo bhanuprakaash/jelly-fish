@@ -1,0 +1,25 @@
+{
+  "prompt_cache_key": "sess-1",
+  "store": false,
+  "input": [
+    {
+      "content": [
+        {
+          "text": "You are helpful.",
+          "type": "input_text"
+        },
+        {
+          "text": "Project: cats.",
+          "type": "input_text"
+        }
+      ],
+      "role": "developer"
+    },
+    {
+      "content": "hi",
+      "role": "user"
+    }
+  ],
+  "model": "gpt-5.4-mini",
+  "stream": true
+}

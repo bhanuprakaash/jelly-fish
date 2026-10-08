@@ -12,7 +12,6 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/keyring"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
-	"github.com/bhanuprakaash/jelly-fish/internal/provider/anthropic"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/retry"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/tracing"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
@@ -23,13 +22,21 @@ type Catalog interface {
 	Lookup(id string) (provider.ModelInfo, bool)
 }
 
+// Adapter is one Provider's client: it builds a Provider on a key and
+// lists the models a key can use.
+type Adapter interface {
+	Provider(key string) provider.Provider
+	ListModels(ctx context.Context, key string) ([]provider.Model, error)
+}
+
 // Gateway builds the Provider each turn runs on, from the session's model
 // and its owner's Provider Key.
 type Gateway struct {
-	Keyring   *keyring.Keyring
-	Keys      *providerkeys.Store
-	Catalog   Catalog
-	Anthropic anthropic.Client
+	Keyring *keyring.Keyring
+	Keys    *providerkeys.Store
+	Catalog Catalog
+	// Adapters serve each supported Provider, by name.
+	Adapters map[string]Adapter
 	// Fake serves the model named Fake.Name(); nil outside dev builds.
 	Fake provider.Provider
 	// Tracer records one span per call attempt; nil records none.
@@ -81,7 +88,8 @@ func (g Gateway) pick(ctx context.Context, userID uuid.UUID, model string) (prov
 	if err != nil {
 		return nil, err
 	}
-	if prov != anthropic.Name {
+	adapter, ok := g.Adapters[prov]
+	if !ok {
 		return nil, fmt.Errorf("provider %q is not supported", prov)
 	}
 	key, _, err := openKey(ctx, g.Keys, g.Keyring, userID, prov)
@@ -92,7 +100,7 @@ func (g Gateway) pick(ctx context.Context, userID uuid.UUID, model string) (prov
 		return nil, err
 	}
 	defer clear(key)
-	return g.Anthropic.Provider(string(key)), nil
+	return adapter.Provider(string(key)), nil
 }
 
 // providerOf names model's Provider: the catalog's, else the one whose

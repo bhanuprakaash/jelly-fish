@@ -33,7 +33,8 @@ func TestDefaultModel(t *testing.T) {
 		{"", "claude-haiku-4-5-20251001", true},
 		{"claude-opus-5-5", "claude-opus-5-5", true},
 		{"fake", "", false},
-		{"gpt-6-astra", "", false},
+		{"gpt-6-astra", "gpt-6-astra", true},
+		{"gemini-3.8-flash", "", false},
 		{"no-such-model", "", false},
 	}
 	for _, tc := range tests {

@@ -42,6 +42,9 @@ type Request struct {
 	NoThinking bool
 	// Tools the model may call, in a stable order.
 	Tools []ToolSpec
+	// CacheKey groups requests that share a prompt prefix (the session id),
+	// for Providers that route the prompt cache by key.
+	CacheKey string
 }
 
 // ToolSpec is a tool as the model sees it.

@@ -32,7 +32,7 @@ type fakeLister struct {
 	calls []string
 }
 
-func (f *fakeLister) ListModels(_ context.Context, _, key string) ([]provider.Model, error) {
+func (f *fakeLister) ListModels(_ context.Context, key string) ([]provider.Model, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, key)
@@ -48,6 +48,7 @@ func (f *fakeLister) ListModels(_ context.Context, _, key string) ([]provider.Mo
 type keysEnv struct {
 	*loginEnv
 	lister *fakeLister
+	openai *fakeLister
 	logs   *bytes.Buffer
 	kr     *keyring.Keyring
 	user   auth.User
@@ -63,7 +64,7 @@ func newKeysEnv(t *testing.T) *keysEnv {
 	}
 	logs := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	lister := &fakeLister{}
+	lister, openai := &fakeLister{}, &fakeLister{}
 	cat, err := catalog.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -72,10 +73,10 @@ func newKeysEnv(t *testing.T) *keysEnv {
 	srv, authH := newServer(":0", logger, testWebFS(), eventlog.NewRepo(pool, "fake"), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
 		AuthConfig{
 			Authenticator: store, Admin: store, Mailer: &fakeMailer{}, PublicURL: testPublicURL,
-			ProviderKeys: ProviderKeyConfig{Store: providerkeys.NewStore(pool), Sealer: kr, Models: lister},
+			ProviderKeys: ProviderKeyConfig{Store: providerkeys.NewStore(pool), Sealer: kr, Models: map[string]ModelLister{"anthropic": lister, "openai": openai}},
 			Models:       ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: "fake", Fake: "fake"},
 		})
-	e := &keysEnv{loginEnv: &loginEnv{pool: pool, srv: srv, auth: authH, mailer: authH.cfg.Mailer.(*fakeMailer)}, lister: lister, logs: logs, kr: kr}
+	e := &keysEnv{loginEnv: &loginEnv{pool: pool, srv: srv, auth: authH, mailer: authH.cfg.Mailer.(*fakeMailer)}, lister: lister, openai: openai, logs: logs, kr: kr}
 	e.user = testdb.NewUser(t, pool)
 	e.cookie = e.signInUser(t, e.user)
 	return e
@@ -138,6 +139,20 @@ func TestProviderKeyLifecycle(t *testing.T) {
 	}
 	if n := e.rowCount(t); n != 0 {
 		t.Errorf("rows after delete = %d", n)
+	}
+}
+
+func TestPutProviderKeyChecksTheKeyWithItsOwnProvider(t *testing.T) {
+	e := newKeysEnv(t)
+	if rr := e.do(http.MethodPut, "/api/provider-keys/openai", map[string]string{"key": "sk-proj-abcd"}, e.cookie); rr.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, body %s", rr.Code, rr.Body)
+	}
+	if len(e.openai.calls) != 1 || len(e.lister.calls) != 0 {
+		t.Fatalf("openai lister calls %q, anthropic %q", e.openai.calls, e.lister.calls)
+	}
+	var p string
+	if err := e.pool.QueryRow(t.Context(), `SELECT provider FROM provider_keys WHERE user_id = $1`, e.user.ID).Scan(&p); err != nil || p != "openai" {
+		t.Fatalf("stored provider = %q, %v", p, err)
 	}
 }
 
@@ -222,7 +237,7 @@ func TestPutProviderKeyRejectsBadRequests(t *testing.T) {
 		body       map[string]string
 		want       int
 	}{
-		{"unsupported provider", "/api/provider-keys/openai", map[string]string{"key": "sk-x"}, http.StatusNotFound},
+		{"unsupported provider", "/api/provider-keys/gemini", map[string]string{"key": "sk-x"}, http.StatusNotFound},
 		{"empty key", "/api/provider-keys/anthropic", map[string]string{"key": "  "}, http.StatusBadRequest},
 	}
 	for _, tt := range tests {

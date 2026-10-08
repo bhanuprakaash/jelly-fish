@@ -88,6 +88,26 @@ func TestModelsWithOnlyAnAnthropicKey(t *testing.T) {
 	}
 }
 
+func TestModelsShowOnlyCatalogOpenAIModels(t *testing.T) {
+	e := newKeysEnv(t)
+	if rr := e.do(http.MethodPut, "/api/provider-keys/openai", map[string]string{"key": "sk-proj-abcd"}, e.cookie); rr.Code != http.StatusOK {
+		t.Fatalf("PUT key = %d", rr.Code)
+	}
+	if _, err := e.pool.Exec(t.Context(), `UPDATE provider_keys SET models = $2 WHERE user_id = $1`, e.user.ID,
+		`[{"id":"tts-1"},{"id":"gpt-6-luna"},{"id":"gpt-6-sol"},{"id":"gpt-6.1-sol"}]`); err != nil {
+		t.Fatal(err)
+	}
+
+	o := e.models(t).Providers[1]
+	var ids []string
+	for _, m := range o.Models {
+		ids = append(ids, m.ID)
+	}
+	if o.Provider != "openai" || !o.Available || len(ids) != 2 || ids[0] != "gpt-6.1-sol" || ids[1] != "gpt-6-luna" {
+		t.Fatalf("openai = %v available %v, want [gpt-6.1-sol gpt-6-luna] in catalog order", ids, o.Available)
+	}
+}
+
 func TestModelsWithoutKeysAreAllUnavailable(t *testing.T) {
 	e := newKeysEnv(t)
 	for _, p := range e.models(t).Providers {

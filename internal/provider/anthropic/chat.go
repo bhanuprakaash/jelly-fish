@@ -37,25 +37,7 @@ func (c Client) options(key string) []option.RequestOption {
 	if c.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(c.BaseURL))
 	}
-	return append(opts, option.WithHTTPClient(c.watchedClient()))
-}
-
-// watchedClient is the HTTP client with every response body under the idle
-// watchdog.
-func (c Client) watchedClient() *http.Client {
-	hc := http.Client{}
-	if c.HTTPClient != nil {
-		hc = *c.HTTPClient
-	}
-	if hc.Transport == nil {
-		hc.Transport = http.DefaultTransport
-	}
-	idle := c.IdleTimeout
-	if idle == 0 {
-		idle = provider.IdleTimeout
-	}
-	hc.Transport = provider.WatchIdle(hc.Transport, idle)
-	return &hc
+	return append(opts, option.WithHTTPClient(provider.WatchedClient(c.HTTPClient, c.IdleTimeout)))
 }
 
 type chat struct {

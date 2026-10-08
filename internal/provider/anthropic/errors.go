@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -13,10 +12,6 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 )
-
-// shortWait is the longest retry-after worth an in-process retry; a longer
-// one sleeps the session (provider-gateway.md D9).
-const shortWait = 60 * time.Second
 
 // billingText spots the 400s that mean the account, not the request, is the
 // problem (provider-gateway.md D20: classified by message pattern).
@@ -37,27 +32,12 @@ func classify(ctx context.Context, err error, u provider.Usage, requestID string
 		if apiErr.RequestID != "" {
 			pe.RequestID = apiErr.RequestID
 		}
-		pe.RetryAfter = retryAfter(apiErr.Response)
-		pe.Kind = kindOf(apiErr, pe.RetryAfter)
-		if pe.Kind.Retryable() && pe.RetryAfter > shortWait {
-			// Waiting in-process would hold the Lease that long.
-			pe.Kind = provider.KindLongWait
-		}
+		pe.RetryAfter = provider.RetryAfter(apiErr.Response)
+		pe.Kind = provider.WaitKind(kindOf(apiErr, pe.RetryAfter), pe.RetryAfter)
 	case errors.Is(err, provider.ErrStreamIdle):
 		pe.Err = provider.ErrStreamIdle
 	}
 	return pe
-}
-
-func retryAfter(resp *http.Response) time.Duration {
-	if resp == nil {
-		return 0
-	}
-	secs, err := strconv.Atoi(resp.Header.Get("Retry-After"))
-	if err != nil || secs <= 0 {
-		return 0
-	}
-	return time.Duration(secs) * time.Second
 }
 
 // kindOf trusts the error type in the body first, which is all a mid-stream
@@ -103,7 +83,7 @@ func rateLimitKind(wait time.Duration) provider.ErrorKind {
 	switch {
 	case wait == 0:
 		return provider.KindBilling
-	case wait <= shortWait:
+	case wait <= provider.ShortWait:
 		return provider.KindRateLimited
 	}
 	return provider.KindLongWait

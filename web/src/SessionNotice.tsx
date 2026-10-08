@@ -3,11 +3,15 @@ import { interruptSession, retrySession } from './lib/api'
 import type { Notice } from './lib/sessionNotice'
 import { useAction } from './lib/useAction'
 
-const BILLING_URL = 'https://console.anthropic.com/settings/billing'
+const billingURLs: Record<string, string> = {
+  anthropic: 'https://console.anthropic.com/settings/billing',
+  openai: 'https://platform.openai.com/settings/organization/billing/overview',
+}
 
 type Props = {
   sessionId: string
   notice: Notice
+  provider?: string
   // picker is the model picker "Switch model" opens.
   picker?: React.ReactNode
 }
@@ -37,7 +41,7 @@ const retryable = (code: string, failed: boolean) =>
 
 const linkClass = 'btn btn-secondary btn-sm'
 
-export function SessionNotice({ sessionId, notice, picker }: Props) {
+export function SessionNotice({ sessionId, notice, provider, picker }: Props) {
   const { run, busy, error } = useAction({}, 'Could not do that. Try again.')
   const [picking, setPicking] = useState(false)
 
@@ -69,8 +73,8 @@ export function SessionNotice({ sessionId, notice, picker }: Props) {
             Update key
           </a>
         )}
-        {notice.code === 'billing' && !notice.failed && (
-          <a href={BILLING_URL} target="_blank" rel="noopener noreferrer" className={linkClass}>
+        {notice.code === 'billing' && !notice.failed && provider && billingURLs[provider] && (
+          <a href={billingURLs[provider]} target="_blank" rel="noopener noreferrer" className={linkClass}>
             Open provider billing
           </a>
         )}
