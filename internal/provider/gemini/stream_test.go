@@ -18,6 +18,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/anthropic"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/cassette"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/openai"
 )
@@ -63,6 +64,25 @@ func collect(t *testing.T, p provider.Provider, req provider.Request) (provider.
 
 func userHi() provider.Request {
 	return provider.Request{Model: flash, Messages: []msg.Message{msg.UserText("Say hi.")}}
+}
+
+func TestStreamFlashLiteText(t *testing.T) {
+	c := Client{HTTPClient: cassette.Open(t, "testdata/flash_lite_text.cassette.json"), Catalog: testCatalog(t)}
+	req := provider.Request{Model: "gemini-3.5-flash-lite", Messages: []msg.Message{msg.UserText("Say hi in five words.")}}
+	resp, deltas := collect(t, c.Provider(cassette.Key(t, "GEMINI_API_KEY")), req)
+
+	var streamed strings.Builder
+	for _, d := range deltas {
+		if d.Kind == provider.DeltaText {
+			streamed.WriteString(d.Text)
+		}
+	}
+	if got := resp.Message.Text(); got == "" || got != streamed.String() {
+		t.Fatalf("text %q, streamed %q", got, streamed.String())
+	}
+	if resp.StopReason != provider.StopReasonEndTurn || resp.Usage.Input == 0 || resp.Usage.Output == 0 || resp.RequestID == "" {
+		t.Fatalf("resp = %+v", resp)
+	}
 }
 
 func TestStreamText(t *testing.T) {

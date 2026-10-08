@@ -1,0 +1,63 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent",
+        "header": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "User-Agent": [
+            "google-genai-sdk/1.73.0 gl-go/go1.25.6"
+          ],
+          "X-Goog-Api-Client": [
+            "google-genai-sdk/1.73.0 gl-go/go1.25.6"
+          ],
+          "X-Goog-Api-Key": [
+            "REDACTED"
+          ]
+        },
+        "body": "{\"contents\":[{\"parts\":[{\"text\":\"Say hi in five words.\"}],\"role\":\"user\"}],\"generationConfig\":{\"thinkingConfig\":{\"includeThoughts\":true}}}\n"
+      },
+      "response": {
+        "status": 200,
+        "header": {
+          "Alt-Svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "Content-Disposition": [
+            "attachment"
+          ],
+          "Content-Type": [
+            "text/event-stream"
+          ],
+          "Date": [
+            "Thu, 08 Oct 2026 16:55:30 GMT"
+          ],
+          "Server": [
+            "scaffolding on HTTPServer2"
+          ],
+          "Server-Timing": [
+            "gfet4t7; dur=17898"
+          ],
+          "Vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "X-Content-Type-Options": [
+            "nosniff"
+          ],
+          "X-Frame-Options": [
+            "SAMEORIGIN"
+          ],
+          "X-Xss-Protection": [
+            "0"
+          ]
+        },
+        "body": "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Hello,\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 7,\"candidatesTokenCount\": 2,\"totalTokenCount\": 9,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 7}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3.5-flash-lite\",\"responseId\": \"8crHaseTF9zeg8UPrsimkAs\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" how are you today?\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 7,\"candidatesTokenCount\": 7,\"totalTokenCount\": 14,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 7}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3.5-flash-lite\",\"responseId\": \"8crHaseTF9zeg8UPrsimkAs\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"\",\"thoughtSignature\": \"EmAKXgFpFH0TcnQRWFytfLVhuqNHa6z/wN/SvHyFsi9OiO+6lsMu4ur89GM66aQZlVEB2KPGMXGp7xkYoK4b5zJepa+htdPqGU1anmAA7hPAxw+x8LgqUyhSJjurOhK1ky0=\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 7,\"candidatesTokenCount\": 7,\"totalTokenCount\": 14,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 7}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3.5-flash-lite\",\"responseId\": \"8crHaseTF9zeg8UPrsimkAs\"}\r\n\r\n"
+      }
+    }
+  ]
+}
