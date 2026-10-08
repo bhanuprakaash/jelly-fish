@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/keyring"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/gemini"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
@@ -45,6 +47,23 @@ func (f *fakeLister) ListModels(_ context.Context, key string) ([]provider.Model
 	return []provider.Model{{ID: "claude-haiku-4-5", DisplayName: "Claude Haiku 4.5"}}, nil
 }
 
+// geminiModelsServer is a fake Gemini models endpoint: it rejects the key
+// "AIza-bad" the way Gemini does, a 400 naming API_KEY_INVALID.
+func geminiModelsServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Header.Get("X-Goog-Api-Key") == "AIza-bad" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":400,"message":"API key not valid.","status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID"}]}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[{"name":"models/gemini-embedding-001"},{"name":"models/gemini-3.8-flash","displayName":"Gemini 3.8 Flash"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 type keysEnv struct {
 	*loginEnv
 	lister *fakeLister
@@ -65,6 +84,7 @@ func newKeysEnv(t *testing.T) *keysEnv {
 	logs := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	lister, openai := &fakeLister{}, &fakeLister{}
+	gem := gemini.Client{BaseURL: geminiModelsServer(t).URL}
 	cat, err := catalog.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +93,7 @@ func newKeysEnv(t *testing.T) *keysEnv {
 	srv, authH := newServer(":0", logger, testWebFS(), eventlog.NewRepo(pool, "fake"), stream.NewHub(), &fakeDeltaBus{}, newTestMetrics(t),
 		AuthConfig{
 			Authenticator: store, Admin: store, Mailer: &fakeMailer{}, PublicURL: testPublicURL,
-			ProviderKeys: ProviderKeyConfig{Store: providerkeys.NewStore(pool), Sealer: kr, Models: map[string]ModelLister{"anthropic": lister, "openai": openai}},
+			ProviderKeys: ProviderKeyConfig{Store: providerkeys.NewStore(pool), Sealer: kr, Models: map[string]ModelLister{"anthropic": lister, "openai": openai, "gemini": gem}},
 			Models:       ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: "fake", Fake: "fake"},
 		})
 	e := &keysEnv{loginEnv: &loginEnv{pool: pool, srv: srv, auth: authH, mailer: authH.cfg.Mailer.(*fakeMailer)}, lister: lister, openai: openai, logs: logs, kr: kr}
@@ -153,6 +173,29 @@ func TestPutProviderKeyChecksTheKeyWithItsOwnProvider(t *testing.T) {
 	var p string
 	if err := e.pool.QueryRow(t.Context(), `SELECT provider FROM provider_keys WHERE user_id = $1`, e.user.ID).Scan(&p); err != nil || p != "openai" {
 		t.Fatalf("stored provider = %q, %v", p, err)
+	}
+}
+
+func TestPutGeminiKeyChecksItAgainstTheModelsEndpoint(t *testing.T) {
+	e := newKeysEnv(t)
+	if rr := e.do(http.MethodPut, "/api/provider-keys/gemini", map[string]string{"key": "AIza-bad"}, e.cookie); rr.Code != http.StatusUnprocessableEntity || e.rowCount(t) != 0 {
+		t.Fatalf("bad key: PUT = %d, rows %d; want 422 and none", rr.Code, e.rowCount(t))
+	}
+
+	if rr := e.do(http.MethodPut, "/api/provider-keys/gemini", map[string]string{"key": "AIza-good"}, e.cookie); rr.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, body %s", rr.Code, rr.Body)
+	}
+	var models string
+	if err := e.pool.QueryRow(t.Context(), `SELECT models::text FROM provider_keys WHERE user_id = $1 AND provider = 'gemini'`, e.user.ID).Scan(&models); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(models, `"gemini-3.8-flash"`) || !strings.Contains(models, `"gemini-embedding-001"`) || strings.Contains(models, "models/") {
+		t.Errorf("stored models = %s, want the full list without the models/ prefix", models)
+	}
+
+	g := e.models(t).Providers[2]
+	if g.Provider != "gemini" || !g.Available || len(g.Models) != 1 || g.Models[0].ID != "gemini-3.8-flash" {
+		t.Fatalf("picker = %+v, want only gemini-3.8-flash", g)
 	}
 }
 
@@ -237,7 +280,7 @@ func TestPutProviderKeyRejectsBadRequests(t *testing.T) {
 		body       map[string]string
 		want       int
 	}{
-		{"unsupported provider", "/api/provider-keys/gemini", map[string]string{"key": "sk-x"}, http.StatusNotFound},
+		{"unsupported provider", "/api/provider-keys/mistral", map[string]string{"key": "sk-x"}, http.StatusNotFound},
 		{"empty key", "/api/provider-keys/anthropic", map[string]string{"key": "  "}, http.StatusBadRequest},
 	}
 	for _, tt := range tests {

@@ -1,0 +1,54 @@
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "hi"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "thinkingConfig": {
+      "includeThoughts": true
+    }
+  },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "description": "Read and write memories.",
+          "name": "memory",
+          "parametersJsonSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "description": "Look up a code.",
+          "name": "lookup",
+          "parametersJsonSchema": {
+            "properties": {
+              "code": {
+                "minLength": 2,
+                "pattern": "^[A-Z]+$",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        }
+      ]
+    }
+  ]
+}
+

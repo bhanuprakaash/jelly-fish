@@ -80,7 +80,7 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		fakeModel = fake.Name()
 	}
 	listers := map[string]api.ModelLister{}
-	for name, a := range adapters(cat) {
+	for name, a := range adapters(cat, logger) {
 		listers[name] = a
 	}
 	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics, api.AuthConfig{

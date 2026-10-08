@@ -1,0 +1,2 @@
+data: {"candidates":[{"finishReason":"SAFETY","finishMessage":"Response blocked by safety filter.","index":0}],"usageMetadata":{"promptTokenCount":40,"totalTokenCount":40},"responseId":"resp_safety"}
+

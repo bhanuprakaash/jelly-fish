@@ -6,6 +6,7 @@ import { useAction } from './lib/useAction'
 const billingURLs: Record<string, string> = {
   anthropic: 'https://console.anthropic.com/settings/billing',
   openai: 'https://platform.openai.com/settings/organization/billing/overview',
+  gemini: 'https://aistudio.google.com/usage',
 }
 
 type Props = {

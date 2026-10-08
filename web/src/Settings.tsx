@@ -174,9 +174,8 @@ function Appearance() {
 const keyProviders = [
   { id: 'anthropic', name: 'Anthropic' },
   { id: 'openai', name: 'OpenAI' },
+  { id: 'gemini', name: 'Gemini' },
 ]
-
-const comingSoon = ['Gemini']
 
 // ProviderKeys is one row per Provider; a saved key shows only its last four
 // characters and can be replaced or deleted, never read back.
@@ -196,12 +195,6 @@ function ProviderKeys() {
         keyProviders.map((p) => (
           <ProviderKeyRow key={p.id} provider={p.id} name={p.name} initial={keys.find((k) => k.provider === p.id) ?? null} />
         ))}
-      {comingSoon.map((name) => (
-        <div key={name} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 text-muted">
-          <p className="min-w-0 flex-1">{name}</p>
-          <span className="text-sm text-muted">Coming soon</span>
-        </div>
-      ))}
     </section>
   )
 }
@@ -242,7 +235,7 @@ function ProviderKeyRow({ provider, name, initial }: RowProps) {
       <div className="flex items-center gap-3">
         <p className="min-w-0 flex-1">
           {name}
-          {saved && <span className="ml-2 font-mono text-sm text-muted">sk-…{saved.last4}</span>}
+          {saved && <span className="ml-2 font-mono text-sm text-muted">…{saved.last4}</span>}
         </p>
         {!saved && !adding && (
           <button

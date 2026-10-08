@@ -1,0 +1,4 @@
+data: {"candidates":[{"content":{"parts":[{"text":"Check memory.","thought":true}],"role":"model"},"index":0}],"usageMetadata":{"promptTokenCount":150,"cachedContentTokenCount":100,"thoughtsTokenCount":25,"totalTokenCount":175},"responseId":"resp_call"}
+
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"id":"fc_abc","name":"search","args":{"q":"cats"}},"thoughtSignature":"c2lnLWNhbGw="}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":150,"cachedContentTokenCount":100,"candidatesTokenCount":15,"thoughtsTokenCount":25,"totalTokenCount":190},"responseId":"resp_call"}
+
