@@ -282,6 +282,15 @@ func TestToolResultsGoBackAsFunctionResponses(t *testing.T) {
 	}
 }
 
+func TestToolResultWithoutItsCallIsAnError(t *testing.T) {
+	_, err := toContents([]msg.Message{{MsgV: msg.CurrentVersion, Role: msg.RoleUser, Parts: []msg.Part{
+		{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{CallID: "gone", Parts: []msg.Part{{Kind: msg.KindText, Text: "ok"}}}},
+	}}})
+	if err == nil || err.Error() != "gemini: tool result for unknown call gone" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestMemoryToolSchemaIsByteIdenticalToTheOtherAdapters(t *testing.T) {
 	def := memory.New(nil).Def()
 	tools := []provider.ToolSpec{{Name: def.Name, Description: def.Description, Schema: def.Schema, Strict: def.Strict}}

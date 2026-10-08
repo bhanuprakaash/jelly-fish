@@ -181,7 +181,10 @@ func toContents(messages []msg.Message) ([]*genai.Content, error) {
 				if tr.IsError {
 					key = "error"
 				}
-				c := calls[tr.CallID]
+				c, ok := calls[tr.CallID]
+				if !ok {
+					return nil, fmt.Errorf("gemini: tool result for unknown call %s", tr.CallID)
+				}
 				gp = &genai.Part{FunctionResponse: &genai.FunctionResponse{ID: c.id, Name: c.name, Response: map[string]any{key: strings.Join(texts, "\n")}}}
 			default:
 				return nil, fmt.Errorf("gemini: part kind %q not supported", p.Kind)
