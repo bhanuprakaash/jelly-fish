@@ -1,0 +1,17 @@
+{
+  "store": false,
+  "include": [
+    "reasoning.encrypted_content"
+  ],
+  "input": [
+    {
+      "content": "hi",
+      "role": "user"
+    }
+  ],
+  "model": "gpt-6.1-sol",
+  "reasoning": {
+    "summary": "auto"
+  },
+  "stream": true
+}

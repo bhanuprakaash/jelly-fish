@@ -1,4 +1,4 @@
-import type { UIEvent } from './api'
+import type { Models, UIEvent } from './api'
 
 // sessionModel is the model the session's next turn runs on: the latest
 // session.config_changed model, else the one session.created set.
@@ -12,4 +12,9 @@ export function sessionModel(events: UIEvent[]): string | undefined {
     }
   }
   return model
+}
+
+// providerOf names the Provider of the group listing model.
+export function providerOf(models: Models, model: string): string | undefined {
+  return models.providers.find((g) => g.models.some((m) => m.id === model))?.provider
 }

@@ -141,10 +141,10 @@ func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // scrub blanks every Provider's key headers, and the account ids Anthropic
-// echoes back.
+// and OpenAI echo back.
 func scrub(h http.Header) http.Header {
 	h = h.Clone()
-	for _, name := range []string{"x-api-key", "authorization", "x-goog-api-key", "anthropic-organization-id", "anthropic-workspace-id"} {
+	for _, name := range []string{"x-api-key", "authorization", "x-goog-api-key", "anthropic-organization-id", "anthropic-workspace-id", "openai-organization", "openai-project"} {
 		if h.Get(name) != "" {
 			h.Set(name, Redacted)
 		}

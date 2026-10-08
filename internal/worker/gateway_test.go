@@ -20,6 +20,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/anthropic"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider/openai"
 	"github.com/bhanuprakaash/jelly-fish/internal/providerkeys"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
@@ -95,7 +96,7 @@ func testGateway(t *testing.T, pool *pgxpool.Pool, base string) Gateway {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Gateway{Keyring: parseKeyring(t, keyM1), Keys: providerkeys.NewStore(pool), Catalog: c, Anthropic: anthropic.Client{BaseURL: base, Catalog: c}}
+	return Gateway{Keyring: parseKeyring(t, keyM1), Keys: providerkeys.NewStore(pool), Catalog: c, Adapters: map[string]Adapter{anthropic.Name: anthropic.Client{BaseURL: base, Catalog: c}}}
 }
 
 func runWorker(t *testing.T, pool *pgxpool.Pool, gw Gateway) {
@@ -390,6 +391,13 @@ func TestRefreshModelsUpdatesEachKeysList(t *testing.T) {
 	gw := testGateway(t, pool, ok.srv.URL)
 	good, bad := testdb.NewUser(t, pool), testdb.NewUser(t, pool)
 	insertSealed(t, pool, gw.Keyring, good.ID, anthropic.Name, "sk-ant-good")
+	oai := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-6.1-sol","object":"model","created":1,"owned_by":"openai"}]}`))
+	}))
+	t.Cleanup(oai.Close)
+	gw.Adapters[openai.Name] = openai.Client{BaseURL: oai.URL}
+	insertSealed(t, pool, gw.Keyring, good.ID, openai.Name, "sk-oai-good")
 	// A row sealed for another user fails to open and is left alone.
 	ct, keyID, err := gw.Keyring.Seal([]byte("sk-ant-bad"), []byte("someone-else|anthropic"))
 	if err != nil {
@@ -400,9 +408,9 @@ func TestRefreshModelsUpdatesEachKeysList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := RefreshModels(t.Context(), gw.Keys, gw.Keyring, gw.Anthropic)
-	if n != 1 || err == nil {
-		t.Fatalf("RefreshModels = %d, %v; want 1 and the bad row's error", n, err)
+	n, err := RefreshModels(t.Context(), gw.Keys, gw.Keyring, gw.Adapters)
+	if n != 2 || err == nil {
+		t.Fatalf("RefreshModels = %d, %v; want 2 and the bad row's error", n, err)
 	}
 	if strings.Contains(err.Error(), "sk-ant") {
 		t.Fatalf("error carries a key: %v", err)
@@ -413,16 +421,33 @@ func TestRefreshModelsUpdatesEachKeysList(t *testing.T) {
 
 	var models string
 	var fresh bool
-	if err := pool.QueryRow(t.Context(), `SELECT models::text, models_fetched_at > now() - interval '1 minute' FROM provider_keys WHERE user_id = $1`, good.ID).Scan(&models, &fresh); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(models, haiku) || !fresh {
-		t.Fatalf("good row: models %s, fresh %v", models, fresh)
+	for prov, want := range map[string]string{anthropic.Name: haiku, openai.Name: "gpt-6.1-sol"} {
+		if err := pool.QueryRow(t.Context(), `SELECT models::text, models_fetched_at > now() - interval '1 minute' FROM provider_keys WHERE user_id = $1 AND provider = $2`, good.ID, prov).Scan(&models, &fresh); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(models, want) || !fresh {
+			t.Fatalf("good %s row: models %s, fresh %v", prov, models, fresh)
+		}
 	}
 	if err := pool.QueryRow(t.Context(), `SELECT models::text, models_fetched_at > now() - interval '1 minute' FROM provider_keys WHERE user_id = $1`, bad.ID).Scan(&models, &fresh); err != nil {
 		t.Fatal(err)
 	}
 	if models != "[]" || fresh {
 		t.Fatalf("bad row was touched: models %s, fresh %v", models, fresh)
+	}
+}
+
+func TestPickRoutesEachModelToItsProvider(t *testing.T) {
+	pool := testdb.NewPool(t)
+	gw := testGateway(t, pool, "http://unused")
+	gw.Adapters[openai.Name] = openai.Client{}
+	u := testdb.NewUser(t, pool)
+	insertSealed(t, pool, gw.Keyring, u.ID, anthropic.Name, "sk-ant-x")
+	insertSealed(t, pool, gw.Keyring, u.ID, openai.Name, "sk-oai-x")
+	for model, want := range map[string]string{haiku: anthropic.Name, "gpt-6-luna": openai.Name} {
+		p, err := gw.pick(t.Context(), u.ID, model)
+		if err != nil || p.Name() != want {
+			t.Fatalf("pick(%s) = %v, %v; want %s", model, p, err, want)
+		}
 	}
 }

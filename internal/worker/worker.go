@@ -432,7 +432,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	defer title.abandon()
 
 	stopBatch := batch.Start(ctx)
-	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, System: system, Messages: messages, Tools: toolSpecs(defs)}, func(d provider.Delta) {
+	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, System: system, Messages: messages, Tools: toolSpecs(defs), CacheKey: c.SessionID.String()}, func(d provider.Delta) {
 		if d.Kind == provider.DeltaText {
 			batch.Add(d.Text)
 		}

@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type Ref } from 'react'
 import type { ModelOption, Models } from './lib/api'
+import { providerOf } from './lib/sessionModel'
 
 const providerNames: Record<string, string> = {
   anthropic: 'Anthropic',
@@ -23,11 +24,6 @@ function optionMeta(m: ModelOption): string {
   if (m.context_window) parts.push(`${tokens(m.context_window)} tokens`)
   parts.push(m.price ? `$${m.price.input}/$${m.price.output}` : 'price unknown')
   return parts.join(' · ')
-}
-
-// providerOf names the Provider of the group listing model.
-function providerOf(models: Models, model: string): string | undefined {
-  return models.providers.find((g) => g.models.some((m) => m.id === model))?.provider
 }
 
 type Item = { m: ModelOption; enabled: boolean; why?: string }

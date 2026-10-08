@@ -84,7 +84,7 @@ func TestNoCassetteHoldsAKey(t *testing.T) {
 		}
 		for i, in := range c.Interactions {
 			for _, h := range []http.Header{in.Request.Header, in.Response.Header} {
-				for _, name := range []string{"x-api-key", "authorization", "x-goog-api-key", "anthropic-organization-id", "anthropic-workspace-id"} {
+				for _, name := range []string{"x-api-key", "authorization", "x-goog-api-key", "anthropic-organization-id", "anthropic-workspace-id", "openai-organization", "openai-project"} {
 					for _, v := range h.Values(name) {
 						if v != cassette.Redacted {
 							t.Errorf("%s interaction %d: %s is not redacted", path, i, name)

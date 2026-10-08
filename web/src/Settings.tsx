@@ -171,34 +171,56 @@ function Appearance() {
   )
 }
 
-const comingSoon = ['OpenAI', 'Gemini']
+const keyProviders = [
+  { id: 'anthropic', name: 'Anthropic' },
+  { id: 'openai', name: 'OpenAI' },
+]
+
+const comingSoon = ['Gemini']
 
 // ProviderKeys is one row per Provider; a saved key shows only its last four
 // characters and can be replaced or deleted, never read back.
 function ProviderKeys() {
-  const [saved, setSaved] = useState<ProviderKey | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  const [keys, setKeys] = useState<ProviderKey[] | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    getProviderKeys().then(setKeys, () => setError('Could not load your provider keys.'))
+  }, [])
+
+  return (
+    <section className="space-y-3 border-t border-line pt-6">
+      <h2 className="section-heading">Provider Keys</h2>
+      {error && <p className="text-sm text-danger">{error}</p>}
+      {keys &&
+        keyProviders.map((p) => (
+          <ProviderKeyRow key={p.id} provider={p.id} name={p.name} initial={keys.find((k) => k.provider === p.id) ?? null} />
+        ))}
+      {comingSoon.map((name) => (
+        <div key={name} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 text-muted">
+          <p className="min-w-0 flex-1">{name}</p>
+          <span className="text-sm text-muted">Coming soon</span>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+type RowProps = { provider: string; name: string; initial: ProviderKey | null }
+
+function ProviderKeyRow({ provider, name, initial }: RowProps) {
+  const [saved, setSaved] = useState<ProviderKey | null>(initial)
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [key, setKey] = useState('')
-  const { run, busy, error, setError } = useAction({
+  const { run, busy, error } = useAction({
     422: 'Key rejected',
-    502: "Couldn't reach Anthropic, try again",
+    502: `Couldn't reach ${name}, try again`,
   })
-
-  useEffect(() => {
-    getProviderKeys().then(
-      (list) => {
-        setSaved(list.find((k) => k.provider === 'anthropic') ?? null)
-        setLoaded(true)
-      },
-      () => setError('Could not load your provider keys.'),
-    )
-  }, [setError])
 
   const save = () =>
     run(async () => {
-      setSaved(await putProviderKey('anthropic', key))
+      setSaved(await putProviderKey(provider, key))
       setKey('')
       setEditing(false)
       setAdding(false)
@@ -207,78 +229,69 @@ function ProviderKeys() {
   const remove = async () => {
     if (!window.confirm('Chats using this Provider will stop until you add a key.')) return
     await run(async () => {
-      await deleteProviderKey('anthropic')
+      await deleteProviderKey(provider)
       setSaved(null)
       setEditing(false)
     })
   }
 
-  const showInput = loaded && ((saved === null && adding) || editing)
+  const showInput = (saved === null && adding) || editing
 
   return (
-    <section className="space-y-3 border-t border-line pt-6">
-      <h2 className="section-heading">Provider Keys</h2>
-      <div className="space-y-3 rounded-card border border-line bg-surface p-4">
-        <div className="flex items-center gap-3">
-          <p className="min-w-0 flex-1">
-            Anthropic
-            {saved && <span className="ml-2 font-mono text-sm text-muted">sk-…{saved.last4}</span>}
-          </p>
-          {!saved && loaded && !adding && (
+    <div className="space-y-3 rounded-card border border-line bg-surface p-4">
+      <div className="flex items-center gap-3">
+        <p className="min-w-0 flex-1">
+          {name}
+          {saved && <span className="ml-2 font-mono text-sm text-muted">sk-…{saved.last4}</span>}
+        </p>
+        {!saved && !adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="btn btn-secondary btn-sm"
+          >
+            Add key
+          </button>
+        )}
+        {saved && !editing && (
+          <>
             <button
-              onClick={() => setAdding(true)}
+              onClick={() => setEditing(true)}
               className="btn btn-secondary btn-sm"
             >
-              Add key
+              Replace
             </button>
-          )}
-          {saved && !editing && (
-            <>
-              <button
-                onClick={() => setEditing(true)}
-                className="btn btn-secondary btn-sm"
-              >
-                Replace
-              </button>
-              <button onClick={remove} className="btn btn-danger btn-sm">
-                Delete
-              </button>
-            </>
-          )}
-        </div>
-        {showInput && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              save()
-            }}
-            className="flex gap-3"
-          >
-            <input
-              type="password"
-              autoComplete="off"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="Anthropic API key"
-              className="input min-w-0 flex-1"
-            />
-            <button
-              type="submit"
-              disabled={busy || key.trim() === ''}
-              className="btn btn-primary"
-            >
-              Save
+            <button onClick={remove} className="btn btn-danger btn-sm">
+              Delete
             </button>
-          </form>
+          </>
         )}
-        {error && <p className="text-sm text-danger">{error}</p>}
       </div>
-      {comingSoon.map((name) => (
-        <div key={name} className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 text-muted">
-          <p className="min-w-0 flex-1">{name}</p>
-          <span className="text-sm text-muted">Coming soon</span>
-        </div>
-      ))}
-    </section>
+      {showInput && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            save()
+          }}
+          className="flex gap-3"
+        >
+          <input
+            type="password"
+            autoComplete="off"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder={`${name} API key`}
+            className="input min-w-0 flex-1"
+          />
+          <button
+            type="submit"
+            disabled={busy || key.trim() === ''}
+            className="btn btn-primary"
+          >
+            Save
+          </button>
+        </form>
+      )}
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
   )
 }

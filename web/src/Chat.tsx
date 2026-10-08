@@ -13,7 +13,7 @@ import {
   type UIEvent,
 } from './lib/api'
 import { JellyGlyph } from './JellyGlyph'
-import { sessionModel } from './lib/sessionModel'
+import { providerOf, sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
 import { renamedTitle } from './lib/sessionTitle'
 import { statusChipTone, statusLabel, type JellyStatus } from './lib/status'
@@ -347,7 +347,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               {text}
             </div>
           ))}
-          {notice && <SessionNotice sessionId={sessionId} notice={notice} picker={picker} />}
+          {notice && <SessionNotice sessionId={sessionId} notice={notice} provider={models && current ? providerOf(models, current) : undefined} picker={picker} />}
         </div>
       </main>
 

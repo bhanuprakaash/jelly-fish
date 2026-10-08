@@ -79,6 +79,10 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if fake := devFake(); fake != nil {
 		fakeModel = fake.Name()
 	}
+	listers := map[string]api.ModelLister{}
+	for name, a := range adapters(cat) {
+		listers[name] = a
+	}
 	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics, api.AuthConfig{
 		Authenticator:  authStore,
 		Admin:          authStore,
@@ -88,7 +92,7 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		ProviderKeys: api.ProviderKeyConfig{
 			Store:  providerkeys.NewStore(pool),
 			Sealer: kr,
-			Models: api.AnthropicLister{},
+			Models: listers,
 		},
 		Models:   api.ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: model, Fake: fakeModel},
 		Memories: memory.NewPages(pool),

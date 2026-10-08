@@ -1,0 +1,6 @@
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":0,"output_index":0,"content_index":0,"item_id":"msg_1","delta":"Hel"}
+
+event: response.failed
+data: {"type":"response.failed","sequence_number":1,"response":{"id":"resp_4","object":"response","status":"failed","error":{"code":"server_error","message":"boom"},"output":[],"usage":{"input_tokens":42,"input_tokens_details":{"cached_tokens":0},"output_tokens":7,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":49}}}
+
