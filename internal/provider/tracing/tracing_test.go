@@ -103,7 +103,7 @@ func TestSuccessSpanCarriesCallAttributes(t *testing.T) {
 func TestEveryRetryAttemptGetsItsOwnSpan(t *testing.T) {
 	tp, rec := recorder(t)
 	down := func(id string, in int64) error {
-		return &provider.Error{Kind: provider.KindProviderDown, RequestID: id, Usage: provider.Usage{Input: in}}
+		return &provider.Error{Kind: provider.KindProviderDown, RequestID: id, HTTPStatus: 503, Usage: provider.Usage{Input: in}}
 	}
 	inner := &scripted{results: []error{down("req_1", 10), down("req_2", 11), nil}}
 	noSleep := func(context.Context, time.Duration) error { return nil }
@@ -126,6 +126,12 @@ func TestEveryRetryAttemptGetsItsOwnSpan(t *testing.T) {
 	failed := attrs(spans[0])
 	if failed["jf.error_class"].AsString() != "provider_down" || failed["gen_ai.usage.input_tokens"].AsInt64() != 10 {
 		t.Errorf("failed attempt attributes = %v, want class provider_down and its own usage", failed)
+	}
+	if failed["http.response.status_code"].AsInt64() != 503 {
+		t.Errorf("failed attempt status code = %v, want 503", failed["http.response.status_code"])
+	}
+	if _, ok := attrs(spans[2])["http.response.status_code"]; ok {
+		t.Error("a successful attempt has a status code")
 	}
 	if spans[0].Status().Code != codes.Error || spans[2].Status().Code == codes.Error {
 		t.Errorf("statuses = %v, %v, want error then ok", spans[0].Status(), spans[2].Status())
