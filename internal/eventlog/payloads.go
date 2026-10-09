@@ -36,6 +36,10 @@ type UsageRecorded struct {
 // KindLLM is the usage kind that feeds the session's budget counters.
 const KindLLM = "llm"
 
+// UnitWebSearchRequests is the usage unit of Provider built-in searches. It
+// counts searches, not tokens, so it adds to the cost counter only.
+const UnitWebSearchRequests = "web_search_requests"
+
 // SessionRenamed is the payload of a session.renamed event (event-log.md §4,
 // D44).
 type SessionRenamed struct {
