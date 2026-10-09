@@ -1,4 +1,5 @@
 import Markdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { textSegments, type Source } from './lib/toolChips'
 
 const citePrefix = '#cite-'
@@ -37,9 +38,9 @@ export function Reply({ payload, cited }: { payload: unknown; cited: Source[] })
     .join('')
   return (
     <div
-      className="mr-auto [overflow-wrap:anywhere] [&>*+*]:mt-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6 [&_li>ul]:mt-1 [&_li>ol]:mt-1 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-sunk [&_:not(pre)>code]:px-1 [&_code]:font-mono [&_code]:text-[0.9em] [&_pre]:overflow-x-auto [&_pre]:rounded-btn [&_pre]:border [&_pre]:border-line [&_pre]:bg-sunk [&_pre]:p-3"
+      className="mr-auto [overflow-wrap:anywhere] [&>*+*]:mt-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6 [&_li>ul]:mt-1 [&_li>ol]:mt-1 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-sunk [&_:not(pre)>code]:px-1 [&_code]:font-mono [&_code]:text-[0.9em] [&_pre]:overflow-x-auto [&_pre]:rounded-btn [&_pre]:border [&_pre]:border-line [&_pre]:bg-sunk [&_pre]:p-3 [&_table]:block [&_table]:overflow-x-auto [&_table]:border-collapse [&_:is(th,td)]:border [&_:is(th,td)]:border-line [&_:is(th,td)]:px-3 [&_:is(th,td)]:py-1.5 [&_th]:bg-sunk [&_th]:text-left [&_th]:font-semibold"
     >
-      <Markdown components={components}>{markdown}</Markdown>
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>{markdown}</Markdown>
     </div>
   )
 }
