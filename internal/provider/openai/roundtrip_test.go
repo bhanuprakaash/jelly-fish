@@ -34,7 +34,7 @@ func TestOpaqueRoundTrip(t *testing.T) {
 		item := fmt.Sprintf(`{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":%s}],"encrypted_content":%q}`, s, enc)
 		in := msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
 			{Kind: msg.KindThinking, Thinking: &msg.Thinking{Text: summary, Provider: Name, Model: sol, Opaque: []byte(item)}},
-			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "ours", Name: "f", Args: json.RawMessage(`{}`), Opaque: []byte(callID)}},
+			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "ours", Name: "f", Args: json.RawMessage(`{}`), Provider: Name, Opaque: []byte(callID)}},
 		}}
 		input, err := toInput(nil, []msg.Message{in})
 		if err != nil {

@@ -172,8 +172,8 @@ func markLast(blocks []sdk.ContentBlockParamUnion) {
 // toParams maps neutral messages onto Anthropic's, and returns the index of
 // the neutral message each one came from. Thinking and Native parts from
 // another Provider are dropped (provider-gateway.md §5.1), and a message left
-// empty with them. A tool call goes out under Anthropic's own id when it has
-// one, and its result follows it.
+// empty with them. A tool call Anthropic wrote goes out under its own id,
+// any other under ours; its result follows it.
 func toParams(messages []msg.Message) ([]sdk.MessageParam, []int, error) {
 	wireID := map[string]string{}
 	out := make([]sdk.MessageParam, 0, len(messages))
@@ -223,7 +223,7 @@ func toBlock(p msg.Part, wireID map[string]string) (sdk.ContentBlockParamUnion, 
 		return sdk.ContentBlockParamUnion{OfRedactedThinking: &b}, true, nil
 	case msg.KindToolUse:
 		id := p.ToolUse.ID
-		if len(p.ToolUse.Opaque) > 0 {
+		if len(p.ToolUse.Opaque) > 0 && p.ToolUse.Provider == Name {
 			id = string(p.ToolUse.Opaque)
 		}
 		wireID[p.ToolUse.ID] = id

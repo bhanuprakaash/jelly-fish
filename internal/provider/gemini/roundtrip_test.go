@@ -25,7 +25,7 @@ func TestOpaqueRoundTrip(t *testing.T) {
 			{Kind: msg.KindThinking, Thinking: &msg.Thinking{Provider: Name, Model: flash, Opaque: textSig}},
 			{Kind: msg.KindText, Text: "hi"},
 			{Kind: msg.KindThinking, Thinking: &msg.Thinking{Provider: Name, Model: flash, Opaque: callSig}},
-			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "ours", Name: "f", Args: json.RawMessage(`{"a":1}`), Opaque: []byte(callID)}},
+			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "ours", Name: "f", Args: json.RawMessage(`{"a":1}`), Provider: Name, Opaque: []byte(callID)}},
 		}}
 		contents, err := toContents([]msg.Message{in})
 		if err != nil {

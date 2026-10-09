@@ -272,7 +272,7 @@ func TestNoThinkingAsksForNoThoughts(t *testing.T) {
 func TestToolResultsGoBackAsFunctionResponses(t *testing.T) {
 	c, body := sseServer(t, "text.sse")
 	call := func(id string, opaque string) msg.Part {
-		return msg.Part{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: id, Name: "f", Args: json.RawMessage(`{}`), Opaque: []byte(opaque)}}
+		return msg.Part{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: id, Name: "f", Args: json.RawMessage(`{}`), Provider: Name, Opaque: []byte(opaque)}}
 	}
 	result := func(id, text string, isErr bool) msg.Part {
 		return msg.Part{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{CallID: id, Parts: []msg.Part{{Kind: msg.KindText, Text: text}}, IsError: isErr}}
@@ -401,10 +401,21 @@ func TestRequestGoldens(t *testing.T) {
 			{Kind: msg.KindNative, Native: &msg.Native{Provider: "anthropic", Type: "redacted_thinking", Raw: json.RawMessage(`{}`)}},
 			{Kind: msg.KindText, Text: "Searching."},
 			{Kind: msg.KindThinking, Thinking: &msg.Thinking{Provider: Name, Model: flash, Opaque: []byte("sig-call")}},
-			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "call-ours", Name: "search", Args: json.RawMessage(`{"q":"cats"}`), Opaque: []byte("fc_abc")}},
+			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "call-ours", Name: "search", Args: json.RawMessage(`{"q":"cats"}`), Provider: Name, Opaque: []byte("fc_abc")}},
 		}},
 		{MsgV: msg.CurrentVersion, Role: msg.RoleUser, Parts: []msg.Part{
 			{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{CallID: "call-ours", Parts: []msg.Part{{Kind: msg.KindText, Text: "3 cats"}}}},
+		}},
+	}
+	foreign := []msg.Message{
+		msg.UserText("remember cats"),
+		{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+			{Kind: msg.KindThinking, Thinking: &msg.Thinking{Text: "store it", Provider: "anthropic", Opaque: []byte("sig")}},
+			{Kind: msg.KindText, Text: "Saving."},
+			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "7f0c9a52-1d3e-4b6a-9c58-2e41b0a7d3f1", Name: "memory", Args: json.RawMessage(`{"command":"view"}`), Provider: "anthropic", Opaque: []byte("toolu_01ABC")}},
+		}},
+		{MsgV: msg.CurrentVersion, Role: msg.RoleUser, Parts: []msg.Part{
+			{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{CallID: "7f0c9a52-1d3e-4b6a-9c58-2e41b0a7d3f1", Parts: []msg.Part{{Kind: msg.KindText, Text: "empty"}}}},
 		}},
 	}
 	tests := []struct {
@@ -418,6 +429,7 @@ func TestRequestGoldens(t *testing.T) {
 			{Name: "lookup", Description: "Look up a code.", Schema: json.RawMessage(`{"type":"object","properties":{"code":{"type":"string","pattern":"^[A-Z]+$","minLength":2}}}`)},
 		}}},
 		{"replay", provider.Request{Model: flash, Messages: history}},
+		{"foreign_replay", provider.Request{Model: flash, Messages: foreign}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

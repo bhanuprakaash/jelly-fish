@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -132,11 +133,17 @@ func (c chat) config(req provider.Request) *genai.GenerateContentConfig {
 	return cfg
 }
 
+// foreignCallSignature is the value Google documents for a function call
+// Gemini did not write. Google's JSON carries it as the base64 text of the
+// signature bytes, so the SDK's []byte field holds what that text decodes to.
+const foreignCallSignature = "skip_thought_signature_validator"
+
 // toContents builds one Content per message. A Gemini Thinking part holds a
 // thought signature, which goes back on the part after it; the summary text
 // and another Provider's Thinking and Native parts are dropped
-// (provider-gateway.md §5.1). A call's own id, if Gemini gave one, goes back
-// on its result.
+// (provider-gateway.md §5.1). A call Gemini wrote goes out under the id it
+// gave, if any; any other goes out under our id and the foreign signature.
+// Either way its result carries the same id.
 func toContents(messages []msg.Message) ([]*genai.Content, error) {
 	type call struct{ name, id string }
 	calls := map[string]call{}
@@ -166,8 +173,13 @@ func toContents(messages []msg.Message) ([]*genai.Content, error) {
 				if err := json.Unmarshal(tu.Args, &args); err != nil {
 					return nil, fmt.Errorf("gemini: tool call %s args: %w", tu.Name, err)
 				}
-				calls[tu.ID] = call{name: tu.Name, id: string(tu.Opaque)}
-				gp = &genai.Part{FunctionCall: &genai.FunctionCall{ID: string(tu.Opaque), Name: tu.Name, Args: args}}
+				id := string(tu.Opaque)
+				if tu.Provider != Name {
+					id = tu.ID
+					sig, _ = base64.URLEncoding.DecodeString(foreignCallSignature)
+				}
+				calls[tu.ID] = call{name: tu.Name, id: id}
+				gp = &genai.Part{FunctionCall: &genai.FunctionCall{ID: id, Name: tu.Name, Args: args}}
 			case msg.KindToolResult:
 				tr := p.ToolResult
 				var texts []string

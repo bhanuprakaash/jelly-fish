@@ -158,8 +158,9 @@ func (c chat) params(req provider.Request) (responses.ResponseNewParams, error) 
 
 // toInput builds the input items: the system prompt as one leading developer
 // item, inside the cached prefix, then each part. Another Provider's
-// Reasoning and Native parts are dropped (provider-gateway.md §5.1). Calls go
-// out under OpenAI's own call id, and their results must carry the same one.
+// Reasoning and Native parts are dropped (provider-gateway.md §5.1). A call
+// OpenAI wrote goes out under its own call id, any other under ours; its
+// result must carry the same one.
 func toInput(system []string, messages []msg.Message) (responses.ResponseInputParam, error) {
 	var out responses.ResponseInputParam
 	if len(system) > 0 {
@@ -211,7 +212,7 @@ func toItem(p msg.Part, role responses.EasyInputMessageRole, wireID map[string]s
 		return param.Override[responses.ResponseInputItemUnionParam](p.Native.Raw), true, nil
 	case msg.KindToolUse:
 		id := p.ToolUse.ID
-		if len(p.ToolUse.Opaque) > 0 {
+		if len(p.ToolUse.Opaque) > 0 && p.ToolUse.Provider == Name {
 			id = string(p.ToolUse.Opaque)
 		}
 		wireID[p.ToolUse.ID] = id

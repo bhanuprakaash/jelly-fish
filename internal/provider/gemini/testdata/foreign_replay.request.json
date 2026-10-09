@@ -1,0 +1,50 @@
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "remember cats"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "parts": [
+        {
+          "text": "Saving."
+        },
+        {
+          "functionCall": {
+            "args": {
+              "command": "view"
+            },
+            "id": "7f0c9a52-1d3e-4b6a-9c58-2e41b0a7d3f1",
+            "name": "memory"
+          },
+          "thoughtSignature": "skip/thought/signature/validator"
+        }
+      ],
+      "role": "model"
+    },
+    {
+      "parts": [
+        {
+          "functionResponse": {
+            "id": "7f0c9a52-1d3e-4b6a-9c58-2e41b0a7d3f1",
+            "name": "memory",
+            "response": {
+              "output": "empty"
+            }
+          }
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "thinkingConfig": {
+      "includeThoughts": true
+    }
+  }
+}
+
