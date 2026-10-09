@@ -66,7 +66,7 @@ func (w *Worker) runTitle(ctx context.Context, c eventlog.Claim, st State, t *ti
 	switch {
 	case errors.As(err, &pe):
 		usage = pe.Usage
-		logger.Warn("title call failed", "code", pe.Kind, "request_id", pe.RequestID)
+		logger.Warn("title call failed", "code", pe.Kind, "request_id", pe.RequestID, "http_status", pe.HTTPStatus)
 	case err != nil:
 		logger.Warn("title call failed", "error", err)
 	default:

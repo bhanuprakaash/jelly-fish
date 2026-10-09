@@ -132,6 +132,14 @@ func (g Gateway) price(model string) *provider.Prices {
 	return info.Price
 }
 
+func (g Gateway) webSearch(model string) bool {
+	if g.Catalog == nil {
+		return false
+	}
+	info, _ := g.Catalog.Lookup(model)
+	return info.WebSearch
+}
+
 // openKey returns userID's plaintext key for prov, which the caller clears,
 // and the ciphertext it came from.
 func openKey(ctx context.Context, keys *providerkeys.Store, kr *keyring.Keyring, userID uuid.UUID, prov string) (key, ct []byte, err error) {

@@ -20,6 +20,8 @@ import (
 // Name is Gemini's Provider name.
 const Name = "gemini"
 
+const typeGrounding = "grounding_metadata"
+
 type chat struct {
 	client Client
 	key    string
@@ -49,6 +51,7 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 		finishMsg   string
 		block       genai.BlockedReason
 		usageMeta   *genai.GenerateContentResponseUsageMetadata
+		grounding   *genai.GroundingMetadata
 		responseID  string
 		streamError error
 	)
@@ -79,6 +82,9 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 				r.add(p)
 			}
 		}
+		if cand.GroundingMetadata != nil {
+			grounding = cand.GroundingMetadata
+		}
 		if cand.FinishReason != "" && cand.FinishReason != genai.FinishReasonUnspecified {
 			finish, finishMsg = cand.FinishReason, tap.finishMsg
 		}
@@ -96,12 +102,14 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 		return provider.Response{}, classify(ctx, streamError, usage(usageMeta), responseID)
 	}
 
+	u := usage(usageMeta)
+	u.WebSearches = r.ground(grounding)
 	m := msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: r.parts}
 	stop := stopReason(finish, block, m)
 	if stop == provider.StopReasonRefusal || stop == provider.StopReasonOther {
 		c.logger.Warn("gemini stopped the reply", "finish_reason", finish, "finish_message", finishMsg, "block_reason", block, "request_id", responseID)
 	}
-	return provider.Response{Message: m, StopReason: stop, StopDetail: stopDetail(stop, finish, finishMsg, block), Usage: usage(usageMeta), RequestID: responseID}, nil
+	return provider.Response{Message: m, StopReason: stop, StopDetail: stopDetail(stop, finish, finishMsg, block), Usage: u, RequestID: responseID}, nil
 }
 
 func (c chat) config(req provider.Request) *genai.GenerateContentConfig {
@@ -131,12 +139,18 @@ func (c chat) config(req provider.Request) *genai.GenerateContentConfig {
 		}
 		cfg.Tools = []*genai.Tool{tool}
 	}
+	if req.WebSearch {
+		cfg.Tools = append(cfg.Tools, &genai.Tool{GoogleSearch: &genai.GoogleSearch{}}, &genai.Tool{URLContext: &genai.URLContext{}})
+	}
 	return cfg
 }
 
 // foreignCallSignature is the value Google documents for a function call
 // Gemini did not write. Google's JSON carries it as the base64 text of the
 // signature bytes, so the SDK's []byte field holds what that text decodes to.
+// The SDK re-encodes those bytes as standard base64, so the wire text is
+// "skip/thought/signature/validator"; Google's JSON parser reads it as the
+// same bytes as the documented literal (verified live).
 const foreignCallSignature = "skip_thought_signature_validator"
 
 // toContents builds one Content per message. A Gemini Thinking part holds a
@@ -261,6 +275,29 @@ func (r *reply) add(p *genai.Part) {
 	}
 }
 
+// ground keeps a search's grounding metadata as a Native part, so a later
+// Provider can tell the reply was grounded, and cites its web sources on the
+// last text part. It returns how many searches ran.
+func (r *reply) ground(g *genai.GroundingMetadata) int64 {
+	if g == nil {
+		return 0
+	}
+	raw, _ := json.Marshal(g)
+	r.parts = append(r.parts, msg.Part{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: typeGrounding, Raw: raw}})
+	for i := len(r.parts) - 1; i >= 0; i-- {
+		if r.parts[i].Kind != msg.KindText {
+			continue
+		}
+		for _, c := range g.GroundingChunks {
+			if c.Web != nil {
+				r.parts[i].Citations = append(r.parts[i].Citations, msg.Citation{URL: c.Web.URI, Title: c.Web.Title})
+			}
+		}
+		break
+	}
+	return int64(len(g.WebSearchQueries))
+}
+
 // stopReason maps Gemini's finish reason, or the block on the prompt, onto
 // ours. Gemini says STOP even when the reply ends in a function call.
 func stopReason(finish genai.FinishReason, block genai.BlockedReason, m msg.Message) provider.StopReason {
@@ -284,7 +321,6 @@ func stopReason(finish genai.FinishReason, block genai.BlockedReason, m msg.Mess
 	return provider.StopReasonOther
 }
 
-// stopDetail is the reason and message Gemini gave for a refusal.
 func stopDetail(stop provider.StopReason, finish genai.FinishReason, finishMsg string, block genai.BlockedReason) string {
 	if stop != provider.StopReasonRefusal {
 		return ""
@@ -297,15 +333,16 @@ func stopDetail(stop provider.StopReason, finish genai.FinishReason, finishMsg s
 }
 
 // usage normalizes Gemini's counts: promptTokenCount includes the cached
-// tokens, which are taken out. Thinking tokens are counted apart from
-// candidatesTokenCount and billed as output, so Output holds both
+// tokens, which are taken out. Tool results fed back to the model
+// (toolUsePromptTokenCount) are billed as input. Thinking tokens are counted
+// apart from candidatesTokenCount and billed as output, so Output holds both
 // (provider-gateway.md §5.3).
 func usage(u *genai.GenerateContentResponseUsageMetadata) provider.Usage {
 	if u == nil {
 		return provider.Usage{}
 	}
 	return provider.Usage{
-		Input:     int64(u.PromptTokenCount - u.CachedContentTokenCount),
+		Input:     int64(u.PromptTokenCount - u.CachedContentTokenCount + u.ToolUsePromptTokenCount),
 		CacheRead: int64(u.CachedContentTokenCount),
 		Output:    int64(u.CandidatesTokenCount + u.ThoughtsTokenCount),
 		Reasoning: int64(u.ThoughtsTokenCount),

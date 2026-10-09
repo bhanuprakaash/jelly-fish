@@ -169,9 +169,9 @@ func (b *PGDeltaBus) deliverPayload(payload string) (dropped int, err error) {
 	return dropped, nil
 }
 
-// Batcher coalesces a turn's text and thinking deltas so the bus sees one publish per
-// interval rather than one per token. Publish failures are logged and dropped:
-// deltas are best-effort.
+// Batcher coalesces a turn's text and thinking deltas so the bus sees one
+// publish per interval rather than one per token. Publish failures are logged
+// and dropped: deltas are best-effort.
 type Batcher struct {
 	publish  func(context.Context, Delta) error
 	sid      uuid.UUID

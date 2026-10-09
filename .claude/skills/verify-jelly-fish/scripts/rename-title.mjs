@@ -46,7 +46,7 @@ check('auto Title: sessions.title is its projection', psql(`SELECT title FROM se
 const turns = psql(`SELECT count(*) FROM events WHERE session_id = '${id}' AND type = 'turn.started'`)
 const usage = psql(`SELECT count(*) FROM events WHERE session_id = '${id}' AND type = 'usage.recorded'`)
 check('auto Title: not a Turn (one turn.started); its usage.recorded is on the session', turns === '1' && Number(usage) >= 2, `turn.started=${turns} usage.recorded=${usage}`)
-const bubbles = await page.locator('main > div.rounded-2xl').count()
+const bubbles = await page.locator('main > div > div.whitespace-pre-wrap').count()
 check('auto Title: nothing in the chat for it (2 bubbles)', bubbles === 2, `${bubbles} bubbles`)
 await r.shot('auto-title')
 

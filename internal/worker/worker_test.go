@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -308,7 +309,6 @@ func TestStreamedTurnPublishesDeltasNotEvents(t *testing.T) {
 	}
 }
 
-// thinkingProvider streams a thinking delta before the fake reply.
 type thinkingProvider struct{ fake.Provider }
 
 func (p thinkingProvider) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {
@@ -353,4 +353,70 @@ func TestThinkingDeltaReachesStreamAsThinking(t *testing.T) {
 	if thinking.String() != "Check the greeting." {
 		t.Fatalf("thinking deltas = %q, want %q", thinking.String(), "Check the greeting.")
 	}
+}
+
+// pausing stops with pause_turn on its first pauses calls, then ends the
+// turn. It records the last message of each request.
+type pausing struct {
+	fake.Provider
+	pauses int
+	mu     sync.Mutex
+	last   []string
+}
+
+func (p *pausing) Stream(_ context.Context, req provider.Request, _ func(provider.Delta)) (provider.Response, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	last := req.Messages[len(req.Messages)-1]
+	p.last = append(p.last, string(last.Role)+": "+last.Text())
+	if len(p.last) <= p.pauses {
+		return provider.Response{Message: msg.AssistantText("searching"), StopReason: provider.StopReasonPauseTurn}, nil
+	}
+	return provider.Response{Message: msg.AssistantText("done"), StopReason: provider.StopReasonEndTurn}, nil
+}
+
+func TestPausedTurnResumesWithItsOwnReplyAsTheLastMessage(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	p := &pausing{pauses: 1}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, p)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 2)
+
+	if want := []string{"user: hello", "assistant: searching"}; !slices.Equal(p.last, want) {
+		t.Fatalf("last message per request = %q, want %q", p.last, want)
+	}
+}
+
+func TestEndlessPausesStopAfterFiveResumes(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, &pausing{pauses: 100})
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 6)
+}
+
+func TestUserMessageResetsThePauseCount(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	scope := testdb.NewUser(t, pool).Scope()
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	p := &pausing{pauses: 100}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, p)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 6)
+
+	p.mu.Lock()
+	p.pauses = len(p.last) + 1
+	p.mu.Unlock()
+	if _, err := repo.PostMessage(t.Context(), scope, sid, uuid.New(), "again"); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 8)
 }

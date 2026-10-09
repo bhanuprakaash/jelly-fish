@@ -13,12 +13,12 @@ func TestV1UpcastsByteIdentically(t *testing.T) {
 		{
 			"user text",
 			`{"msg_v":1,"role":"user","parts":[{"type":"text","text":"hi there"}]}`,
-			`{"msg_v":2,"role":"user","parts":[{"k":"text","text":"hi there"}]}`,
+			`{"msg_v":3,"role":"user","parts":[{"k":"text","text":"hi there"}]}`,
 		},
 		{
 			"assistant, two parts",
 			`{"msg_v":1,"role":"assistant","parts":[{"type":"text","text":"a"},{"type":"text","text":"b"}]}`,
-			`{"msg_v":2,"role":"assistant","parts":[{"k":"text","text":"a"},{"k":"text","text":"b"}]}`,
+			`{"msg_v":3,"role":"assistant","parts":[{"k":"text","text":"a"},{"k":"text","text":"b"}]}`,
 		},
 	}
 	for _, tc := range tests {
@@ -35,6 +35,20 @@ func TestV1UpcastsByteIdentically(t *testing.T) {
 				t.Fatalf("upcast v1 =\n%s\nwant\n%s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestV2UpcastsToCurrent(t *testing.T) {
+	var m msg.Message
+	if err := json.Unmarshal([]byte(`{"msg_v":2,"role":"assistant","parts":[{"k":"text","text":"a"}]}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"msg_v":3,"role":"assistant","parts":[{"k":"text","text":"a"}]}`; string(got) != want {
+		t.Fatalf("upcast v2 =\n%s\nwant\n%s", got, want)
 	}
 }
 
@@ -65,7 +79,7 @@ func TestCurrentMessageRoundTrips(t *testing.T) {
 
 func TestUnreadableMessage(t *testing.T) {
 	tests := []struct{ name, in string }{
-		{"newer msg_v", `{"msg_v":3,"role":"user","parts":[{"k":"text","text":"x"}]}`},
+		{"newer msg_v", `{"msg_v":4,"role":"user","parts":[{"k":"text","text":"x"}]}`},
 		{"unknown kind", `{"msg_v":2,"role":"user","parts":[{"k":"hologram"}]}`},
 		{"unknown kind inside a tool result", `{"msg_v":2,"role":"user","parts":[{"k":"tool_result","tr":{"call_id":"c1","parts":[{"k":"hologram"}]}}]}`},
 		{"unknown v1 type", `{"msg_v":1,"role":"user","parts":[{"type":"hologram"}]}`},
@@ -86,7 +100,7 @@ func TestNewMessagesCarryCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"msg_v":2,"role":"user","parts":[{"k":"text","text":"hi"}]}`; string(b) != want {
+	if want := `{"msg_v":3,"role":"user","parts":[{"k":"text","text":"hi"}]}`; string(b) != want {
 		t.Fatalf("UserText = %s, want %s", b, want)
 	}
 }

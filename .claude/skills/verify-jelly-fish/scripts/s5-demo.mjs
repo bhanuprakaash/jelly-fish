@@ -43,7 +43,7 @@ for (const text of slow) {
   slowIds.push(id)
 }
 await tab2.close()
-check('two chats running: both rows spin', (await seen(badge(page, slow[0], 'running'))) && (await seen(badge(page, slow[1], 'running'))))
+check('two chats running: both rows spin', (await seen(badge(page, slow[0], 'Working…'))) && (await seen(badge(page, slow[1], 'Working…'))))
 await r.shot('two-running')
 
 // A new chat gets its Title.
@@ -90,7 +90,7 @@ const reopened = (await streams(page)).slice(before)
 check('show: Session stream reopens with ?after=lastSeq', reopened.some((s) => s.url.endsWith(`/api/sessions/${id}/events?after=${lastSeq}`) && s.readyState === 1), reopened.map((s) => s.url).join(' '))
 check('show: Activity Stream reopens', reopened.some((s) => s.url.endsWith('/api/activity') && s.readyState === 1))
 await backToList(page)
-check('show: fresh snapshot clears both spinners', (await badge(page, slow[0], 'running').count()) === 0 && (await badge(page, slow[1], 'running').count()) === 0)
+check('show: fresh snapshot clears both spinners', (await badge(page, slow[0], 'Working…').count()) === 0 && (await badge(page, slow[1], 'Working…').count()) === 0)
 await r.shot('after-show')
 
 console.log('chats:', id, slowIds.join(' '))
