@@ -50,7 +50,10 @@ function bubbleText(payload: unknown): string {
 }
 
 function refusalNotice(payload: unknown): string {
-  const p = payload as { stop_reason?: string; stop_detail?: string }
+  const p = payload as { stop_reason?: string; stop_detail?: string; message?: Message }
+  if (p.stop_reason === 'other' && bubbleText(payload) === '' && !p.message?.parts.some((part) => part.k === 'tool_use')) {
+    return 'The model stopped without answering. Try again.'
+  }
   if (p.stop_reason !== 'refusal') return ''
   return p.stop_detail ? `Stopped: ${p.stop_detail}` : 'The model declined to answer'
 }
