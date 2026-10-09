@@ -18,7 +18,7 @@ import { sessionNotice } from './lib/sessionNotice'
 import { getShowThinking, setShowThinking } from './lib/showThinking'
 import { renamedTitle } from './lib/sessionTitle'
 import { statusChipTone, statusLabel, type JellyStatus } from './lib/status'
-import { sources, thinkingText, toolChips, type ToolChip } from './lib/toolChips'
+import { sources, textSegments, thinkingText, toolChips, type ToolChip } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { MemoryChip } from './MemoryChip'
 import { ModelPicker } from './ModelPicker'
@@ -368,7 +368,25 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
                         : 'mr-auto'
                     }`}
                   >
-                    {text}
+                    {textSegments(e.payload).map((seg, i) => (
+                      <Fragment key={i}>
+                        {seg.text}
+                        {seg.cites.map((n) => (
+                          <sup key={n} className="ml-0.5 text-xs">
+                            <a
+                              href={cited[n - 1].url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={cited[n - 1].title}
+                              aria-label={`Source ${n}: ${cited[n - 1].title}`}
+                              className="text-accent-ink focus-ring"
+                            >
+                              [{n}]
+                            </a>
+                          </sup>
+                        ))}
+                      </Fragment>
+                    ))}
                   </div>
                 )}
                 {cited.length > 0 && <SourceFooter sources={cited} />}

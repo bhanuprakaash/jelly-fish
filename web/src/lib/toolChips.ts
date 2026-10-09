@@ -119,3 +119,14 @@ export function sources(payload: unknown): Source[] {
   }
   return [...seen.values()]
 }
+
+// textSegments is the text of each part of an llm.response payload with the
+// 1-based numbers, in sources() order, of the pages that part cites.
+export function textSegments(payload: unknown): { text: string; cites: number[] }[] {
+  const message = (payload as { message?: { parts: { text?: string; cit?: { url: string }[] }[] } }).message
+  const urls = sources(payload).map((s) => s.url)
+  return (message?.parts ?? []).map((p) => ({
+    text: p.text ?? '',
+    cites: [...new Set((p.cit ?? []).map((c) => urls.indexOf(c.url) + 1).filter((n) => n > 0))],
+  }))
+}

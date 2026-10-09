@@ -7,17 +7,18 @@ One live feed per open tab with the status of every one of the User's non-System
 - `snapshot`: the first frame (`event: snapshot`) lists the User's non-System sessions not in `awaiting_user`/`completed`.
 - `status`: one `event: status` frame `{session_id, root_id, parent_id, status, needs_approval}` per `jf_activity` hint. A child's `root_id` is its top-level chat.
 - `notify`: `jf_activity` is sent only on a commit holding `session.status_changed` or `session.created`. A chat started in another tab therefore reaches this tab's list (refetch on an unknown session, D19).
-- `badges`: three badges, by status.
-  - `role=img` `running` (spinner): `runnable`, `running`, `sleeping` or `awaiting_children`.
-  - `needs approval` (amber dot): the chat or any of its children is `awaiting_approval`.
-  - `failed` (red ×): no Retry; clicking the row opens the chat.
-  - Priority is approval > failed > running.
+- `badges`: a status text under each row's title, by status. With no live status the row shows `Your turn` (or `Done`).
+  - `Working…`: `runnable`, `running` or `awaiting_children`. `sleeping` shows `Sleeping`.
+  - `Needs approval`: the chat or any of its children is `awaiting_approval`.
+  - `Failed · Retry?`: `Retry?` is a link-styled button (`Retry <title>`) that retries the chat; clicking elsewhere on the row opens the chat.
+  - Priority is approval > failed > sleeping > working.
+  - A banner above the list counts the rows: `N working` and `N needs you`. It hides when both are 0.
 - `hide-show`: on `visibilitychange` hidden, every `EventSource` closes. On visible, the Session stream reopens with `?after=<lastSeq>` and the Activity Stream reopens with a fresh snapshot.
 - `cap`: 20 streams (Session + Activity) per user per api node; the 21st gets `429`. `jf_streams_open{kind="activity"|"session"}` and `jf_stream_refusals_total` are on `:9090/metrics`.
 
 ## How to get to it (user POV)
 
-- Sign in and open `http://localhost:8080/`. The badges sit at the right of each Chat List row, inside its link.
+- Sign in and open `http://localhost:8080/`. The status text sits under each Chat List row's title; the banner sits under "New chat".
 
 ## Driving it with Playwright
 
@@ -25,9 +26,9 @@ Preconditions: the same as [`chat-list`](./chat-list.md), plus the `:9090` forwa
 
 - **Whole flow:** `DATABASE_URL=… JF_EVIDENCE=<dir> node activity-stream.mjs <subdir>`. It runs these steps:
   1. A second tab starts two `/slow 25s …` chats through `POST /api/sessions`.
-  2. Both rows appear in tab 1 with `running`, then clear when the turns end.
-  3. An inserted child goes to `awaiting_approval`, which puts the dot on its root; it then goes to `completed` and the dot clears.
-  4. A chat is set to `failed`; the badge shows and the row opens the chat.
+  2. Both rows appear in tab 1 with `Working…` and the banner shows `2 working`; both clear when the turns end.
+  3. An inserted child goes to `awaiting_approval`, which puts `Needs approval` on its root and `1 needs you` in the banner; it then goes to `completed` and the text clears.
+  4. A chat is set to `failed`; `Failed · Retry?` shows, and clicking the row opens the chat. The drive does not click `Retry?`.
   5. Hide/show with a chat open:
      - every stream closes;
      - a status changed while hidden arrives through the new snapshot;
@@ -37,7 +38,7 @@ Preconditions: the same as [`chat-list`](./chat-list.md), plus the `:9090` forwa
   - The drive writes `sessions.status` and then sends the hint `Store.Append` would: `SELECT pg_notify('jf_activity', user_id||':'||id) FROM sessions WHERE id = …`.
   - The handler always re-reads the row, so this proves the stream, routing and badges. It does not prove the Worker's own transitions; those are proven by the Go tests (`TestActivityNotify`, `TestActivityStreamChildApprovalReachesRoot`).
 - **Raw frames (curl):** `curl -sN -b <cookie> localhost:8080/api/activity` prints `retry: 2000`, then `event: snapshot`, then a `status` frame per change and `: ping` every 15 s.
-- **Handles:** `getByRole('navigation', {name: 'Chats'}).getByRole('listitem').filter({hasText: <title>}).getByRole('img', {name: 'running' | 'needs approval' | 'failed'})`.
+- **Handles:** `getByRole('navigation', {name: 'Chats'}).getByRole('listitem').filter({hasText: <title>}).getByText('Working…' | 'Needs approval' | 'Failed · Retry?', {exact: true})`. Retry: the row's `getByRole('button', {name: 'Retry <title>'})`. Banner: `getByText('N working' | 'N needs you', {exact: true})`.
 
 ## Gotchas
 

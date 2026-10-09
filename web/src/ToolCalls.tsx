@@ -166,8 +166,9 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
 function SourceLinks({ sources }: { sources: Source[] }) {
   return (
     <ul className="space-y-1">
-      {sources.map((s) => (
+      {sources.map((s, i) => (
         <li key={s.url} className="truncate">
+          <span className="mr-1.5 text-muted">[{i + 1}]</span>
           <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-accent-ink underline underline-offset-2 focus-ring">
             {s.title}
           </a>
