@@ -97,10 +97,20 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 
 	m := fromResponse(*final, req.Model, func(i int) string { return callIDs[i] })
 	u := usage(final.Usage)
-	// The usage object has no search count; each web_search_call item is one.
+	// The usage object has no search count. open_page and find_in_page cost
+	// input tokens, already recorded; any other call, including one with no
+	// action, counts as a search so the estimate errs high.
 	for _, p := range m.Parts {
 		if p.Kind == msg.KindNative && p.Native.Type == typeWebSearchCall {
-			u.WebSearches++
+			var item struct {
+				Action struct {
+					Type string `json:"type"`
+				} `json:"action"`
+			}
+			_ = json.Unmarshal(p.Native.Raw, &item)
+			if t := item.Action.Type; t != "open_page" && t != "find_in_page" {
+				u.WebSearches++
+			}
 		}
 	}
 	return provider.Response{
