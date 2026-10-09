@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import type { ToolChip } from './lib/toolChips'
 
 // Thought is the collapsed pill of a model's reasoning; it opens to the text.
-export function Thought({ text }: { text: string }) {
+// While streaming it reads "Thinking…".
+export function Thought({ text, streaming = false }: { text: string; streaming?: boolean }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="mr-auto space-y-2">
@@ -25,7 +26,7 @@ export function Thought({ text }: { text: string }) {
         >
           <path d="M9 6l6 6-6 6" />
         </svg>
-        Thought
+        {streaming ? 'Thinking…' : 'Thought'}
       </button>
       {open && <p className="whitespace-pre-wrap text-sm text-muted">{text}</p>}
     </div>

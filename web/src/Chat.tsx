@@ -15,6 +15,7 @@ import {
 import { JellyGlyph } from './JellyGlyph'
 import { providerOf, sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
+import { getShowThinking, setShowThinking } from './lib/showThinking'
 import { renamedTitle } from './lib/sessionTitle'
 import { statusChipTone, statusLabel, type JellyStatus } from './lib/status'
 import { thinkingText, toolChips, type ToolChip } from './lib/toolChips'
@@ -50,7 +51,8 @@ function bubbleText(payload: unknown): string {
 
 export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated }: Props) {
   const [started, setStarted] = useState(!isNew)
-  const { events, partials, connected, failed } = useSessionStream(sessionId, started)
+  const { events, partials, thoughts, connected, failed } = useSessionStream(sessionId, started)
+  const [showThinking, setShowThinkingState] = useState(getShowThinking)
   // A brand-new chat has a session once its first message creates one; a
   // reopened chat has one once the stream confirms it (streaming's onopen
   // only succeeds once the session exists).
@@ -135,7 +137,8 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   const bubbles = events.filter(
     (e) =>
       e.type === 'user.message' ||
-      (e.type === 'llm.response' && (bubbleText(e.payload) !== '' || thinkingText(e.payload) !== '')) ||
+      (e.type === 'llm.response' &&
+        (bubbleText(e.payload) !== '' || (showThinking && thinkingText(e.payload) !== ''))) ||
       chips.has(e.seq),
   )
   const transcript: (UIEvent | { turn: string; calls: ToolChip[] })[] = []
@@ -282,13 +285,30 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             </button>
           )}
         </div>
-        {(agentName || picker) && (
-          <div className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
-            {agentName && <span>{agentName}</span>}
-            {agentName && picker && <span aria-hidden="true">·</span>}
-            {renderPicker(modelRef)}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
+          {agentName && <span>{agentName}</span>}
+          {agentName && picker && <span aria-hidden="true">·</span>}
+          {renderPicker(modelRef)}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showThinking}
+            onClick={() => {
+              setShowThinking(!showThinking)
+              setShowThinkingState(!showThinking)
+            }}
+            className="group ml-auto inline-flex min-h-8 items-center gap-2.5 text-sm text-ink2 focus-visible:outline-none"
+          >
+            Show thinking
+            <span
+              className={`flex h-6.5 w-11 rounded-full p-[3px] group-focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] ${
+                showThinking ? 'justify-end bg-accent-ink' : 'justify-start bg-sunk ring-1 ring-ink2/60 ring-inset'
+              }`}
+            >
+              <span className={`size-5 rounded-full ${showThinking ? 'bg-surface' : 'bg-muted'}`} />
+            </span>
+          </button>
+        </div>
       </header>
 
       <main
@@ -324,7 +344,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               )
             }
             const text = bubbleText(e.payload)
-            const thought = e.type === 'llm.response' ? thinkingText(e.payload) : ''
+            const thought = showThinking && e.type === 'llm.response' ? thinkingText(e.payload) : ''
             return (
               <Fragment key={e.seq}>
                 {thought && <Thought text={thought} />}
@@ -342,10 +362,13 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               </Fragment>
             )
           })}
-          {Object.entries(partials).map(([turnId, text]) => (
-            <div key={turnId} className="mr-auto whitespace-pre-wrap [overflow-wrap:anywhere]">
-              {text}
-            </div>
+          {[...new Set([...Object.keys(thoughts), ...Object.keys(partials)])].map((turnId) => (
+            <Fragment key={turnId}>
+              {showThinking && thoughts[turnId] && <Thought text={thoughts[turnId]} streaming={!(turnId in partials)} />}
+              {partials[turnId] && (
+                <div className="mr-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{partials[turnId]}</div>
+              )}
+            </Fragment>
           ))}
           {notice && <SessionNotice sessionId={sessionId} notice={notice} provider={models && current ? providerOf(models, current) : undefined} picker={picker} />}
         </div>
