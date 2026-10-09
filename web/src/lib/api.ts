@@ -1,5 +1,5 @@
 // Payload of a user.message event (internal/msg.Message, ADR 0002). Events
-// arrive as stored: msg_v 1 parts carry `type`, msg_v 2 parts carry `k`. Only
+// arrive as stored: msg_v 1 parts carry `type`, msg_v 2 and up carry `k`. Only
 // text parts have a top-level `text`.
 export type Message = {
   msg_v: number

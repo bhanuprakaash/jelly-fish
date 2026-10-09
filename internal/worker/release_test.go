@@ -175,9 +175,10 @@ func TestFoldRejectsUnreadableMessageWithSentinel(t *testing.T) {
 		ev   eventlog.Event
 		want error
 	}{
-		{"current message", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":2,"role":"user","parts":[{"k":"text","text":"x"}]}}`), nil},
+		{"current message", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":3,"role":"user","parts":[{"k":"text","text":"x"}]}}`), nil},
+		{"msg_v 2 message", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":2,"role":"user","parts":[{"k":"text","text":"x"}]}}`), nil},
 		{"older message", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":1,"role":"user","parts":[{"type":"text","text":"x"}]}}`), nil},
-		{"newer msg_v", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":3,"role":"user","parts":[{"k":"text","text":"x"}]}}`), msg.ErrUnsupported},
+		{"newer msg_v", ev(eventlog.TypeUserMessage, `{"message":{"msg_v":4,"role":"user","parts":[{"k":"text","text":"x"}]}}`), msg.ErrUnsupported},
 		{"unknown Part kind", ev(eventlog.TypeLLMResponse, `{"message":{"msg_v":2,"role":"assistant","parts":[{"k":"hologram"}]}}`), msg.ErrUnsupported},
 	}
 	for _, tc := range tests {
