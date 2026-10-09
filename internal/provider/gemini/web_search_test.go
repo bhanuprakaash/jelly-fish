@@ -27,7 +27,7 @@ func TestStreamWebSearch(t *testing.T) {
 	if n := parts[1].Native; parts[1].Kind != msg.KindNative || n.Provider != Name || n.Type != "grounding_metadata" {
 		t.Errorf("part 1 = %+v, want native grounding_metadata", parts[1])
 	}
-	if resp.Usage.WebSearches != 2 {
-		t.Errorf("usage = %+v, want 2 web searches", resp.Usage)
+	if want := (provider.Usage{Input: 2300, Output: 8, WebSearches: 2}); resp.Usage != want {
+		t.Errorf("usage = %+v, want %+v", resp.Usage, want)
 	}
 }

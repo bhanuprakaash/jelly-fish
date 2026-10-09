@@ -332,7 +332,8 @@ func stopDetail(stop provider.StopReason, finish genai.FinishReason, finishMsg s
 }
 
 // usage normalizes Gemini's counts: promptTokenCount includes the cached
-// tokens, which are taken out. Thinking tokens are counted apart from
+// tokens, which are taken out. Tool results fed back to the model
+// (toolUsePromptTokenCount) are billed as input. Thinking tokens are counted apart from
 // candidatesTokenCount and billed as output, so Output holds both
 // (provider-gateway.md §5.3).
 func usage(u *genai.GenerateContentResponseUsageMetadata) provider.Usage {
@@ -340,7 +341,7 @@ func usage(u *genai.GenerateContentResponseUsageMetadata) provider.Usage {
 		return provider.Usage{}
 	}
 	return provider.Usage{
-		Input:     int64(u.PromptTokenCount - u.CachedContentTokenCount),
+		Input:     int64(u.PromptTokenCount - u.CachedContentTokenCount + u.ToolUsePromptTokenCount),
 		CacheRead: int64(u.CachedContentTokenCount),
 		Output:    int64(u.CandidatesTokenCount + u.ThoughtsTokenCount),
 		Reasoning: int64(u.ThoughtsTokenCount),
