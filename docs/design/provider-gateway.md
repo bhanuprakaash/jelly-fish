@@ -68,7 +68,8 @@ type ToolUse struct {
     ID     string          // ours; always set, even when the Provider gave none
     Name   string
     Args   json.RawMessage
-    Opaque []byte          // Provider's own call id / thought signature; same-Provider replay only
+    Opaque []byte          // Provider's own call id; same-Provider replay only
+    Provider string `json:"-"` // who wrote the call; set by the Worker's fold, never stored (§5.1 item 7)
 }
 
 type ToolResult struct {
@@ -211,9 +212,9 @@ read_upload(id, pages?) -> tool result parts
 2. System: `Request.System` renders as Anthropic top-level `system` (array of text blocks, cache breakpoints allowed), OpenAI a leading `developer` item (so it sits inside the cached prefix, not the separate `instructions` param), Gemini top-level `systemInstruction`.
 3. Messages: neutral `Role` is `user|assistant` only. The projection never emits adjacent same-role messages or empty text; tool results and Steering text are merged into one user message before adapters ever see it (agent-loop.md).
 4. Tool defs: schema-narrowing pass (§4.5), tool_choice mapped per §4.7 below.
-5. Thinking replay: same-Provider history replays `Thinking.Opaque` exactly. Foreign-Provider history (after `/model`) drops all `Thinking` parts, keeping only text and tool calls (agent-loop.md Decision 6); Gemini additionally gets the dummy signature attached to old function calls.
+5. Thinking replay: same-Provider history replays `Thinking.Opaque` exactly. Foreign-Provider history (after `/model`) drops all `Thinking` parts, keeping only text and tool calls (agent-loop.md Decision 6); Gemini additionally gets the dummy signature `skip_thought_signature_validator` on every function call another Provider wrote.
 6. `Native` parts: replayed only when `Native.Provider` matches the destination adapter; dropped otherwise, like thinking.
-7. Tool-call ids: our own ids (ULIDs) satisfy every Provider's charset. When replaying history written under a different Provider (a `/model` switch), the adapter rewrites call ids into a Provider-safe charset, consistently for the call and its result.
+7. Tool-call ids: our own ids (UUIDs) satisfy every Provider's charset. The Worker's fold tags each stored `ToolUse` in memory with the Provider of the `turn.started` that has the same `turn_id` (nothing new is stored). An adapter replays `ToolUse.Opaque` as the call id only for its own Provider; for a call written by another Provider (a `/model` switch) it uses our own id, for the call and for its result alike. No charset rewrite.
 8. Uploads: always inline, per the projection rule in §5.4.
 
 ### 5.2 Streaming
@@ -363,7 +364,7 @@ All decided 2026-09-27.
 - **Unknown Provider finish-reason / error code**: an unmapped finish reason → `StopReason=other` + log; an unmapped error code → `provider_down` if it's a 5xx, otherwise `bug`.
 - **Gemini `functionCall` id**: Gemini fills it (live, gemini-3.5-flash-lite: `call_136041`). The adapter keeps it in `ToolUse.Opaque` and echoes it as `functionResponse.id`. A call with no id is matched by the order guarantee the projection already provides (results re-sorted into tool_use order), and no `functionResponse.id` is sent. Our own `ToolUse.ID` stays internal.
 - **Gemini signature after a text reply**: Gemini puts it on an empty final part, so it is stored as a trailing `Thinking` part with no part after it, and replay drops it. Live, Gemini accepts the replay without it; its docs do not enforce signatures on non-function-call parts.
-- **`/model` switch mid-session, foreign Provider history**: all prior `Thinking` and `Native` parts for the old Provider are dropped from the projection; tool ids are rewritten into the destination Provider's safe charset; Gemini gets the dummy signature on carried-over function calls (agent-loop.md Decision 6, unchanged here).
+- **`/model` switch mid-session, foreign Provider history**: all prior `Thinking` and `Native` parts for the old Provider are dropped from the projection; calls written by another Provider go out under our own id, for the call and its result; Gemini gets the dummy signature on those function calls (agent-loop.md Decision 6, unchanged here).
 - **Upload swap lands exactly at a Compaction boundary**: Compaction wins — the swap happens there rather than waiting for the Nth user message, per §5.4.
 - **Inline budget exceeded before an Upload's N=3 turns are up**: the oldest inline Upload (or oldest stubbed-eligible `read_upload` result) is stubbed early to get back under the 24 MB cap, ahead of the normal swap schedule (§5.4 items 9–10, [uploads-artifacts.md](uploads-artifacts.md)).
 - **Agent calls `read_upload` on an Upload that was never swapped** (still inline): still works; it's just a redundant read of content already in the prompt.
@@ -400,7 +401,6 @@ All decided 2026-09-27.
 - **Gemini `candidatesTokenCount` vs `thoughtsTokenCount` overlap.** Settled live: no overlap; `thoughtsTokenCount` is separate and added to `Output` (§5.3).
 - **OpenAI `cache_write_tokens` pricing semantics** are undocumented; the catalog's OpenAI cache-write price is a placeholder until confirmed.
 - **Exhaustive structured-output and strict-schema model-support lists for OpenAI and Gemini** (Anthropic's list is documented; the other two are not) — needed to set the catalog's `structured_outputs` capability flag accurately per model.
-- **Anthropic tool-call id charset requirement** (`^[a-zA-Z0-9_-]+$`) is from a secondary source, not confirmed against the Messages API reference; the foreign-history id-rewrite rule (§5.1) depends on it being right.
 - **Uploads and Artifacts feature** (upload flow, limits, file types, Files panel, `save_artifact`): spec'd in [uploads-artifacts.md](uploads-artifacts.md). Decisions 22–23 here only cover the prompt/tool side.
 - **Long-context pricing tiers** (which current models have a >200k-token price step) are not enumerated; the catalog needs this filled in per model before cost figures for those models are trusted.
 - Everything else raised in the research doc's "Open questions for grilling" (Q1–Q13) was settled by the decisions in §9 above.
