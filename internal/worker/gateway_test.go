@@ -338,6 +338,54 @@ func TestNextTurnRunsOnTheChangedModel(t *testing.T) {
 	}
 }
 
+func TestRescuedTurnRunsOnTheChangedModel(t *testing.T) {
+	pool := testdb.NewPool(t)
+	api := newFakeAnthropicSSE(t, http.StatusOK, []byte(usageSSE))
+	gw := testGateway(t, pool, api.srv.URL)
+	user := testdb.NewUser(t, pool)
+	insertSealed(t, pool, gw.Keyring, user.ID, anthropic.Name, "sk-ant-users-own")
+	repo := eventlog.NewRepo(pool, haiku)
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), user.Scope(), sid, uuid.New(), "hi", "", false); err != nil {
+		t.Fatal(err)
+	}
+
+	// A worker claims, starts a turn on Haiku, and dies before the reply.
+	store := eventlog.NewStore(pool)
+	c, _, err := store.Claim(t.Context(), "dead", 30*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.AppendFenced(t.Context(), sid, c.Fence, []eventlog.NewEvent{{
+		Type: eventlog.TypeTurnStarted, Actor: "worker:dead",
+		Payload: map[string]any{"turn_id": "t1", "provider": anthropic.Name, "model": haiku, "input_through_seq": 2},
+	}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const sonnet = "claude-sonnet-5-5"
+	if err := repo.ChangeModel(t.Context(), user.Scope(), sid, sonnet); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE sessions SET lease_expires_at = now() - interval '1 second' WHERE id = $1`, sid); err != nil {
+		t.Fatal(err)
+	}
+
+	runWorker(t, pool, gw)
+	waitFor(t, pool, sid, eventlog.StatusAwaitingUser)
+	rows, err := pool.Query(t.Context(), `SELECT payload->>'model' FROM events WHERE session_id = $1 AND type = $2 ORDER BY seq`, sid, eventlog.TypeTurnStarted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(models, []string{haiku, sonnet}) {
+		t.Fatalf("turn.started models = %v, want %v", models, []string{haiku, sonnet})
+	}
+}
+
 func TestModelNowhereKnownIsModelUnavailable(t *testing.T) {
 	pool := testdb.NewPool(t)
 	api := newFakeAnthropic(t, http.StatusOK)
