@@ -63,5 +63,6 @@ jobs:
             actions: read
           claude_args: |
             --model claude-sonnet-5-5
-            --allowedTools "Edit,Write,Read,Glob,Grep,Bash(make test),Bash(make lint),Bash(make fmt),Bash(go test:*),Bash(go vet:*),Bash(go build:*),Bash(pnpm --dir web install --frozen-lockfile),Bash(pnpm --dir web build),Bash(pnpm --dir web lint),Bash(pnpm --dir web exec tsc:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git checkout:*),Bash(git push:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh run view:*)"
+            --append-system-prompt "When you commit code changes for an issue, open the pull request yourself with gh pr create --base main. Title: the commit subject. Body: Closes #N, what changed, the checks you ran, and whether verify-jelly-fish is still needed."
+            --allowedTools "Edit,Write,Read,Glob,Grep,Bash(make test:*),Bash(make lint:*),Bash(make fmt:*),Bash(go test:*),Bash(go vet:*),Bash(go build:*),Bash(pnpm:*),Bash(cd web:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git checkout:*),Bash(git push:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh run view:*)"
             --disallowedTools "Bash(go mod tidy:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push origin main:*)"
