@@ -178,9 +178,10 @@ func TestRefusalsAreStopsAndLogged(t *testing.T) {
 	tests := []struct {
 		fixture string
 		logged  string
+		detail  string
 	}{
-		{"safety.sse", `"finish_reason":"SAFETY"`},
-		{"prompt_blocked.sse", `"block_reason":"PROHIBITED_CONTENT"`},
+		{"safety.sse", `"finish_reason":"SAFETY"`, "safety. Response blocked by safety filter."},
+		{"prompt_blocked.sse", `"block_reason":"PROHIBITED_CONTENT"`, "prohibited_content"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.fixture, func(t *testing.T) {
@@ -193,6 +194,9 @@ func TestRefusalsAreStopsAndLogged(t *testing.T) {
 			}
 			if resp.StopReason != provider.StopReasonRefusal || resp.Message.Parts == nil || len(resp.Message.Parts) != 0 {
 				t.Fatalf("resp = %+v, want a refusal with no parts", resp)
+			}
+			if resp.StopDetail != tc.detail {
+				t.Fatalf("detail = %q, want %q", resp.StopDetail, tc.detail)
 			}
 			if !strings.Contains(logs.String(), tc.logged) {
 				t.Fatalf("log = %s, want %s", logs.String(), tc.logged)

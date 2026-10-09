@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -92,6 +94,7 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 	resp := provider.Response{
 		Message:    fromMessage(acc, req.Model, func(i int) string { return callIDs[i] }),
 		StopReason: stopReason(acc.StopReason),
+		StopDetail: stopDetail(acc.StopDetails),
 		Usage:      usage(acc.Usage),
 	}
 	resp.RequestID = requestID(httpResp)
@@ -293,6 +296,12 @@ func stopReason(r sdk.StopReason) provider.StopReason {
 		return provider.StopReasonContextExceeded
 	}
 	return provider.StopReasonOther
+}
+
+// stopDetail joins a refusal's category and explanation; either may be null.
+func stopDetail(d sdk.RefusalStopDetails) string {
+	parts := []string{string(d.Category), d.Explanation}
+	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), ". ")
 }
 
 // usage normalizes Anthropic's counts; input_tokens already excludes cache

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -79,7 +80,7 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 			}
 		}
 		if cand.FinishReason != "" && cand.FinishReason != genai.FinishReasonUnspecified {
-			finish, finishMsg = cand.FinishReason, cand.FinishMessage
+			finish, finishMsg = cand.FinishReason, tap.finishMsg
 		}
 	}
 	if streamError == nil && finish == "" && block == "" {
@@ -100,7 +101,7 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 	if stop == provider.StopReasonRefusal || stop == provider.StopReasonOther {
 		c.logger.Warn("gemini stopped the reply", "finish_reason", finish, "finish_message", finishMsg, "block_reason", block, "request_id", responseID)
 	}
-	return provider.Response{Message: m, StopReason: stop, Usage: usage(usageMeta), RequestID: responseID}, nil
+	return provider.Response{Message: m, StopReason: stop, StopDetail: stopDetail(stop, finish, finishMsg, block), Usage: usage(usageMeta), RequestID: responseID}, nil
 }
 
 func (c chat) config(req provider.Request) *genai.GenerateContentConfig {
@@ -281,6 +282,18 @@ func stopReason(finish genai.FinishReason, block genai.BlockedReason, m msg.Mess
 		return provider.StopReasonEndTurn
 	}
 	return provider.StopReasonOther
+}
+
+// stopDetail is the reason and message Gemini gave for a refusal.
+func stopDetail(stop provider.StopReason, finish genai.FinishReason, finishMsg string, block genai.BlockedReason) string {
+	if stop != provider.StopReasonRefusal {
+		return ""
+	}
+	if block != "" {
+		return strings.ToLower(string(block))
+	}
+	parts := []string{strings.ToLower(string(finish)), finishMsg}
+	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), ". ")
 }
 
 // usage normalizes Gemini's counts: promptTokenCount includes the cached

@@ -181,6 +181,17 @@ func TestStopReasons(t *testing.T) {
 	}
 }
 
+func TestRefusalCarriesStopDetails(t *testing.T) {
+	c, _, _ := sseServer(t, "refusal.sse")
+	resp, err := c.Provider("k").Stream(t.Context(), userHi(), func(provider.Delta) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StopReason != provider.StopReasonRefusal || resp.StopDetail != "cyber. Declined by a policy classifier." {
+		t.Fatalf("stop = %q, detail = %q", resp.StopReason, resp.StopDetail)
+	}
+}
+
 func TestStreamDoesNotRetry(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

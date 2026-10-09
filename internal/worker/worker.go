@@ -465,16 +465,20 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	for _, u := range classes {
 		usage[u.unit] = u.n
 	}
+	payload := map[string]any{
+		"turn_id":     turnID,
+		"message":     resp.Message,
+		"stop_reason": resp.StopReason,
+		"usage":       usage,
+	}
+	if resp.StopDetail != "" {
+		payload["stop_detail"] = resp.StopDetail
+	}
 	evs := []eventlog.NewEvent{{
 		Type:          eventlog.TypeLLMResponse,
 		Actor:         w.actor(),
 		CorrelationID: turnID,
-		Payload: map[string]any{
-			"turn_id":     turnID,
-			"message":     resp.Message,
-			"stop_reason": resp.StopReason,
-			"usage":       usage,
-		},
+		Payload:       payload,
 	}}
 	evs = append(evs, w.usageEvents(classes, turnID, prov.Name(), st.Model)...)
 	if _, err := w.store.AppendFenced(ctx, sid, f, evs, nil); err != nil {

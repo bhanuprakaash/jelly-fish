@@ -96,6 +96,9 @@ type Usage struct {
 type Response struct {
 	Message    msg.Message
 	StopReason StopReason
+	// StopDetail is the Provider's own reason for a refusal or block, in
+	// words a person can read. Empty when it gave none.
+	StopDetail string
 	Usage      Usage
 	RequestID  string
 }
