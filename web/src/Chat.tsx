@@ -18,12 +18,12 @@ import { sessionNotice } from './lib/sessionNotice'
 import { getShowThinking, setShowThinking } from './lib/showThinking'
 import { renamedTitle } from './lib/sessionTitle'
 import { statusChipTone, statusLabel, type JellyStatus } from './lib/status'
-import { thinkingText, toolChips, type ToolChip } from './lib/toolChips'
+import { sources, thinkingText, toolChips, type ToolChip } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { MemoryChip } from './MemoryChip'
 import { ModelPicker } from './ModelPicker'
 import { SessionNotice } from './SessionNotice'
-import { Thought, ToolCalls } from './ToolCalls'
+import { SearchChip, SourceFooter, Thought, ToolCalls } from './ToolCalls'
 
 type Props = {
   sessionId: string
@@ -352,9 +352,11 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             const text = bubbleText(e.payload)
             const thought = showThinking && e.type === 'llm.response' ? thinkingText(e.payload) : ''
             const refusal = e.type === 'llm.response' ? refusalNotice(e.payload) : ''
+            const cited = e.type === 'llm.response' ? sources(e.payload) : []
             return (
               <Fragment key={e.seq}>
                 {thought && <Thought text={thought} />}
+                {cited.length > 0 && <SearchChip sources={cited} />}
                 {text && (
                   <div
                     className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${
@@ -366,6 +368,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
                     {text}
                   </div>
                 )}
+                {cited.length > 0 && <SourceFooter sources={cited} />}
                 {refusal && <p className={`mr-auto text-sm text-muted ${text ? '-mt-3' : ''}`}>{refusal}</p>}
               </Fragment>
             )

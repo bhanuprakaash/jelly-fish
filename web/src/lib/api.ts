@@ -223,6 +223,9 @@ export type ModelOption = {
   context_window?: number
   // price is null when the catalog has no price for the model.
   price: ModelPrice | null
+  // web_search and thinking are false when the model lacks the feature.
+  web_search?: boolean
+  thinking?: boolean
 }
 
 // ProviderModels is one picker group. A Provider with no saved key is not

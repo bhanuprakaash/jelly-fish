@@ -104,3 +104,18 @@ export function thinkingText(payload: unknown): string {
       .join('\n\n') ?? ''
   )
 }
+
+export type Source = { url: string; title: string }
+
+// sources is the web pages the text of an llm.response payload cites, each
+// once, in order. Only http(s) links are kept.
+export function sources(payload: unknown): Source[] {
+  const message = (payload as { message?: { parts: { cit?: { url: string; title?: string }[] }[] } }).message
+  const seen = new Map<string, Source>()
+  for (const part of message?.parts ?? []) {
+    for (const c of part.cit ?? []) {
+      if (/^https?:\/\//i.test(c.url) && !seen.has(c.url)) seen.set(c.url, { url: c.url, title: c.title || c.url })
+    }
+  }
+  return [...seen.values()]
+}

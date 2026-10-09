@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ToolChip } from './lib/toolChips'
+import type { Source, ToolChip } from './lib/toolChips'
 
 // Thought is the collapsed pill of a model's reasoning; it opens to the text.
 // While streaming it reads "Thinking…".
@@ -159,6 +159,56 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
           {call.result && <pre className={codeClass}>{call.result}</pre>}
         </div>
       )}
+    </div>
+  )
+}
+
+function SourceLinks({ sources }: { sources: Source[] }) {
+  return (
+    <ul className="space-y-1">
+      {sources.map((s) => (
+        <li key={s.url} className="truncate">
+          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-accent-ink underline underline-offset-2 focus-ring">
+            {s.title}
+          </a>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// SearchChip is the chip of a reply the Provider grounded with its own web
+// search; it opens to the pages the reply cites.
+export function SearchChip({ sources }: { sources: Source[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="w-full overflow-hidden rounded-card border border-line bg-surface">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm focus-ring-inset"
+      >
+        <span className={`flex size-5 shrink-0 items-center justify-center rounded-full ${stateCircles.done}`}>
+          <StateIcon state="done" />
+        </span>
+        Searched the web · {sources.length} {sources.length === 1 ? 'source' : 'sources'}
+      </button>
+      {open && (
+        <div className="px-4 pb-3 text-sm">
+          <SourceLinks sources={sources} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// SourceFooter lists the pages a reply cites, under the reply.
+export function SourceFooter({ sources }: { sources: Source[] }) {
+  return (
+    <div className="mr-auto w-full space-y-1 text-sm text-muted">
+      <p className="text-xs font-medium tracking-[0.14em] uppercase">Sources</p>
+      <SourceLinks sources={sources} />
     </div>
   )
 }
