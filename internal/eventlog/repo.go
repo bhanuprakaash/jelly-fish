@@ -228,25 +228,6 @@ func (r *Repo) Rename(ctx context.Context, scope TenantScope, sessionID uuid.UUI
 	})
 }
 
-// SessionModel returns the model the session's next turn runs on: the
-// latest session.config_changed model, else session.created's.
-func (r *Repo) SessionModel(ctx context.Context, scope TenantScope, sessionID uuid.UUID) (string, error) {
-	var model string
-	err := r.pool.QueryRow(ctx, `
-		SELECT coalesce(
-			(SELECT payload->>'model' FROM events WHERE session_id = s.id AND type = $4 AND payload ? 'model' ORDER BY seq DESC LIMIT 1),
-			(SELECT payload->'agent'->>'model' FROM events WHERE session_id = s.id AND type = $5))
-		FROM sessions s WHERE s.id = $1 AND s.workspace_id = $2 AND s.user_id = $3`,
-		sessionID, scope.WorkspaceID, scope.UserID, TypeConfigChanged, TypeSessionCreated).Scan(&model)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	if err != nil {
-		return "", fmt.Errorf("look up session model: %w", err)
-	}
-	return model, nil
-}
-
 func lockStatus(ctx context.Context, tx pgx.Tx, scope TenantScope, sessionID uuid.UUID) (string, error) {
 	var status string
 	err := tx.QueryRow(ctx,
