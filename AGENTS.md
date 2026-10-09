@@ -12,6 +12,15 @@ Single Go binary with roles `api`, `worker`, `migrate` (`cmd/jelly-fish`). Postg
 
 Run `make lint test` before calling a change done. For changes to `internal/api`, `internal/health`, `internal/worker`, `internal/migrate`, `cmd/jelly-fish`, or `web/`, also run the `verify-jelly-fish` skill to prove the change against a live run, not just tests. Run `maintain-verification-skill` occasionally to catch drift between that skill's feature map and the app.
 
+## Working rules
+
+- Smallest diff that solves the task. No layer, option or guard the task doesn't need.
+- Comments only for a constraint the code can't show. No internal plan ids (ticket, slice) in code, comments or commits.
+- Tests check behaviour with literal expected values. Few of them.
+- Commits: conventional prefix (`feat:`, `fix:`, `chore:`), one concise subject line.
+- A remote agent never pushes to `main` or force-pushes. Work on a branch.
+- A remote agent can't reach the local k8s cluster. When the change touches the paths above that need `verify-jelly-fish`, say in the PR or comment that it is still needed.
+
 ## Docs
 
 - Code style: [docs/style.md](docs/style.md). Follow it, especially the Comments section.
