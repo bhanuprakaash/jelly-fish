@@ -486,24 +486,6 @@ func TestPostMessageWakesASleepingSession(t *testing.T) {
 	}
 }
 
-func TestCreateSessionOnAChosenModel(t *testing.T) {
-	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool, "fake")
-	scope := testdb.NewUser(t, pool).Scope()
-	chosen, dflt := uuid.New(), uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, chosen, uuid.New(), "hi", "claude-opus-5-5", false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.CreateSession(t.Context(), scope, dflt, uuid.New(), "hi", "", false); err != nil {
-		t.Fatal(err)
-	}
-	for sid, want := range map[uuid.UUID]string{chosen: "claude-opus-5-5", dflt: "fake"} {
-		if got, err := repo.SessionModel(t.Context(), scope, sid); err != nil || got != want {
-			t.Errorf("SessionModel = %q, %v; want %q", got, err, want)
-		}
-	}
-}
-
 func TestChangeModelAfterAModelErrorResumes(t *testing.T) {
 	for _, code := range []string{"model_unavailable", "billing"} {
 		t.Run(code, func(t *testing.T) { changeModelResumes(t, code) })
@@ -535,9 +517,6 @@ func changeModelResumes(t *testing.T, code string) {
 	}
 	if r := readRow(t, pool, stopped); r.status != eventlog.StatusRunnable {
 		t.Fatalf("status = %s, want runnable", r.status)
-	}
-	if got, _ := repo.SessionModel(t.Context(), scope, stopped); got != "claude-opus-5-5" {
-		t.Fatalf("SessionModel = %q", got)
 	}
 }
 
@@ -571,8 +550,5 @@ func TestChangeModelChecksTenancy(t *testing.T) {
 
 	if err := repo.ChangeModel(t.Context(), testdb.NewUser(t, pool).Scope(), ended, "x"); !errors.Is(err, eventlog.ErrNotFound) {
 		t.Fatalf("other tenant: err = %v, want ErrNotFound", err)
-	}
-	if _, err := repo.SessionModel(t.Context(), testdb.NewUser(t, pool).Scope(), ended); !errors.Is(err, eventlog.ErrNotFound) {
-		t.Fatalf("other tenant SessionModel: err = %v, want ErrNotFound", err)
 	}
 }

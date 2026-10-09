@@ -409,6 +409,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	if err != nil {
 		return err
 	}
+	messages = provider.ForeignSources(messages, prov.Name())
 	system, err := w.system(ctx, c)
 	if err != nil {
 		return err
@@ -432,7 +433,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	defer title.abandon()
 
 	stopBatch := batch.Start(ctx)
-	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, System: system, Messages: messages, Tools: toolSpecs(defs), CacheKey: c.SessionID.String()}, func(d provider.Delta) {
+	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, System: system, Messages: messages, Tools: toolSpecs(defs), WebSearch: w.gateway.webSearch(st.Model), CacheKey: c.SessionID.String()}, func(d provider.Delta) {
 		switch d.Kind {
 		case provider.DeltaText:
 			batch.Add(d.Text)
@@ -465,16 +466,20 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	for _, u := range classes {
 		usage[u.unit] = u.n
 	}
+	payload := map[string]any{
+		"turn_id":     turnID,
+		"message":     resp.Message,
+		"stop_reason": resp.StopReason,
+		"usage":       usage,
+	}
+	if resp.StopDetail != "" {
+		payload["stop_detail"] = resp.StopDetail
+	}
 	evs := []eventlog.NewEvent{{
 		Type:          eventlog.TypeLLMResponse,
 		Actor:         w.actor(),
 		CorrelationID: turnID,
-		Payload: map[string]any{
-			"turn_id":     turnID,
-			"message":     resp.Message,
-			"stop_reason": resp.StopReason,
-			"usage":       usage,
-		},
+		Payload:       payload,
 	}}
 	evs = append(evs, w.usageEvents(classes, turnID, prov.Name(), st.Model)...)
 	if _, err := w.store.AppendFenced(ctx, sid, f, evs, nil); err != nil {
@@ -523,7 +528,8 @@ func toolSpecs(defs []tool.Def) []provider.ToolSpec {
 type usageClass struct {
 	unit string
 	n    int64
-	// price is USD per million tokens, so n × price is micro-dollars.
+	// price is micro-dollars per unit: USD per million tokens, or USD per
+	// 1,000 searches × 1,000.
 	price float64
 }
 
@@ -539,6 +545,7 @@ func usageClasses(u provider.Usage, p *provider.Prices) []usageClass {
 		{"cache_write_5m_tokens", u.CacheWrite5m, p.CacheWrite5m},
 		{"cache_write_1h_tokens", u.CacheWrite1h, p.CacheWrite1h},
 		{"output_tokens", u.Output, p.Output},
+		{eventlog.UnitWebSearchRequests, u.WebSearches, p.WebSearch * 1000},
 	}
 }
 
@@ -640,7 +647,7 @@ func (w *Worker) parkOnProviderError(ctx context.Context, c eventlog.Claim, f ev
 		evs = append(evs, sessionError(false))
 		next = eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "error"}
 	}
-	w.logger.Warn("provider call failed", "session_id", c.SessionID, "code", pe.Kind, "request_id", pe.RequestID, "status", next.To)
+	w.logger.Warn("provider call failed", "session_id", c.SessionID, "code", pe.Kind, "request_id", pe.RequestID, "http_status", pe.HTTPStatus, "status", next.To)
 	f.ExpectSeq = &lastSeq
 	_, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, &next)
 	if errors.Is(err, eventlog.ErrStale) && turnID != "" {

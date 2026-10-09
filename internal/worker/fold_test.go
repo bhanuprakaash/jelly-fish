@@ -147,10 +147,10 @@ func TestFoldSendsToolResultsInCallOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `[{"msg_v":2,"role":"user","parts":[` +
+	want := `[{"msg_v":3,"role":"user","parts":[` +
 		`{"k":"tool_result","tr":{"call_id":"a","parts":[{"k":"text","text":"outcome unknown; check before retrying"}],"is_error":true}},` +
 		`{"k":"tool_result","tr":{"call_id":"b","parts":[{"k":"text","text":"B done"}]}}]},` +
-		`{"msg_v":2,"role":"user","parts":[{"k":"text","text":"also this"}]}]`
+		`{"msg_v":3,"role":"user","parts":[{"k":"text","text":"also this"}]}]`
 	if string(got) != want {
 		t.Fatalf("messages after the reply =\n%s\nwant\n%s", got, want)
 	}

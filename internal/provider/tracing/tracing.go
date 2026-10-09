@@ -64,6 +64,9 @@ func (t traced) Stream(ctx context.Context, req provider.Request, onDelta func(p
 	if pe.Usage != (provider.Usage{}) {
 		span.SetAttributes(usageAttrs(pe.Usage)...)
 	}
+	if pe.HTTPStatus != 0 {
+		span.SetAttributes(attribute.Int("http.response.status_code", pe.HTTPStatus))
+	}
 	span.SetAttributes(attribute.String("jf.error_class", string(pe.Kind)))
 	span.SetStatus(codes.Error, string(pe.Kind))
 	return resp, err

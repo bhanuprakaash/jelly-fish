@@ -1,0 +1,36 @@
+{
+  "max_tokens": 64000,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "hi",
+          "cache_control": {
+            "type": "ephemeral"
+          },
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "claude-haiku-4-5-20251001",
+  "tools": [
+    {
+      "input_schema": {
+        "type": "object"
+      },
+      "name": "sleep",
+      "description": "Wait."
+    },
+    {
+      "name": "web_search",
+      "type": "web_search_20250305"
+    },
+    {
+      "name": "web_fetch",
+      "type": "web_fetch_20250910"
+    }
+  ],
+  "stream": true
+}

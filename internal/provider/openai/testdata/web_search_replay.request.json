@@ -1,0 +1,28 @@
+{
+  "store": false,
+  "input": [
+    {
+      "content": "weather in Paris",
+      "role": "user"
+    },
+    {
+      "type": "web_search_call",
+      "id": "ws_1",
+      "status": "completed",
+      "action": {
+        "type": "search",
+        "query": "weather in Paris"
+      }
+    },
+    {
+      "content": "It is sunny in Paris.",
+      "role": "assistant"
+    },
+    {
+      "content": "thanks",
+      "role": "user"
+    }
+  ],
+  "model": "gpt-5.4-mini",
+  "stream": true
+}

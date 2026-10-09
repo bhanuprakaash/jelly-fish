@@ -1,0 +1,41 @@
+{
+  "max_tokens": 64000,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "weather in Paris",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "text": "Searching.",
+          "cache_control": {
+            "type": "ephemeral"
+          },
+          "type": "text"
+        },
+        {
+          "type": "server_tool_use",
+          "id": "srvtoolu_01A",
+          "name": "web_search",
+          "input": {
+            "query": "weather in Paris"
+          }
+        },
+        {
+          "type": "web_search_tool_result",
+          "tool_use_id": "srvtoolu_01A",
+          "content": []
+        }
+      ],
+      "role": "assistant"
+    }
+  ],
+  "model": "claude-haiku-4-5-20251001",
+  "stream": true
+}

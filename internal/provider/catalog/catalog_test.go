@@ -47,13 +47,15 @@ func TestPrices(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := c.Lookup("claude-haiku-4-5-20251001")
-	want := provider.Prices{Input: 1, CacheRead: 0.1, CacheWrite5m: 1.25, CacheWrite1h: 2, Output: 5}
+	want := provider.Prices{Input: 1, CacheRead: 0.1, CacheWrite5m: 1.25, CacheWrite1h: 2, Output: 5, WebSearch: 10}
 	if m.Price == nil || *m.Price != want {
 		t.Fatalf("haiku price = %+v, want %+v", m.Price, want)
 	}
 	for _, m := range c.All() {
 		if m.Price == nil || m.Price.Input <= 0 || m.Price.Output <= 0 {
 			t.Errorf("%s: unpriced: %+v", m.ID, m.Price)
+		} else if m.WebSearch && m.Price.WebSearch <= 0 {
+			t.Errorf("%s: searches without a search price", m.ID)
 		}
 	}
 }

@@ -1,0 +1,58 @@
+{
+  "max_tokens": 64000,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "weather in Paris",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "type": "server_tool_use",
+          "id": "srvtoolu_01A",
+          "name": "web_search",
+          "input": {
+            "query": "weather in Paris"
+          }
+        },
+        {
+          "type": "web_search_tool_result",
+          "tool_use_id": "srvtoolu_01A",
+          "content": [
+            {
+              "type": "web_search_result",
+              "title": "Paris weather",
+              "url": "https://example.com/paris",
+              "encrypted_content": "EqgfCioIARgBIiQ",
+              "page_age": "April 30, 2026"
+            }
+          ]
+        },
+        {
+          "text": "It is sunny in Paris.",
+          "type": "text"
+        }
+      ],
+      "role": "assistant"
+    },
+    {
+      "content": [
+        {
+          "text": "thanks",
+          "cache_control": {
+            "type": "ephemeral"
+          },
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "claude-haiku-4-5-20251001",
+  "stream": true
+}

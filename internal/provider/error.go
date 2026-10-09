@@ -32,13 +32,17 @@ func (k ErrorKind) Retryable() bool {
 }
 
 // Error is a classified Provider failure. It carries nothing the Provider
-// sent back beyond the request id, since Provider text can echo the request.
+// sent back beyond the request id and status code, since Provider text can
+// echo the request.
 type Error struct {
 	Kind ErrorKind
 	// RetryAfter is how long the Provider asked us to wait; zero if it
 	// didn't.
 	RetryAfter time.Duration
 	RequestID  string
+	// HTTPStatus is the response status code; zero when there was no
+	// response, such as a dropped connection or our own timeout.
+	HTTPStatus int
 	// Usage is what the failed attempt still consumed.
 	Usage Usage
 	Err   error

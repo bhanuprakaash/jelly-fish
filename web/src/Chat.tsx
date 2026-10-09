@@ -18,12 +18,12 @@ import { sessionNotice } from './lib/sessionNotice'
 import { getShowThinking, setShowThinking } from './lib/showThinking'
 import { renamedTitle } from './lib/sessionTitle'
 import { statusChipTone, statusLabel, type JellyStatus } from './lib/status'
-import { thinkingText, toolChips, type ToolChip } from './lib/toolChips'
+import { sources, textSegments, thinkingText, toolChips, type ToolChip } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { MemoryChip } from './MemoryChip'
 import { ModelPicker } from './ModelPicker'
 import { SessionNotice } from './SessionNotice'
-import { Thought, ToolCalls } from './ToolCalls'
+import { SearchChip, SourceFooter, Thought, ToolCalls } from './ToolCalls'
 
 type Props = {
   sessionId: string
@@ -47,6 +47,15 @@ type Props = {
 function bubbleText(payload: unknown): string {
   const message = (payload as { message?: Message }).message
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
+}
+
+function refusalNotice(payload: unknown): string {
+  const p = payload as { stop_reason?: string; stop_detail?: string; message?: Message }
+  if (p.stop_reason === 'other' && bubbleText(payload) === '' && !p.message?.parts.some((part) => part.k === 'tool_use')) {
+    return 'The model stopped without answering. Try again.'
+  }
+  if (p.stop_reason !== 'refusal') return ''
+  return p.stop_detail ? `Stopped: ${p.stop_detail}` : 'The model declined to answer'
 }
 
 export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated }: Props) {
@@ -138,7 +147,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
     (e) =>
       e.type === 'user.message' ||
       (e.type === 'llm.response' &&
-        (bubbleText(e.payload) !== '' || (showThinking && thinkingText(e.payload) !== ''))) ||
+        (bubbleText(e.payload) !== '' || (showThinking && thinkingText(e.payload) !== '') || refusalNotice(e.payload) !== '')) ||
       chips.has(e.seq),
   )
   const transcript: (UIEvent | { turn: string; calls: ToolChip[] })[] = []
@@ -345,9 +354,12 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             }
             const text = bubbleText(e.payload)
             const thought = showThinking && e.type === 'llm.response' ? thinkingText(e.payload) : ''
+            const refusal = e.type === 'llm.response' ? refusalNotice(e.payload) : ''
+            const cited = e.type === 'llm.response' ? sources(e.payload) : []
             return (
               <Fragment key={e.seq}>
                 {thought && <Thought text={thought} />}
+                {cited.length > 0 && <SearchChip sources={cited} />}
                 {text && (
                   <div
                     className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${
@@ -356,9 +368,29 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
                         : 'mr-auto'
                     }`}
                   >
-                    {text}
+                    {textSegments(e.payload).map((seg, i) => (
+                      <Fragment key={i}>
+                        {seg.text}
+                        {seg.cites.map((n) => (
+                          <sup key={n} className="ml-0.5 text-xs">
+                            <a
+                              href={cited[n - 1].url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={cited[n - 1].title}
+                              aria-label={`Source ${n}: ${cited[n - 1].title}`}
+                              className="text-accent-ink focus-ring"
+                            >
+                              [{n}]
+                            </a>
+                          </sup>
+                        ))}
+                      </Fragment>
+                    ))}
                   </div>
                 )}
+                {cited.length > 0 && <SourceFooter sources={cited} />}
+                {refusal && <p className={`mr-auto text-sm text-muted ${text ? '-mt-3' : ''}`}>{refusal}</p>}
               </Fragment>
             )
           })}

@@ -46,9 +46,9 @@ await tab2.close()
 const [a, b] = ids
 
 check('other tab: both new chats reach the list (D17/D19)', await seen(row(page, titles[1])) && await seen(row(page, titles[0])))
-check('two chats running: both rows show the spinner', await seen(badge(page, titles[0], 'running')) && await seen(badge(page, titles[1], 'running')))
+check('two chats running: both rows show Working…, banner shows 2 working', await seen(badge(page, titles[0], 'Working…')) && await seen(badge(page, titles[1], 'Working…')) && await seen(page.getByText('2 working', { exact: true })))
 await r.shot('two-running')
-check('turns end: both spinners clear live', await gone(badge(page, titles[0], 'running')) && await gone(badge(page, titles[1], 'running')))
+check('turns end: both Working… clear live', await gone(badge(page, titles[0], 'Working…')) && await gone(badge(page, titles[1], 'Working…')))
 await r.shot('both-idle')
 
 // Needs approval: a child of chat A enters awaiting_approval.
@@ -56,23 +56,23 @@ const child = psql(`INSERT INTO sessions (id, workspace_id, project_id, user_id,
   SELECT gen_random_uuid(), workspace_id, project_id, user_id, agent_id, 'awaiting_approval', id, 1
   FROM sessions WHERE id = '${a}' RETURNING id`).split('\n')[0]
 hint(child)
-check('child awaiting_approval: dot on its root chat', await seen(badge(page, titles[0], 'needs approval')))
+check('child awaiting_approval: Needs approval on its root chat, banner shows 1 needs you', await seen(badge(page, titles[0], 'Needs approval')) && await seen(page.getByText('1 needs you', { exact: true })))
 await r.shot('child-needs-approval')
 psql(`UPDATE sessions SET status = 'completed' WHERE id = '${child}'`)
 hint(child)
-check('child completed: dot clears', await gone(badge(page, titles[0], 'needs approval'), 15_000))
+check('child completed: Needs approval clears', await gone(badge(page, titles[0], 'Needs approval'), 15_000))
 
-// Failed: the badge only opens the chat.
+// Failed: the row shows Retry?, which the drive does not click.
 psql(`UPDATE sessions SET status = 'failed' WHERE id = '${b}'`)
 hint(b)
-check('failed: badge on the row', await seen(badge(page, titles[1], 'failed')))
+check('failed: Failed · Retry? on the row', await seen(badge(page, titles[1], 'Failed · Retry?')))
 await r.shot('failed')
 await row(page, titles[1]).getByRole('link').click()
 await page.waitForURL(new RegExp(`/s/${b}$`))
-check('failed: clicking the row opens the chat, no Retry in the list', (await nav(page).getByRole('button', { name: /retry/i }).count()) === 0)
+check('failed: clicking the row opens the chat, Retry stays on the row', (await row(page, titles[1]).getByRole('button', { name: `Retry ${titles[1]}` }).count()) === 1)
 psql(`UPDATE sessions SET status = 'awaiting_user' WHERE id = '${b}'`)
 hint(b)
-await gone(badge(page, titles[1], 'failed'), 15_000)
+await gone(badge(page, titles[1], 'Failed · Retry?'), 15_000)
 
 // Hide/show with chat A open: every EventSource closes, then reopens.
 await row(page, titles[0]).getByRole('link').click()
@@ -93,7 +93,7 @@ const reopened = (await streams(page)).slice(before)
 const sess = reopened.find((s) => s.url.includes(`/api/sessions/${a}/events`))
 check('visible: Session stream reopens with ?after=lastSeq', sess?.url.endsWith(`?after=${lastSeq}`) ?? false, sess?.url)
 check('visible: Activity Stream reopens', reopened.some((s) => s.url.endsWith('/api/activity') && s.readyState === 1), reopened.map((s) => s.url).join(' '))
-check('visible: fresh snapshot shows the change made while hidden', await seen(badge(page, titles[1], 'failed')))
+check('visible: fresh snapshot shows the change made while hidden', await seen(badge(page, titles[1], 'Failed · Retry?')))
 await r.shot('after-show')
 psql(`UPDATE sessions SET status = 'awaiting_user' WHERE id = '${b}'`)
 hint(b)
@@ -112,7 +112,8 @@ for (let i = 0; i < 25 && refusedAt === null; i++) {
   const ctl = new AbortController()
   const res = await fetch(`${BASE}/api/activity`, { headers: { cookie, origin: BASE }, signal: ctl.signal })
   if (res.status === 429) refusedAt = i
-  else held.push(ctl)
+  // Node cancels the body of a garbage-collected Response, closing its stream.
+  else held.push([ctl, res])
 }
 const open_ = (await streams(page)).filter((s) => s.readyState === 1).length
 check('cap: the 21st stream (Session + Activity) gets 429', refusedAt !== null && open_ + held.length === 20, `page=${open_} extra=${held.length} refused at extra #${refusedAt + 1}`)
@@ -122,7 +123,7 @@ if (m) {
   check('metrics: jf_streams_open{kind="activity"} counts Activity Streams', new RegExp(`jf_streams_open\\{kind="activity"\\} ${held.length + 1}\\b`).test(m))
   writeFileSync(join(r.out, 'metrics-at-cap.txt'), m + '\n')
 } else console.log('SKIP metrics: no :9090 forward')
-for (const c of held) c.abort()
+for (const [c] of held) c.abort()
 
 writeFileSync(join(r.out, 'test-sessions.txt'), [...ids, child].join('\n') + '\n')
 console.log('chats:', ids.join(' '), 'child:', child)
