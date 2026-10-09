@@ -644,7 +644,7 @@ func (w *Worker) parkOnProviderError(ctx context.Context, c eventlog.Claim, f ev
 		evs = append(evs, sessionError(false))
 		next = eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "error"}
 	}
-	w.logger.Warn("provider call failed", "session_id", c.SessionID, "code", pe.Kind, "request_id", pe.RequestID, "status", next.To)
+	w.logger.Warn("provider call failed", "session_id", c.SessionID, "code", pe.Kind, "request_id", pe.RequestID, "http_status", pe.HTTPStatus, "status", next.To)
 	f.ExpectSeq = &lastSeq
 	_, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, &next)
 	if errors.Is(err, eventlog.ErrStale) && turnID != "" {
