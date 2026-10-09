@@ -149,6 +149,9 @@ func (c chat) config(req provider.Request) *genai.GenerateContentConfig {
 // foreignCallSignature is the value Google documents for a function call
 // Gemini did not write. Google's JSON carries it as the base64 text of the
 // signature bytes, so the SDK's []byte field holds what that text decodes to.
+// The SDK re-encodes those bytes as standard base64, so the wire text is
+// "skip/thought/signature/validator"; Google's JSON parser reads it as the
+// same bytes as the documented literal (verified live).
 const foreignCallSignature = "skip_thought_signature_validator"
 
 // toContents builds one Content per message. A Gemini Thinking part holds a
@@ -333,8 +336,8 @@ func stopDetail(stop provider.StopReason, finish genai.FinishReason, finishMsg s
 
 // usage normalizes Gemini's counts: promptTokenCount includes the cached
 // tokens, which are taken out. Tool results fed back to the model
-// (toolUsePromptTokenCount) are billed as input. Thinking tokens are counted apart from
-// candidatesTokenCount and billed as output, so Output holds both
+// (toolUsePromptTokenCount) are billed as input. Thinking tokens are counted
+// apart from candidatesTokenCount and billed as output, so Output holds both
 // (provider-gateway.md §5.3).
 func usage(u *genai.GenerateContentResponseUsageMetadata) provider.Usage {
 	if u == nil {
