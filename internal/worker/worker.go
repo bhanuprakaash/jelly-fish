@@ -387,7 +387,7 @@ func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, s
 func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {
 	sid := c.SessionID
 	turnID := uuid.NewString()
-	// The full reply lands with llm.response; deltas only preview its text.
+	// The full reply lands with llm.response; deltas only preview its text and thinking.
 	batch := stream.NewBatcher(w.deltas.Publish, sid, turnID, stream.CoalesceInterval, w.logger)
 	prov, err := w.gateway.forTurn(ctx, c.UserID, st.Model, tracing.IDs{SessionID: sid.String(), TurnID: turnID}, func() { batch.Reset(ctx) })
 	var pe *provider.Error
@@ -433,8 +433,11 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 
 	stopBatch := batch.Start(ctx)
 	resp, err := prov.Stream(ctx, provider.Request{Model: st.Model, System: system, Messages: messages, Tools: toolSpecs(defs), CacheKey: c.SessionID.String()}, func(d provider.Delta) {
-		if d.Kind == provider.DeltaText {
+		switch d.Kind {
+		case provider.DeltaText:
 			batch.Add(d.Text)
+		case provider.DeltaThinking:
+			batch.AddThinking(d.Text)
 		}
 	})
 	stopBatch()

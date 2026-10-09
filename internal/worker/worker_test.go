@@ -15,6 +15,7 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/fake"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
@@ -28,8 +29,13 @@ func startWorker(t *testing.T, pool *pgxpool.Pool) {
 
 func startWorkerWith(t *testing.T, pool *pgxpool.Pool, upcast eventlog.Upcasters) {
 	t.Helper()
+	startWorkerOn(t, pool, upcast, fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond})
+}
+
+func startWorkerOn(t *testing.T, pool *pgxpool.Pool, upcast eventlog.Upcasters, prov provider.Provider) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	w := worker.New(pool, worker.Gateway{Fake: fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}}, nil, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, upcast, slog.New(slog.DiscardHandler))
+	w := worker.New(pool, worker.Gateway{Fake: prov}, nil, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, upcast, slog.New(slog.DiscardHandler))
 	worker.SetTitleTimeout(w, 0)
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
@@ -299,5 +305,52 @@ func TestStreamedTurnPublishesDeltasNotEvents(t *testing.T) {
 	}
 	if streamed.String() != reply {
 		t.Fatalf("streamed %q, want the final reply %q", streamed.String(), reply)
+	}
+}
+
+// thinkingProvider streams a thinking delta before the fake reply.
+type thinkingProvider struct{ fake.Provider }
+
+func (p thinkingProvider) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {
+	onDelta(provider.Delta{Kind: provider.DeltaThinking, Text: "Check the greeting."})
+	return p.Provider.Stream(ctx, req, onDelta)
+}
+
+func TestThinkingDeltaReachesStreamAsThinking(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Release()
+	if _, err := listener.Exec(t.Context(), "LISTEN jf_stream"); err != nil {
+		t.Fatal(err)
+	}
+
+	startWorkerOn(t, pool, eventlog.Upcasters{}, thinkingProvider{fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}})
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 1)
+
+	var thinking strings.Builder
+	for {
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		n, err := listener.Conn().WaitForNotification(ctx)
+		cancel()
+		if err != nil {
+			break
+		}
+		var d stream.Delta
+		if err := json.Unmarshal([]byte(n.Payload), &d); err != nil {
+			t.Fatal(err)
+		}
+		if d.Kind == stream.KindThinking {
+			thinking.WriteString(d.Text)
+		}
+	}
+	if thinking.String() != "Check the greeting." {
+		t.Fatalf("thinking deltas = %q, want %q", thinking.String(), "Check the greeting.")
 	}
 }
