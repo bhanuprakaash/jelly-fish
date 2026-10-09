@@ -21,11 +21,16 @@
         },
         {
           "type": "server_tool_use",
-          "id": "srvtoolu_01B",
+          "id": "srvtoolu_01A",
           "name": "web_search",
           "input": {
-            "query": "Paris forecast"
+            "query": "weather in Paris"
           }
+        },
+        {
+          "type": "web_search_tool_result",
+          "tool_use_id": "srvtoolu_01A",
+          "content": []
         }
       ],
       "role": "assistant"

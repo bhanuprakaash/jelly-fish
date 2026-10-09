@@ -174,8 +174,14 @@ func setBreakpoints(p *sdk.MessageNewParams, from []int, summaryEnd int) {
 	}
 }
 
+// markLast sets the breakpoint on the last block that can carry one. Blocks
+// built from stored JSON are marshalled as stored, so a setting on them is
+// lost.
 func markLast(blocks []sdk.ContentBlockParamUnion) {
 	for i := len(blocks) - 1; i >= 0; i-- {
+		if b := blocks[i]; b.OfServerToolUse != nil || b.OfWebSearchToolResult != nil || b.OfWebFetchToolResult != nil {
+			continue
+		}
 		if cc := blocks[i].GetCacheControl(); cc != nil {
 			*cc = sdk.NewCacheControlEphemeralParam()
 			return
