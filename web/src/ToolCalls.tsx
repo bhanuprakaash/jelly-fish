@@ -76,7 +76,8 @@ function useElapsedSeconds(since: number, active: boolean): number {
 }
 
 function duration(ms: number): string {
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
+  if (ms < 1) return '<1ms'
+  return ms < 1000 ? `${ms}ms` :`${(ms / 1000).toFixed(1)}s`
 }
 
 function StateIcon({ state }: { state: ToolChip['state'] }) {
@@ -149,7 +150,7 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
           </span>
           {note && <span className={`line-clamp-2 text-[12.5px] ${noteTone}`}>{note}</span>}
         </span>
-        {call.durationMs !== undefined && call.durationMs > 0 && (
+        {call.durationMs !== undefined && (
           <span className="shrink-0 text-xs text-muted">{duration(call.durationMs)}</span>
         )}
       </button>
