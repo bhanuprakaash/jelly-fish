@@ -28,3 +28,12 @@ func TestStreamWebSearch(t *testing.T) {
 		t.Errorf("usage = %+v, want 1 web search", resp.Usage)
 	}
 }
+
+func TestStreamWebSearchBillsOnlySearchActions(t *testing.T) {
+	c, _ := sseServer(t, "web_search_open_page.sse")
+	resp, _ := collect(t, c.Provider("k"), provider.Request{Model: mini, Messages: []msg.Message{msg.UserText("go release notes")}, WebSearch: true})
+
+	if resp.Usage.WebSearches != 1 {
+		t.Errorf("usage = %+v, want 1 web search for one search and one open_page", resp.Usage)
+	}
+}
