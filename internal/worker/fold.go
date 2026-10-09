@@ -187,6 +187,7 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		*userSeqs = append(*userSeqs, e.Seq)
 		st.RetryStep = 0
 		st.ToolsSinceUser = nil
+		st.Pauses = 0
 	case eventlog.TypeStatusChanged:
 		var p struct {
 			To string `json:"to"`

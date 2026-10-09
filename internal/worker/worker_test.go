@@ -400,3 +400,24 @@ func TestEndlessPausesStopAfterFiveResumes(t *testing.T) {
 	startWorkerOn(t, pool, eventlog.Upcasters{}, &pausing{pauses: 100})
 	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 6)
 }
+
+func TestUserMessageResetsThePauseCount(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	scope := testdb.NewUser(t, pool).Scope()
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	p := &pausing{pauses: 100}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, p)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 6)
+
+	p.mu.Lock()
+	p.pauses = len(p.last) + 1
+	p.mu.Unlock()
+	if _, err := repo.PostMessage(t.Context(), scope, sid, uuid.New(), "again"); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 8)
+}
