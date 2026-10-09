@@ -147,10 +147,8 @@ func providerOf(groups []providerModelsJSON, model string) (prov string, availab
 	return "", false
 }
 
-// handleChangeModel switches a session's model for its next turn. The model
-// must be available to the User, and on the session's current Provider,
-// since history isn't replayed across Providers (#5). The Fake Provider
-// has no history of its own to replay, so switching to or from it is fine.
+// handleChangeModel switches a session's model for its next turn, on any
+// Provider the User has a key for.
 func (h *modelHandlers) handleChangeModel(repo SessionRepo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r, "session not found")
@@ -168,34 +166,14 @@ func (h *modelHandlers) handleChangeModel(repo SessionRepo) http.HandlerFunc {
 			return
 		}
 		scope := scopeFrom(r)
-		current, err := repo.SessionModel(r.Context(), scope, id)
-		if errors.Is(err, eventlog.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "session not found")
-			return
-		}
-		if err != nil {
-			h.logger.Error("look up session model", "error", err, "session_id", id)
-			writeError(w, http.StatusInternalServerError, "could not change model")
-			return
-		}
 		groups, err := h.cfg.pickable(r.Context(), scope.UserID)
 		if err != nil {
 			h.logger.Error("list models", "error", err, "session_id", id)
 			writeError(w, http.StatusInternalServerError, "could not change model")
 			return
 		}
-		to, ok := providerOf(groups, req.Model)
-		if !ok {
+		if _, ok := providerOf(groups, req.Model); !ok {
 			writeError(w, http.StatusUnprocessableEntity, "model is not available")
-			return
-		}
-		from, _ := providerOf(groups, current)
-		if info, ok := h.cfg.Catalog.Lookup(current); from == "" && ok {
-			from = info.Provider
-		}
-		// A model neither lists has no known Provider to keep to.
-		if from != "" && from != to && from != h.cfg.Fake && to != h.cfg.Fake {
-			writeError(w, http.StatusUnprocessableEntity, "switching to another provider is not supported yet")
 			return
 		}
 		err = repo.ChangeModel(r.Context(), scope, id, req.Model)

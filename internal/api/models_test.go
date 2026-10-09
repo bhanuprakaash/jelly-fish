@@ -212,12 +212,12 @@ func TestChangeSessionModel(t *testing.T) {
 		want  int
 	}{
 		{"within anthropic", haiku, "claude-sonnet-5-5", http.StatusNoContent},
-		{"across providers", haiku, "gpt-6-astra", http.StatusUnprocessableEntity},
+		{"across providers", haiku, "gpt-6-astra", http.StatusNoContent},
 		{"no key for it", haiku, "gemini-3.8-flash", http.StatusUnprocessableEntity},
 		{"not in the live list", haiku, "claude-opus-5-5", http.StatusUnprocessableEntity},
-		{"from a hidden model across providers", hidden, "gpt-6-astra", http.StatusUnprocessableEntity},
+		{"from a hidden model across providers", hidden, "gpt-6-astra", http.StatusNoContent},
 		{"from a hidden model within its provider", hidden, "claude-sonnet-5-5", http.StatusNoContent},
-		{"anthropic to fake", haiku, "fake", http.StatusNoContent},
+		{"to fake", haiku, "fake", http.StatusNoContent},
 		{"fake to openai", fake, "gpt-6-astra", http.StatusNoContent},
 		{"empty", fake, "", http.StatusBadRequest},
 		{"unknown session", uuid.New(), "fake", http.StatusNotFound},
@@ -243,5 +243,25 @@ func TestChangeSessionModel(t *testing.T) {
 				t.Fatalf("model = %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+func TestChangeSessionModelToAnotherProviderAppendsOneEvent(t *testing.T) {
+	e := newKeysEnv(t)
+	e.saveKeys(t)
+	sid := e.newSession(t, "claude-haiku-4-5-20251001")
+
+	rr := e.do(http.MethodPut, "/api/sessions/"+sid.String()+"/model", map[string]string{"model": "gpt-6-astra"}, e.cookie)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("status = %d %s, want 204", rr.Code, rr.Body)
+	}
+	var payload string
+	var n int
+	if err := e.pool.QueryRow(t.Context(), `SELECT count(*), coalesce(max(payload->>'model'), '') FROM events WHERE session_id = $1 AND type = $2`,
+		sid, eventlog.TypeConfigChanged).Scan(&n, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || payload != "gpt-6-astra" {
+		t.Fatalf("session.config_changed events = %d for %q, want 1 for gpt-6-astra", n, payload)
 	}
 }

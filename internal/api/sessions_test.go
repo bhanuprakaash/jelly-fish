@@ -53,10 +53,6 @@ func (f *fakeRepo) Rename(context.Context, eventlog.TenantScope, uuid.UUID, stri
 	return nil
 }
 
-func (f *fakeRepo) SessionModel(context.Context, eventlog.TenantScope, uuid.UUID) (string, error) {
-	return "", nil
-}
-
 func (f *fakeRepo) PostMessage(context.Context, eventlog.TenantScope, uuid.UUID, uuid.UUID, string) (int64, error) {
 	return f.postSeq, f.postErr
 }
