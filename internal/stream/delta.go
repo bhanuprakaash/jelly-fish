@@ -33,6 +33,8 @@ const (
 const (
 	// KindText carries reply text.
 	KindText = "text"
+	// KindThinking carries reasoning text.
+	KindThinking = "thinking"
 	// KindReset tells subscribers to drop the turn's text so far: the attempt
 	// that produced it failed and another is starting.
 	KindReset = "reset"
@@ -167,9 +169,9 @@ func (b *PGDeltaBus) deliverPayload(payload string) (dropped int, err error) {
 	return dropped, nil
 }
 
-// Batcher coalesces a turn's text deltas so the bus sees one publish per
-// interval rather than one per token. Publish failures are logged and dropped:
-// deltas are best-effort.
+// Batcher coalesces a turn's text and thinking deltas so the bus sees one
+// publish per interval rather than one per token. Publish failures are logged
+// and dropped: deltas are best-effort.
 type Batcher struct {
 	publish  func(context.Context, Delta) error
 	sid      uuid.UUID
@@ -177,8 +179,9 @@ type Batcher struct {
 	interval time.Duration
 	logger   *slog.Logger
 
-	mu  sync.Mutex
-	buf strings.Builder
+	mu    sync.Mutex
+	buf   strings.Builder
+	think strings.Builder
 	// pubMu keeps a flush and a Reset from publishing out of order.
 	pubMu sync.Mutex
 }
@@ -196,13 +199,22 @@ func (b *Batcher) Add(text string) {
 	b.buf.WriteString(text)
 }
 
-// Reset drops text not yet published and publishes a reset delta, so
-// subscribers clear the turn's partial reply.
+// AddThinking buffers reasoning text for the next flush. It is safe to call
+// while Start's flusher runs.
+func (b *Batcher) AddThinking(text string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.think.WriteString(text)
+}
+
+// Reset drops text and thinking not yet published and publishes a reset delta,
+// so subscribers clear the turn's partial reply.
 func (b *Batcher) Reset(ctx context.Context) {
 	b.pubMu.Lock()
 	defer b.pubMu.Unlock()
 	b.mu.Lock()
 	b.buf.Reset()
+	b.think.Reset()
 	b.mu.Unlock()
 	b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindReset})
 }
@@ -236,13 +248,16 @@ func (b *Batcher) flush(ctx context.Context) {
 	b.pubMu.Lock()
 	defer b.pubMu.Unlock()
 	b.mu.Lock()
-	text := b.buf.String()
+	text, think := b.buf.String(), b.think.String()
 	b.buf.Reset()
+	b.think.Reset()
 	b.mu.Unlock()
-	if text == "" {
-		return
+	if think != "" {
+		b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindThinking, Text: think})
 	}
-	b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindText, Text: text})
+	if text != "" {
+		b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindText, Text: text})
+	}
 }
 
 func (b *Batcher) send(ctx context.Context, d Delta) {

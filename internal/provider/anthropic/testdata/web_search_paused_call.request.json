@@ -1,0 +1,36 @@
+{
+  "max_tokens": 64000,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "weather in Paris",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "text": "Searching.",
+          "cache_control": {
+            "type": "ephemeral"
+          },
+          "type": "text"
+        },
+        {
+          "type": "server_tool_use",
+          "id": "srvtoolu_01B",
+          "name": "web_search",
+          "input": {
+            "query": "Paris forecast"
+          }
+        }
+      ],
+      "role": "assistant"
+    }
+  ],
+  "model": "claude-haiku-4-5-20251001",
+  "stream": true
+}

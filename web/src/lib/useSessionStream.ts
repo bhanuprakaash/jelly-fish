@@ -19,6 +19,8 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
   // attempt fails and another starts, and dropped on reconnect because the
   // deltas missed meanwhile are gone (event-log.md §5.12).
   const [partials, setPartials] = useState<Record<string, string>>({})
+  // Streaming thinking so far, by turn_id; ends the same ways as partials.
+  const [thoughts, setThoughts] = useState<Record<string, string>>({})
   const lastSeqRef = useRef(0)
   // Turns that ended (llm.response, turn.interrupted or session.error); a late
   // delta for one is ignored.
@@ -32,6 +34,7 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
     const open = () => {
       setFailed(false)
       setPartials({})
+      setThoughts({})
       // A stream opened later can't carry deltas of a turn that already ended.
       doneTurnsRef.current.clear()
       es = new EventSource(`/api/sessions/${sessionId}/events?after=${lastSeqRef.current}`)
@@ -53,6 +56,11 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
             delete next[turnId]
             return next
           })
+          setThoughts((prev) => {
+            const next = { ...prev }
+            delete next[turnId]
+            return next
+          })
         }
       }
       es.addEventListener('delta', (e) => {
@@ -64,6 +72,15 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
             delete next[d.turn_id]
             return next
           })
+          setThoughts((prev) => {
+            const next = { ...prev }
+            delete next[d.turn_id]
+            return next
+          })
+          return
+        }
+        if (d.kind === 'thinking') {
+          setThoughts((prev) => ({ ...prev, [d.turn_id]: (prev[d.turn_id] ?? '') + d.text }))
           return
         }
         if (d.kind !== 'text') return
@@ -74,6 +91,7 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
         // The browser reconnects on its own, and the deltas missed meanwhile
         // are gone, so a half-built bubble would only show the tail.
         setPartials({})
+        setThoughts({})
         if (es?.readyState === EventSource.CLOSED) {
           setFailed(true)
         }
@@ -97,5 +115,5 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
     }
   }, [sessionId, enabled])
 
-  return { events, partials, connected, failed }
+  return { events, partials, thoughts, connected, failed }
 }

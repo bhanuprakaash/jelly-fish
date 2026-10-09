@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -23,7 +25,13 @@ const Name = "anthropic"
 // (provider-gateway.md §5.5 item 4).
 const defaultMaxOutput = 8192
 
-const typeRedactedThinking = "redacted_thinking"
+// Native block types Anthropic's replay accepts, sent back as stored.
+const (
+	typeRedactedThinking = "redacted_thinking"
+	typeServerToolUse    = "server_tool_use"
+	typeWebSearchResult  = "web_search_tool_result"
+	typeWebFetchResult   = "web_fetch_tool_result"
+)
 
 // Provider returns a Provider that streams replies on key.
 func (c Client) Provider(key string) provider.Provider {
@@ -92,6 +100,7 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 	resp := provider.Response{
 		Message:    fromMessage(acc, req.Model, func(i int) string { return callIDs[i] }),
 		StopReason: stopReason(acc.StopReason),
+		StopDetail: stopDetail(acc.StopDetails),
 		Usage:      usage(acc.Usage),
 	}
 	resp.RequestID = requestID(httpResp)
@@ -132,6 +141,11 @@ func (c chat) params(req provider.Request) (sdk.MessageNewParams, error) {
 		}
 		p.Tools = append(p.Tools, sdk.ToolUnionParam{OfTool: tp})
 	}
+	if req.WebSearch {
+		p.Tools = append(p.Tools,
+			sdk.ToolUnionParam{OfWebSearchTool20250305: &sdk.WebSearchTool20250305Param{}},
+			sdk.ToolUnionParam{OfWebFetchTool20250910: &sdk.WebFetchTool20250910Param{}})
+	}
 	if known && !req.NoThinking && info.Thinking == provider.ThinkingAdaptiveOnly {
 		// Newer models default display to "omitted"; summarized is the only
 		// change from the default, so the prefix stays byte-stable (D17).
@@ -160,8 +174,14 @@ func setBreakpoints(p *sdk.MessageNewParams, from []int, summaryEnd int) {
 	}
 }
 
+// markLast sets the breakpoint on the last block that can carry one. Blocks
+// built from stored JSON are marshalled as stored, so a setting on them is
+// lost.
 func markLast(blocks []sdk.ContentBlockParamUnion) {
 	for i := len(blocks) - 1; i >= 0; i-- {
+		if b := blocks[i]; b.OfServerToolUse != nil || b.OfWebSearchToolResult != nil || b.OfWebFetchToolResult != nil {
+			continue
+		}
 		if cc := blocks[i].GetCacheControl(); cc != nil {
 			*cc = sdk.NewCacheControlEphemeralParam()
 			return
@@ -180,7 +200,11 @@ func toParams(messages []msg.Message) ([]sdk.MessageParam, []int, error) {
 	from := make([]int, 0, len(messages))
 	for mi, m := range messages {
 		var blocks []sdk.ContentBlockParamUnion
-		for _, p := range m.Parts {
+		parts := m.Parts
+		if mi < len(messages)-1 {
+			parts = withoutUnansweredServerToolUse(parts)
+		}
+		for _, p := range parts {
 			b, ok, err := toBlock(p, wireID)
 			if err != nil {
 				return nil, nil, err
@@ -202,6 +226,32 @@ func toParams(messages []msg.Message) ([]sdk.MessageParam, []int, error) {
 	return out, from, nil
 }
 
+// withoutUnansweredServerToolUse drops a server_tool_use block with no result
+// block in the same message. A reply the pause cap cut off ends in one, and
+// Anthropic rejects it anywhere but last, where a resume sends it as is.
+func withoutUnansweredServerToolUse(parts []msg.Part) []msg.Part {
+	answered := map[string]bool{}
+	for _, p := range parts {
+		if p.Kind == msg.KindNative && p.Native.Provider == Name && (p.Native.Type == typeWebSearchResult || p.Native.Type == typeWebFetchResult) {
+			answered[nativeIDs(p.Native.Raw).ToolUseID] = true
+		}
+	}
+	return slices.DeleteFunc(slices.Clone(parts), func(p msg.Part) bool {
+		return p.Kind == msg.KindNative && p.Native.Provider == Name && p.Native.Type == typeServerToolUse && !answered[nativeIDs(p.Native.Raw).ID]
+	})
+}
+
+type blockIDs struct {
+	ID        string `json:"id"`
+	ToolUseID string `json:"tool_use_id"`
+}
+
+func nativeIDs(raw json.RawMessage) blockIDs {
+	var ids blockIDs
+	_ = json.Unmarshal(raw, &ids)
+	return ids
+}
+
 func toBlock(p msg.Part, wireID map[string]string) (sdk.ContentBlockParamUnion, bool, error) {
 	switch p.Kind {
 	case msg.KindText:
@@ -215,12 +265,22 @@ func toBlock(p msg.Part, wireID map[string]string) (sdk.ContentBlockParamUnion, 
 		if p.Native.Provider != Name {
 			return sdk.ContentBlockParamUnion{}, false, nil
 		}
-		if p.Native.Type != typeRedactedThinking {
-			return sdk.ContentBlockParamUnion{}, false, fmt.Errorf("anthropic: can't replay native %q", p.Native.Type)
-		}
 		// Sent as stored, so the block reaches Anthropic byte for byte.
-		b := param.Override[sdk.RedactedThinkingBlockParam](p.Native.Raw)
-		return sdk.ContentBlockParamUnion{OfRedactedThinking: &b}, true, nil
+		switch p.Native.Type {
+		case typeRedactedThinking:
+			b := param.Override[sdk.RedactedThinkingBlockParam](p.Native.Raw)
+			return sdk.ContentBlockParamUnion{OfRedactedThinking: &b}, true, nil
+		case typeServerToolUse:
+			b := param.Override[sdk.ServerToolUseBlockParam](p.Native.Raw)
+			return sdk.ContentBlockParamUnion{OfServerToolUse: &b}, true, nil
+		case typeWebSearchResult:
+			b := param.Override[sdk.WebSearchToolResultBlockParam](p.Native.Raw)
+			return sdk.ContentBlockParamUnion{OfWebSearchToolResult: &b}, true, nil
+		case typeWebFetchResult:
+			b := param.Override[sdk.WebFetchToolResultBlockParam](p.Native.Raw)
+			return sdk.ContentBlockParamUnion{OfWebFetchToolResult: &b}, true, nil
+		}
+		return sdk.ContentBlockParamUnion{}, false, fmt.Errorf("anthropic: can't replay native %q", p.Native.Type)
 	case msg.KindToolUse:
 		id := p.ToolUse.ID
 		if len(p.ToolUse.Opaque) > 0 && p.ToolUse.Provider == Name {
@@ -258,7 +318,7 @@ func fromMessage(m sdk.Message, model string, callID func(int) string) msg.Messa
 		var p msg.Part
 		switch b.Type {
 		case "text":
-			p = msg.Part{Kind: msg.KindText, Text: b.Text}
+			p = msg.Part{Kind: msg.KindText, Text: b.Text, Citations: citations(b.Citations)}
 		case "thinking":
 			p = msg.Part{Kind: msg.KindThinking, Thinking: &msg.Thinking{Text: b.Thinking, Provider: Name, Model: model, Opaque: []byte(b.Signature)}}
 		case "tool_use":
@@ -271,6 +331,18 @@ func fromMessage(m sdk.Message, model string, callID func(int) string) msg.Messa
 			p = msg.Part{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: b.Type, Raw: json.RawMessage(b.RawJSON())}}
 		}
 		out.Parts = append(out.Parts, p)
+	}
+	return out
+}
+
+// citations keeps the web pages a text block cites; other citation kinds
+// point into documents we sent.
+func citations(cs []sdk.TextCitationUnion) []msg.Citation {
+	var out []msg.Citation
+	for _, c := range cs {
+		if c.Type == "web_search_result_location" {
+			out = append(out, msg.Citation{URL: c.URL, Title: c.Title})
+		}
 	}
 	return out
 }
@@ -295,6 +367,11 @@ func stopReason(r sdk.StopReason) provider.StopReason {
 	return provider.StopReasonOther
 }
 
+func stopDetail(d sdk.RefusalStopDetails) string {
+	parts := []string{string(d.Category), d.Explanation}
+	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), ". ")
+}
+
 // usage normalizes Anthropic's counts; input_tokens already excludes cache
 // reads and writes (provider-gateway.md §5.3).
 func usage(u sdk.Usage) provider.Usage {
@@ -305,6 +382,7 @@ func usage(u sdk.Usage) provider.Usage {
 		CacheWrite1h: u.CacheCreation.Ephemeral1hInputTokens,
 		Output:       u.OutputTokens,
 		Reasoning:    u.OutputTokensDetails.ThinkingTokens,
+		WebSearches:  u.ServerToolUse.WebSearchRequests,
 	}
 	if out.CacheWrite5m+out.CacheWrite1h == 0 {
 		// No per-TTL split reported: every breakpoint we set is 5m.

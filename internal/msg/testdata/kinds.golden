@@ -1,7 +1,7 @@
-msg_v 2
+msg_v 3
 memory_ref mem,omitempty:*{id:string,v:int}
 native nat,omitempty:*{provider:string,type:string,raw:json.RawMessage}
-text text,omitempty:string
+text text,omitempty:string,cit,omitempty:[]{url:string,title,omitempty:string}
 thinking th,omitempty:*{text,omitempty:string,provider:string,model,omitempty:string,opaque,omitempty:[]uint8}
 tool_result tr,omitempty:*{call_id:string,parts:[]Part,is_error,omitempty:bool}
 tool_use tu,omitempty:*{id:string,name:string,args:json.RawMessage,opaque,omitempty:[]uint8}

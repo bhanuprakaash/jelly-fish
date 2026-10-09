@@ -48,6 +48,9 @@ type modelJSON struct {
 	ContextWindow int64            `json:"context_window,omitempty"`
 	MaxOutput     int64            `json:"max_output,omitempty"`
 	Price         *provider.Prices `json:"price"`
+	// WebSearch and Thinking are false for a model the catalog lacks.
+	WebSearch bool `json:"web_search"`
+	Thinking  bool `json:"thinking"`
 }
 
 type providerModelsJSON struct {
@@ -90,7 +93,7 @@ func (c ModelConfig) pickable(ctx context.Context, userID uuid.UUID) ([]provider
 		default:
 			for _, info := range c.Catalog.All() {
 				if info.Provider == p {
-					group.Models = append(group.Models, modelJSON{ID: info.ID, ContextWindow: info.ContextWindow, MaxOutput: info.MaxOutput, Price: info.Price})
+					group.Models = append(group.Models, c.merge(provider.Model{ID: info.ID, MaxInputTokens: info.ContextWindow, MaxTokens: info.MaxOutput}))
 				}
 			}
 		}
@@ -115,6 +118,8 @@ func (c ModelConfig) merge(m provider.Model) modelJSON {
 		out.MaxOutput = info.MaxOutput
 	}
 	out.Price = info.Price
+	out.WebSearch = info.WebSearch
+	out.Thinking = info.Thinking != provider.ThinkingNone
 	return out
 }
 

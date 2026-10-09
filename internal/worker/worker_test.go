@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/fake"
 	"github.com/bhanuprakaash/jelly-fish/internal/stream"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
@@ -28,8 +30,13 @@ func startWorker(t *testing.T, pool *pgxpool.Pool) {
 
 func startWorkerWith(t *testing.T, pool *pgxpool.Pool, upcast eventlog.Upcasters) {
 	t.Helper()
+	startWorkerOn(t, pool, upcast, fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond})
+}
+
+func startWorkerOn(t *testing.T, pool *pgxpool.Pool, upcast eventlog.Upcasters, prov provider.Provider) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	w := worker.New(pool, worker.Gateway{Fake: fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}}, nil, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, upcast, slog.New(slog.DiscardHandler))
+	w := worker.New(pool, worker.Gateway{Fake: prov}, nil, stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, upcast, slog.New(slog.DiscardHandler))
 	worker.SetTitleTimeout(w, 0)
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
@@ -300,4 +307,116 @@ func TestStreamedTurnPublishesDeltasNotEvents(t *testing.T) {
 	if streamed.String() != reply {
 		t.Fatalf("streamed %q, want the final reply %q", streamed.String(), reply)
 	}
+}
+
+type thinkingProvider struct{ fake.Provider }
+
+func (p thinkingProvider) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {
+	onDelta(provider.Delta{Kind: provider.DeltaThinking, Text: "Check the greeting."})
+	return p.Provider.Stream(ctx, req, onDelta)
+}
+
+func TestThinkingDeltaReachesStreamAsThinking(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Release()
+	if _, err := listener.Exec(t.Context(), "LISTEN jf_stream"); err != nil {
+		t.Fatal(err)
+	}
+
+	startWorkerOn(t, pool, eventlog.Upcasters{}, thinkingProvider{fake.Provider{WordDelay: time.Millisecond, MinReply: 20 * time.Millisecond}})
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 1)
+
+	var thinking strings.Builder
+	for {
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		n, err := listener.Conn().WaitForNotification(ctx)
+		cancel()
+		if err != nil {
+			break
+		}
+		var d stream.Delta
+		if err := json.Unmarshal([]byte(n.Payload), &d); err != nil {
+			t.Fatal(err)
+		}
+		if d.Kind == stream.KindThinking {
+			thinking.WriteString(d.Text)
+		}
+	}
+	if thinking.String() != "Check the greeting." {
+		t.Fatalf("thinking deltas = %q, want %q", thinking.String(), "Check the greeting.")
+	}
+}
+
+// pausing stops with pause_turn on its first pauses calls, then ends the
+// turn. It records the last message of each request.
+type pausing struct {
+	fake.Provider
+	pauses int
+	mu     sync.Mutex
+	last   []string
+}
+
+func (p *pausing) Stream(_ context.Context, req provider.Request, _ func(provider.Delta)) (provider.Response, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	last := req.Messages[len(req.Messages)-1]
+	p.last = append(p.last, string(last.Role)+": "+last.Text())
+	if len(p.last) <= p.pauses {
+		return provider.Response{Message: msg.AssistantText("searching"), StopReason: provider.StopReasonPauseTurn}, nil
+	}
+	return provider.Response{Message: msg.AssistantText("done"), StopReason: provider.StopReasonEndTurn}, nil
+}
+
+func TestPausedTurnResumesWithItsOwnReplyAsTheLastMessage(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	p := &pausing{pauses: 1}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, p)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 2)
+
+	if want := []string{"user: hello", "assistant: searching"}; !slices.Equal(p.last, want) {
+		t.Fatalf("last message per request = %q, want %q", p.last, want)
+	}
+}
+
+func TestEndlessPausesStopAfterFiveResumes(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, &pausing{pauses: 100})
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 6)
+}
+
+func TestUserMessageResetsThePauseCount(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	scope := testdb.NewUser(t, pool).Scope()
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	p := &pausing{pauses: 100}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, p)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 6)
+
+	p.mu.Lock()
+	p.pauses = len(p.last) + 1
+	p.mu.Unlock()
+	if _, err := repo.PostMessage(t.Context(), scope, sid, uuid.New(), "again"); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 8)
 }

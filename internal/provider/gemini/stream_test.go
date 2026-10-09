@@ -178,9 +178,10 @@ func TestRefusalsAreStopsAndLogged(t *testing.T) {
 	tests := []struct {
 		fixture string
 		logged  string
+		detail  string
 	}{
-		{"safety.sse", `"finish_reason":"SAFETY"`},
-		{"prompt_blocked.sse", `"block_reason":"PROHIBITED_CONTENT"`},
+		{"safety.sse", `"finish_reason":"SAFETY"`, "safety. Response blocked by safety filter."},
+		{"prompt_blocked.sse", `"block_reason":"PROHIBITED_CONTENT"`, "prohibited_content"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.fixture, func(t *testing.T) {
@@ -193,6 +194,9 @@ func TestRefusalsAreStopsAndLogged(t *testing.T) {
 			}
 			if resp.StopReason != provider.StopReasonRefusal || resp.Message.Parts == nil || len(resp.Message.Parts) != 0 {
 				t.Fatalf("resp = %+v, want a refusal with no parts", resp)
+			}
+			if resp.StopDetail != tc.detail {
+				t.Fatalf("detail = %q, want %q", resp.StopDetail, tc.detail)
 			}
 			if !strings.Contains(logs.String(), tc.logged) {
 				t.Fatalf("log = %s, want %s", logs.String(), tc.logged)
@@ -427,6 +431,9 @@ func TestRequestGoldens(t *testing.T) {
 			{Name: "memory", Description: "Read and write memories.", Schema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"],"additionalProperties":false}`), Strict: true},
 			// A Connector-style schema: constraints strict mode can't take.
 			{Name: "lookup", Description: "Look up a code.", Schema: json.RawMessage(`{"type":"object","properties":{"code":{"type":"string","pattern":"^[A-Z]+$","minLength":2}}}`)},
+		}}},
+		{"web_search", provider.Request{Model: flash, Messages: []msg.Message{msg.UserText("hi")}, WebSearch: true, Tools: []provider.ToolSpec{
+			{Name: "sleep", Description: "Wait.", Schema: json.RawMessage(`{"type":"object"}`)},
 		}}},
 		{"replay", provider.Request{Model: flash, Messages: history}},
 		{"foreign_replay", provider.Request{Model: flash, Messages: foreign}},

@@ -181,6 +181,17 @@ func TestStopReasons(t *testing.T) {
 	}
 }
 
+func TestRefusalCarriesStopDetails(t *testing.T) {
+	c, _, _ := sseServer(t, "refusal.sse")
+	resp, err := c.Provider("k").Stream(t.Context(), userHi(), func(provider.Delta) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StopReason != provider.StopReasonRefusal || resp.StopDetail != "cyber. Declined by a policy classifier." {
+		t.Fatalf("stop = %q, detail = %q", resp.StopReason, resp.StopDetail)
+	}
+}
+
 func TestStreamDoesNotRetry(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +249,44 @@ func TestRequestGoldens(t *testing.T) {
 			// A Connector-style schema: constraints strict mode can't take.
 			{Name: "lookup", Description: "Look up a code.", Schema: json.RawMessage(`{"type":"object","properties":{"code":{"type":"string","pattern":"^[A-Z]+$","minLength":2}}}`)},
 			{Name: "sleep", Description: "Wait.", Schema: json.RawMessage(`{"type":"object"}`)},
+		}}},
+		{"web_search", provider.Request{Model: haiku, Messages: []msg.Message{msg.UserText("hi")}, WebSearch: true, Tools: []provider.ToolSpec{
+			{Name: "sleep", Description: "Wait.", Schema: json.RawMessage(`{"type":"object"}`)},
+		}}},
+		{"web_search_replay", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01A","name":"web_search","input":{"query":"weather in Paris"}}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "web_search_tool_result", Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01A","content":[{"type":"web_search_result","title":"Paris weather","url":"https://example.com/paris","encrypted_content":"EqgfCioIARgBIiQ","page_age":"April 30, 2026"}]}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: "gemini", Type: "grounding_metadata", Raw: json.RawMessage(`{}`)}},
+				{Kind: msg.KindText, Text: "It is sunny in Paris.", Citations: []msg.Citation{{URL: "https://example.com/paris", Title: "Paris weather"}}},
+			}},
+			msg.UserText("thanks"),
+		}}},
+		{"web_search_unanswered_call", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindText, Text: "Searching."},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01A","name":"web_search","input":{"query":"weather in Paris"}}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "web_search_tool_result", Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01A","content":[]}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01B","name":"web_search","input":{"query":"Paris forecast"}}`)}},
+			}},
+			msg.UserText("thanks"),
+		}}},
+		{"web_search_paused_call", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindText, Text: "Searching."},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01B","name":"web_search","input":{"query":"Paris forecast"}}`)}},
+			}},
+		}}},
+		{"breakpoint_before_stored_blocks", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindText, Text: "Searching."},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01A","name":"web_search","input":{"query":"weather in Paris"}}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "web_search_tool_result", Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01A","content":[]}`)}},
+			}},
 		}}},
 		{"replay", provider.Request{Model: opus, Messages: history}},
 		{"foreign_replay", provider.Request{Model: opus, Messages: foreign}},

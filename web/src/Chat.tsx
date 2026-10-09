@@ -15,14 +15,15 @@ import {
 import { JellyGlyph } from './JellyGlyph'
 import { providerOf, sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
+import { getShowThinking, setShowThinking } from './lib/showThinking'
 import { renamedTitle } from './lib/sessionTitle'
 import { statusChipTone, statusLabel, type JellyStatus } from './lib/status'
-import { thinkingText, toolChips, type ToolChip } from './lib/toolChips'
+import { sources, textSegments, thinkingText, toolChips, type ToolChip } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { MemoryChip } from './MemoryChip'
 import { ModelPicker } from './ModelPicker'
 import { SessionNotice } from './SessionNotice'
-import { Thought, ToolCalls } from './ToolCalls'
+import { SearchChip, SourceFooter, Thought, ToolCalls } from './ToolCalls'
 
 type Props = {
   sessionId: string
@@ -48,9 +49,19 @@ function bubbleText(payload: unknown): string {
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
 }
 
+function refusalNotice(payload: unknown): string {
+  const p = payload as { stop_reason?: string; stop_detail?: string; message?: Message }
+  if (p.stop_reason === 'other' && bubbleText(payload) === '' && !p.message?.parts.some((part) => part.k === 'tool_use')) {
+    return 'The model stopped without answering. Try again.'
+  }
+  if (p.stop_reason !== 'refusal') return ''
+  return p.stop_detail ? `Stopped: ${p.stop_detail}` : 'The model declined to answer'
+}
+
 export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated }: Props) {
   const [started, setStarted] = useState(!isNew)
-  const { events, partials, connected, failed } = useSessionStream(sessionId, started)
+  const { events, partials, thoughts, connected, failed } = useSessionStream(sessionId, started)
+  const [showThinking, setShowThinkingState] = useState(getShowThinking)
   // A brand-new chat has a session once its first message creates one; a
   // reopened chat has one once the stream confirms it (streaming's onopen
   // only succeeds once the session exists).
@@ -135,7 +146,8 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   const bubbles = events.filter(
     (e) =>
       e.type === 'user.message' ||
-      (e.type === 'llm.response' && (bubbleText(e.payload) !== '' || thinkingText(e.payload) !== '')) ||
+      (e.type === 'llm.response' &&
+        (bubbleText(e.payload) !== '' || (showThinking && thinkingText(e.payload) !== '') || refusalNotice(e.payload) !== '')) ||
       chips.has(e.seq),
   )
   const transcript: (UIEvent | { turn: string; calls: ToolChip[] })[] = []
@@ -282,13 +294,30 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             </button>
           )}
         </div>
-        {(agentName || picker) && (
-          <div className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
-            {agentName && <span>{agentName}</span>}
-            {agentName && picker && <span aria-hidden="true">·</span>}
-            {renderPicker(modelRef)}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
+          {agentName && <span>{agentName}</span>}
+          {agentName && picker && <span aria-hidden="true">·</span>}
+          {renderPicker(modelRef)}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showThinking}
+            onClick={() => {
+              setShowThinking(!showThinking)
+              setShowThinkingState(!showThinking)
+            }}
+            className="group ml-auto inline-flex min-h-8 items-center gap-2.5 text-sm text-ink2 focus-visible:outline-none"
+          >
+            Show thinking
+            <span
+              className={`flex h-6.5 w-11 rounded-full p-[3px] group-focus-visible:shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--accent-ink)] ${
+                showThinking ? 'justify-end bg-accent-ink' : 'justify-start bg-sunk ring-1 ring-ink2/60 ring-inset'
+              }`}
+            >
+              <span className={`size-5 rounded-full ${showThinking ? 'bg-surface' : 'bg-muted'}`} />
+            </span>
+          </button>
+        </div>
       </header>
 
       <main
@@ -324,10 +353,13 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               )
             }
             const text = bubbleText(e.payload)
-            const thought = e.type === 'llm.response' ? thinkingText(e.payload) : ''
+            const thought = showThinking && e.type === 'llm.response' ? thinkingText(e.payload) : ''
+            const refusal = e.type === 'llm.response' ? refusalNotice(e.payload) : ''
+            const cited = e.type === 'llm.response' ? sources(e.payload) : []
             return (
               <Fragment key={e.seq}>
                 {thought && <Thought text={thought} />}
+                {cited.length > 0 && <SearchChip sources={cited} />}
                 {text && (
                   <div
                     className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${
@@ -336,16 +368,39 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
                         : 'mr-auto'
                     }`}
                   >
-                    {text}
+                    {textSegments(e.payload).map((seg, i) => (
+                      <Fragment key={i}>
+                        {seg.text}
+                        {seg.cites.map((n) => (
+                          <sup key={n} className="ml-0.5 text-xs">
+                            <a
+                              href={cited[n - 1].url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={cited[n - 1].title}
+                              aria-label={`Source ${n}: ${cited[n - 1].title}`}
+                              className="text-accent-ink focus-ring"
+                            >
+                              [{n}]
+                            </a>
+                          </sup>
+                        ))}
+                      </Fragment>
+                    ))}
                   </div>
                 )}
+                {cited.length > 0 && <SourceFooter sources={cited} />}
+                {refusal && <p className={`mr-auto text-sm text-muted ${text ? '-mt-3' : ''}`}>{refusal}</p>}
               </Fragment>
             )
           })}
-          {Object.entries(partials).map(([turnId, text]) => (
-            <div key={turnId} className="mr-auto whitespace-pre-wrap [overflow-wrap:anywhere]">
-              {text}
-            </div>
+          {[...new Set([...Object.keys(thoughts), ...Object.keys(partials)])].map((turnId) => (
+            <Fragment key={turnId}>
+              {showThinking && thoughts[turnId] && <Thought text={thoughts[turnId]} streaming={!(turnId in partials)} />}
+              {partials[turnId] && (
+                <div className="mr-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{partials[turnId]}</div>
+              )}
+            </Fragment>
           ))}
           {notice && <SessionNotice sessionId={sessionId} notice={notice} provider={models && current ? providerOf(models, current) : undefined} picker={picker} />}
         </div>
