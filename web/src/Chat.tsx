@@ -18,10 +18,11 @@ import { sessionNotice } from './lib/sessionNotice'
 import { getShowThinking, setShowThinking } from './lib/showThinking'
 import { renamedTitle } from './lib/sessionTitle'
 import { statusChipTone, statusLabel, type JellyStatus } from './lib/status'
-import { sources, textSegments, thinkingText, toolChips, type ToolChip } from './lib/toolChips'
+import { sources, thinkingText, toolChips, type ToolChip } from './lib/toolChips'
 import { useSessionStream } from './lib/useSessionStream'
 import { MemoryChip } from './MemoryChip'
 import { ModelPicker } from './ModelPicker'
+import { Reply } from './Reply'
 import { SessionNotice } from './SessionNotice'
 import { SearchChip, SourceFooter, Thought, ToolCalls } from './ToolCalls'
 
@@ -360,35 +361,14 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               <Fragment key={e.seq}>
                 {thought && <Thought text={thought} />}
                 {cited.length > 0 && <SearchChip sources={cited} />}
-                {text && (
-                  <div
-                    className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${
-                      e.type === 'user.message'
-                        ? 'ml-auto max-w-[82%] rounded-[20px_20px_6px_20px] border border-accent-line bg-accent-tint px-4 py-3'
-                        : 'mr-auto'
-                    }`}
-                  >
-                    {textSegments(e.payload).map((seg, i) => (
-                      <Fragment key={i}>
-                        {seg.text}
-                        {seg.cites.map((n) => (
-                          <sup key={n} className="ml-0.5 text-xs">
-                            <a
-                              href={cited[n - 1].url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={cited[n - 1].title}
-                              aria-label={`Source ${n}: ${cited[n - 1].title}`}
-                              className="text-accent-ink focus-ring"
-                            >
-                              [{n}]
-                            </a>
-                          </sup>
-                        ))}
-                      </Fragment>
-                    ))}
-                  </div>
-                )}
+                {text &&
+                  (e.type === 'user.message' ? (
+                    <div className="ml-auto max-w-[82%] whitespace-pre-wrap rounded-[20px_20px_6px_20px] border border-accent-line bg-accent-tint px-4 py-3 [overflow-wrap:anywhere]">
+                      {text}
+                    </div>
+                  ) : (
+                    <Reply payload={e.payload} cited={cited} />
+                  ))}
                 {cited.length > 0 && <SourceFooter sources={cited} />}
                 {refusal && <p className={`mr-auto text-sm text-muted ${text ? '-mt-3' : ''}`}>{refusal}</p>}
               </Fragment>
