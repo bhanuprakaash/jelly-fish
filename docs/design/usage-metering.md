@@ -148,7 +148,7 @@ WHERE user_id = $1 AND kind = $2
 
 ### 5.4 Budget projection (D7; changes event-log.md §4 `project`)
 
-`project(usage.recorded)` always inserts the `usage` row. It adds to `sessions.tokens_used` and `sessions.cost_micros` **only when `kind = 'llm'`**. The child roll-up in `FinishChild` (event-log.md §5.10) therefore also carries LLM totals only.
+`project(usage.recorded)` always inserts the `usage` row. It adds to `sessions.tokens_used` and `sessions.cost_micros` **only when `kind = 'llm'`**; a `web_search_requests` row adds its cost but not its count to `tokens_used`. The child roll-up in `FinishChild` (event-log.md §5.10) therefore also carries LLM totals only.
 
 ### 5.5 `/cost` (D9)
 

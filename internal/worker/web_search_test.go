@@ -93,6 +93,17 @@ func TestSearchTurnRecordsOneSearchRowPricedFromTheCatalog(t *testing.T) {
 	if tokens != 150 || cost != 10350 {
 		t.Fatalf("session tokens_used = %d, cost_micros = %d, want 150, 10350", tokens, cost)
 	}
+	evs, err := eventlog.NewStore(pool).Load(t.Context(), sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := Fold(evs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.TokensUsed != 150 || st.CostMicros != 10350 {
+		t.Fatalf("fold tokens_used = %d, cost_micros = %d, want 150, 10350", st.TokensUsed, st.CostMicros)
+	}
 }
 
 func TestWebSearchIsOnlyForCatalogModelsWithTheFlag(t *testing.T) {

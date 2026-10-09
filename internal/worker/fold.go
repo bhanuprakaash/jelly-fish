@@ -311,7 +311,9 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			return err
 		}
 		if p.Kind == eventlog.KindLLM {
-			st.TokensUsed += p.Quantity
+			if p.Unit != eventlog.UnitWebSearchRequests {
+				st.TokensUsed += p.Quantity
+			}
 			st.CostMicros += p.CostMicros
 		}
 	}
