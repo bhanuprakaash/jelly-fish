@@ -26,7 +26,6 @@ const Name = "openai"
 // flag.
 const errorPrefix = "Error: "
 
-// typeWebSearchCall is the output item of one built-in search.
 const typeWebSearchCall = "web_search_call"
 
 type chat struct {

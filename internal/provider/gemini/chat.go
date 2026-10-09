@@ -20,7 +20,6 @@ import (
 // Name is Gemini's Provider name.
 const Name = "gemini"
 
-// typeGrounding is the Native part holding a search's grounding metadata.
 const typeGrounding = "grounding_metadata"
 
 type chat struct {
@@ -322,7 +321,6 @@ func stopReason(finish genai.FinishReason, block genai.BlockedReason, m msg.Mess
 	return provider.StopReasonOther
 }
 
-// stopDetail is the reason and message Gemini gave for a refusal.
 func stopDetail(stop provider.StopReason, finish genai.FinishReason, finishMsg string, block genai.BlockedReason) string {
 	if stop != provider.StopReasonRefusal {
 		return ""

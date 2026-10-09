@@ -309,7 +309,6 @@ func TestStreamedTurnPublishesDeltasNotEvents(t *testing.T) {
 	}
 }
 
-// thinkingProvider streams a thinking delta before the fake reply.
 type thinkingProvider struct{ fake.Provider }
 
 func (p thinkingProvider) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) (provider.Response, error) {

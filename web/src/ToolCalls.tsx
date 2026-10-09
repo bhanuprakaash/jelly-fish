@@ -177,8 +177,6 @@ function SourceLinks({ sources }: { sources: Source[] }) {
   )
 }
 
-// SearchChip is the chip of a reply the Provider grounded with its own web
-// search; it opens to the pages the reply cites.
 export function SearchChip({ sources }: { sources: Source[] }) {
   const [open, setOpen] = useState(false)
   return (
@@ -203,7 +201,6 @@ export function SearchChip({ sources }: { sources: Source[] }) {
   )
 }
 
-// SourceFooter lists the pages a reply cites, under the reply.
 export function SourceFooter({ sources }: { sources: Source[] }) {
   return (
     <div className="mr-auto w-full space-y-1 text-sm text-muted">

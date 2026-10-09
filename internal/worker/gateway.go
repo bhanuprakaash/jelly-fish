@@ -132,8 +132,6 @@ func (g Gateway) price(model string) *provider.Prices {
 	return info.Price
 }
 
-// webSearch is whether model has built-in web search on; a model the
-// catalog lacks has none.
 func (g Gateway) webSearch(model string) bool {
 	if g.Catalog == nil {
 		return false

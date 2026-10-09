@@ -367,7 +367,6 @@ func stopReason(r sdk.StopReason) provider.StopReason {
 	return provider.StopReasonOther
 }
 
-// stopDetail joins a refusal's category and explanation; either may be null.
 func stopDetail(d sdk.RefusalStopDetails) string {
 	parts := []string{string(d.Category), d.Explanation}
 	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), ". ")
