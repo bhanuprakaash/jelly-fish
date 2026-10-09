@@ -27,6 +27,7 @@ func classify(ctx context.Context, err error, u provider.Usage, requestID string
 	var apiErr genai.APIError
 	switch {
 	case errors.As(err, &apiErr):
+		pe.HTTPStatus = apiErr.Code
 		pe.RetryAfter = retryDelay(apiErr)
 		pe.Kind = provider.WaitKind(kindOf(apiErr), pe.RetryAfter)
 	case errors.Is(err, provider.ErrStreamIdle):
