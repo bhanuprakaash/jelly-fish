@@ -432,6 +432,9 @@ func TestRequestGoldens(t *testing.T) {
 			// A Connector-style schema: constraints strict mode can't take.
 			{Name: "lookup", Description: "Look up a code.", Schema: json.RawMessage(`{"type":"object","properties":{"code":{"type":"string","pattern":"^[A-Z]+$","minLength":2}}}`)},
 		}}},
+		{"web_search", provider.Request{Model: flash, Messages: []msg.Message{msg.UserText("hi")}, WebSearch: true, Tools: []provider.ToolSpec{
+			{Name: "sleep", Description: "Wait.", Schema: json.RawMessage(`{"type":"object"}`)},
+		}}},
 		{"replay", provider.Request{Model: flash, Messages: history}},
 		{"foreign_replay", provider.Request{Model: flash, Messages: foreign}},
 	}
