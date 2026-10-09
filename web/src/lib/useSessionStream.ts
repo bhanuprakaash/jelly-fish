@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { Delta, UIEvent } from './api'
 import { onVisibilityChange } from './visibility'
 
+export type PendingCall = { turn_id: string; call_id: string; name: string }
+
 // useSessionStream replays a session's Session stream and keeps it live,
 // closing on tab hide and reopening with ?after=lastSeq on show
 // (docs/design/streaming.md §5.4). It only opens while enabled is true, so a
@@ -21,6 +23,9 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
   const [partials, setPartials] = useState<Record<string, string>>({})
   // Streaming thinking so far, by turn_id; ends the same ways as partials.
   const [thoughts, setThoughts] = useState<Record<string, string>>({})
+  // Tool calls the model has begun writing; each ends with its turn or with
+  // its tool.call.requested, which brings the real card.
+  const [pendingCalls, setPendingCalls] = useState<PendingCall[]>([])
   const lastSeqRef = useRef(0)
   // Turns that ended (llm.response, turn.interrupted or session.error); a late
   // delta for one is ignored.
@@ -35,6 +40,7 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
       setFailed(false)
       setPartials({})
       setThoughts({})
+      setPendingCalls([])
       // A stream opened later can't carry deltas of a turn that already ended.
       doneTurnsRef.current.clear()
       es = new EventSource(`/api/sessions/${sessionId}/events?after=${lastSeqRef.current}`)
@@ -43,13 +49,25 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
         const evt = JSON.parse(e.data) as UIEvent
         lastSeqRef.current = evt.seq
         setEvents((prev) => [...prev, evt])
+        if (evt.type === 'tool.call.requested') {
+          const callId = (evt.payload as { tool_call_id?: string }).tool_call_id
+          setPendingCalls((prev) => prev.filter((c) => c.call_id !== callId))
+        }
         if (
           evt.type === 'llm.response' ||
           evt.type === 'turn.interrupted' ||
           evt.type === 'session.error'
         ) {
-          const turnId = (evt.payload as { turn_id?: string }).turn_id
+          const payload = evt.payload as {
+            turn_id?: string
+            message?: { parts: { tu?: { id: string } }[] }
+          }
+          const turnId = payload.turn_id
           if (!turnId) return
+          // The reply's tool calls get their tool.call.requested in a later step.
+          const asked = new Set(
+            evt.type === 'llm.response' ? payload.message?.parts.flatMap((p) => (p.tu ? [p.tu.id] : [])) : [],
+          )
           doneTurnsRef.current.add(turnId)
           setPartials((prev) => {
             const next = { ...prev }
@@ -61,6 +79,7 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
             delete next[turnId]
             return next
           })
+          setPendingCalls((prev) => prev.filter((c) => c.turn_id !== turnId || asked.has(c.call_id)))
         }
       }
       es.addEventListener('delta', (e) => {
@@ -77,6 +96,13 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
             delete next[d.turn_id]
             return next
           })
+          setPendingCalls((prev) => prev.filter((c) => c.turn_id !== d.turn_id))
+          return
+        }
+        if (d.kind === 'tool_start') {
+          const { call_id: callId } = d
+          if (!callId) return
+          setPendingCalls((prev) => [...prev, { turn_id: d.turn_id, call_id: callId, name: d.name ?? '' }])
           return
         }
         if (d.kind === 'thinking') {
@@ -92,6 +118,7 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
         // are gone, so a half-built bubble would only show the tail.
         setPartials({})
         setThoughts({})
+        setPendingCalls([])
         if (es?.readyState === EventSource.CLOSED) {
           setFailed(true)
         }
@@ -115,5 +142,5 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
     }
   }, [sessionId, enabled])
 
-  return { events, partials, thoughts, connected, failed }
+  return { events, partials, thoughts, pendingCalls, connected, failed }
 }

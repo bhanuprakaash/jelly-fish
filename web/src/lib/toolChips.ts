@@ -5,9 +5,10 @@ export type ToolChip = {
   // turn is the turn_id of the reply that requested the call.
   turn: string
   name: string
-  // stopped is a call the user interrupted; unknown is one a lost Worker left
-  // started, so whether it ran is not known.
-  state: 'running' | 'done' | 'failed' | 'stopped' | 'unknown'
+  // pending is a call the model is still writing; stopped is a call the user
+  // interrupted; unknown is one a lost Worker left started, so whether it ran
+  // is not known.
+  state: 'pending' | 'running' | 'done' | 'failed' | 'stopped' | 'unknown'
   args?: unknown
   // startedAt is when the call was requested, in epoch milliseconds.
   startedAt: number

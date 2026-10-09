@@ -34,6 +34,7 @@ export function Thought({ text, streaming = false }: { text: string; streaming?:
 }
 
 const stateWords = {
+  pending: 'calling',
   running: 'running',
   done: 'done',
   failed: 'failed',
@@ -44,6 +45,7 @@ const stateWords = {
 const dangerTint = 'bg-danger-tint text-danger'
 
 const stateCircles = {
+  pending: 'bg-accent-tint text-accent-ink',
   running: 'bg-accent-tint text-accent-ink',
   done: 'bg-success-tint text-success',
   failed: dangerTint,
@@ -76,6 +78,7 @@ function useElapsedSeconds(since: number, active: boolean): number {
 }
 
 function duration(ms: number): string {
+  if (ms < 1) return '<1ms'
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
 }
 
@@ -91,6 +94,7 @@ function StateIcon({ state }: { state: ToolChip['state'] }) {
     'aria-hidden': true,
   }
   switch (state) {
+    case 'pending':
     case 'running':
       return (
         <span
@@ -124,11 +128,13 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
   const elapsed = useElapsedSeconds(call.startedAt, call.state === 'running')
   const summary = argSummary(call.args)
   const note =
-    call.state === 'running'
-      ? `running · ${elapsed}s`
-      : call.state === 'unknown'
-        ? 'outcome unknown — check before retrying'
-        : call.error
+    call.state === 'pending'
+      ? 'calling…'
+      : call.state === 'running'
+        ? `running · ${elapsed}s`
+        : call.state === 'unknown'
+          ? 'outcome unknown — check before retrying'
+          : call.error
   const noteTone = call.state === 'failed' || call.state === 'stopped' ? 'text-danger' : 'text-muted'
   return (
     <div className={first ? '' : 'border-t border-line'}>
@@ -149,7 +155,7 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
           </span>
           {note && <span className={`line-clamp-2 text-[12.5px] ${noteTone}`}>{note}</span>}
         </span>
-        {call.durationMs !== undefined && call.durationMs > 0 && (
+        {call.durationMs !== undefined && (
           <span className="shrink-0 text-xs text-muted">{duration(call.durationMs)}</span>
         )}
       </button>
