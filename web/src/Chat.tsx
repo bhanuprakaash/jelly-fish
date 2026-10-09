@@ -49,6 +49,12 @@ function bubbleText(payload: unknown): string {
   return message?.parts.map((p) => p.text ?? '').join('') ?? ''
 }
 
+function refusalNotice(payload: unknown): string {
+  const p = payload as { stop_reason?: string; stop_detail?: string }
+  if (p.stop_reason !== 'refusal') return ''
+  return p.stop_detail ? `Stopped: ${p.stop_detail}` : 'The model declined to answer'
+}
+
 export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated }: Props) {
   const [started, setStarted] = useState(!isNew)
   const { events, partials, thoughts, connected, failed } = useSessionStream(sessionId, started)
@@ -138,7 +144,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
     (e) =>
       e.type === 'user.message' ||
       (e.type === 'llm.response' &&
-        (bubbleText(e.payload) !== '' || (showThinking && thinkingText(e.payload) !== ''))) ||
+        (bubbleText(e.payload) !== '' || (showThinking && thinkingText(e.payload) !== '') || refusalNotice(e.payload) !== '')) ||
       chips.has(e.seq),
   )
   const transcript: (UIEvent | { turn: string; calls: ToolChip[] })[] = []
@@ -345,6 +351,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             }
             const text = bubbleText(e.payload)
             const thought = showThinking && e.type === 'llm.response' ? thinkingText(e.payload) : ''
+            const refusal = e.type === 'llm.response' ? refusalNotice(e.payload) : ''
             return (
               <Fragment key={e.seq}>
                 {thought && <Thought text={thought} />}
@@ -359,6 +366,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
                     {text}
                   </div>
                 )}
+                {refusal && <p className={`mr-auto text-sm text-muted ${text ? '-mt-3' : ''}`}>{refusal}</p>}
               </Fragment>
             )
           })}
