@@ -1,0 +1,32 @@
+{
+  "store": false,
+  "include": [
+    "reasoning.encrypted_content"
+  ],
+  "input": [
+    {
+      "content": "remember cats",
+      "role": "user"
+    },
+    {
+      "content": "Saving.",
+      "role": "assistant"
+    },
+    {
+      "arguments": "{\"command\":\"view\"}",
+      "call_id": "7f0c9a52-1d3e-4b6a-9c58-2e41b0a7d3f1",
+      "name": "memory",
+      "type": "function_call"
+    },
+    {
+      "output": "empty",
+      "call_id": "7f0c9a52-1d3e-4b6a-9c58-2e41b0a7d3f1",
+      "type": "function_call_output"
+    }
+  ],
+  "model": "gpt-6.1-sol",
+  "reasoning": {
+    "summary": "auto"
+  },
+  "stream": true
+}

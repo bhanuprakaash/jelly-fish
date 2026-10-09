@@ -1,0 +1,25 @@
+{
+  "store": false,
+  "input": [
+    {
+      "content": "hi",
+      "role": "user"
+    }
+  ],
+  "model": "gpt-5.4-mini",
+  "tools": [
+    {
+      "type": "function",
+      "name": "sleep",
+      "description": "Wait.",
+      "parameters": {
+        "type": "object"
+      },
+      "strict": false
+    },
+    {
+      "type": "web_search"
+    }
+  ],
+  "stream": true
+}

@@ -48,6 +48,9 @@ type modelJSON struct {
 	ContextWindow int64            `json:"context_window,omitempty"`
 	MaxOutput     int64            `json:"max_output,omitempty"`
 	Price         *provider.Prices `json:"price"`
+	// WebSearch and Thinking are false for a model the catalog lacks.
+	WebSearch bool `json:"web_search"`
+	Thinking  bool `json:"thinking"`
 }
 
 type providerModelsJSON struct {
@@ -90,7 +93,7 @@ func (c ModelConfig) pickable(ctx context.Context, userID uuid.UUID) ([]provider
 		default:
 			for _, info := range c.Catalog.All() {
 				if info.Provider == p {
-					group.Models = append(group.Models, modelJSON{ID: info.ID, ContextWindow: info.ContextWindow, MaxOutput: info.MaxOutput, Price: info.Price})
+					group.Models = append(group.Models, c.merge(provider.Model{ID: info.ID, MaxInputTokens: info.ContextWindow, MaxTokens: info.MaxOutput}))
 				}
 			}
 		}
@@ -115,6 +118,8 @@ func (c ModelConfig) merge(m provider.Model) modelJSON {
 		out.MaxOutput = info.MaxOutput
 	}
 	out.Price = info.Price
+	out.WebSearch = info.WebSearch
+	out.Thinking = info.Thinking != provider.ThinkingNone
 	return out
 }
 
@@ -147,10 +152,8 @@ func providerOf(groups []providerModelsJSON, model string) (prov string, availab
 	return "", false
 }
 
-// handleChangeModel switches a session's model for its next turn. The model
-// must be available to the User, and on the session's current Provider,
-// since history isn't replayed across Providers (#5). The Fake Provider
-// has no history of its own to replay, so switching to or from it is fine.
+// handleChangeModel switches a session's model for its next turn, on any
+// Provider the User has a key for.
 func (h *modelHandlers) handleChangeModel(repo SessionRepo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r, "session not found")
@@ -168,34 +171,14 @@ func (h *modelHandlers) handleChangeModel(repo SessionRepo) http.HandlerFunc {
 			return
 		}
 		scope := scopeFrom(r)
-		current, err := repo.SessionModel(r.Context(), scope, id)
-		if errors.Is(err, eventlog.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "session not found")
-			return
-		}
-		if err != nil {
-			h.logger.Error("look up session model", "error", err, "session_id", id)
-			writeError(w, http.StatusInternalServerError, "could not change model")
-			return
-		}
 		groups, err := h.cfg.pickable(r.Context(), scope.UserID)
 		if err != nil {
 			h.logger.Error("list models", "error", err, "session_id", id)
 			writeError(w, http.StatusInternalServerError, "could not change model")
 			return
 		}
-		to, ok := providerOf(groups, req.Model)
-		if !ok {
+		if _, ok := providerOf(groups, req.Model); !ok {
 			writeError(w, http.StatusUnprocessableEntity, "model is not available")
-			return
-		}
-		from, _ := providerOf(groups, current)
-		if info, ok := h.cfg.Catalog.Lookup(current); from == "" && ok {
-			from = info.Provider
-		}
-		// A model neither lists has no known Provider to keep to.
-		if from != "" && from != to && from != h.cfg.Fake && to != h.cfg.Fake {
-			writeError(w, http.StatusUnprocessableEntity, "switching to another provider is not supported yet")
 			return
 		}
 		err = repo.ChangeModel(r.Context(), scope, id, req.Model)

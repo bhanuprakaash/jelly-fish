@@ -43,6 +43,9 @@ func shape(t reflect.Type, seen map[reflect.Type]bool) string {
 		var fs []string
 		for i := range t.NumField() {
 			f := t.Field(i)
+			if f.Tag.Get("json") == "-" {
+				continue
+			}
 			fs = append(fs, f.Tag.Get("json")+":"+shape(f.Type, seen))
 		}
 		return "{" + strings.Join(fs, ",") + "}"

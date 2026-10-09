@@ -181,6 +181,17 @@ func TestStopReasons(t *testing.T) {
 	}
 }
 
+func TestRefusalCarriesStopDetails(t *testing.T) {
+	c, _, _ := sseServer(t, "refusal.sse")
+	resp, err := c.Provider("k").Stream(t.Context(), userHi(), func(provider.Delta) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StopReason != provider.StopReasonRefusal || resp.StopDetail != "cyber. Declined by a policy classifier." {
+		t.Fatalf("stop = %q, detail = %q", resp.StopReason, resp.StopDetail)
+	}
+}
+
 func TestStreamDoesNotRetry(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -210,10 +221,21 @@ func TestRequestGoldens(t *testing.T) {
 			{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "redacted_thinking", Raw: json.RawMessage(`{"type":"redacted_thinking","data":"RED"}`)}},
 			{Kind: msg.KindNative, Native: &msg.Native{Provider: "gemini", Type: "x", Raw: json.RawMessage(`{}`)}},
 			{Kind: msg.KindText, Text: "Searching."},
-			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "call-ours", Name: "search", Args: json.RawMessage(`{"q":"cats"}`), Opaque: []byte("toolu_01ABC")}},
+			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "call-ours", Name: "search", Args: json.RawMessage(`{"q":"cats"}`), Provider: Name, Opaque: []byte("toolu_01ABC")}},
 		}},
 		{MsgV: msg.CurrentVersion, Role: msg.RoleUser, Parts: []msg.Part{
 			{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{CallID: "call-ours", Parts: []msg.Part{{Kind: msg.KindText, Text: "3 cats"}}, IsError: true}},
+		}},
+	}
+	foreign := []msg.Message{
+		msg.UserText("remember cats"),
+		{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+			{Kind: msg.KindThinking, Thinking: &msg.Thinking{Text: "store it", Provider: "openai", Opaque: []byte(`{"type":"reasoning","id":"rs_1"}`)}},
+			{Kind: msg.KindText, Text: "Saving."},
+			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: "7f0c9a52-1d3e-4b6a-9c58-2e41b0a7d3f1", Name: "memory", Args: json.RawMessage(`{"command":"view"}`), Provider: "openai", Opaque: []byte("call_abc")}},
+		}},
+		{MsgV: msg.CurrentVersion, Role: msg.RoleUser, Parts: []msg.Part{
+			{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{CallID: "7f0c9a52-1d3e-4b6a-9c58-2e41b0a7d3f1", Parts: []msg.Part{{Kind: msg.KindText, Text: "empty"}}}},
 		}},
 	}
 	tests := []struct {
@@ -228,7 +250,46 @@ func TestRequestGoldens(t *testing.T) {
 			{Name: "lookup", Description: "Look up a code.", Schema: json.RawMessage(`{"type":"object","properties":{"code":{"type":"string","pattern":"^[A-Z]+$","minLength":2}}}`)},
 			{Name: "sleep", Description: "Wait.", Schema: json.RawMessage(`{"type":"object"}`)},
 		}}},
+		{"web_search", provider.Request{Model: haiku, Messages: []msg.Message{msg.UserText("hi")}, WebSearch: true, Tools: []provider.ToolSpec{
+			{Name: "sleep", Description: "Wait.", Schema: json.RawMessage(`{"type":"object"}`)},
+		}}},
+		{"web_search_replay", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01A","name":"web_search","input":{"query":"weather in Paris"}}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "web_search_tool_result", Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01A","content":[{"type":"web_search_result","title":"Paris weather","url":"https://example.com/paris","encrypted_content":"EqgfCioIARgBIiQ","page_age":"April 30, 2026"}]}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: "gemini", Type: "grounding_metadata", Raw: json.RawMessage(`{}`)}},
+				{Kind: msg.KindText, Text: "It is sunny in Paris.", Citations: []msg.Citation{{URL: "https://example.com/paris", Title: "Paris weather"}}},
+			}},
+			msg.UserText("thanks"),
+		}}},
+		{"web_search_unanswered_call", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindText, Text: "Searching."},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01A","name":"web_search","input":{"query":"weather in Paris"}}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "web_search_tool_result", Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01A","content":[]}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01B","name":"web_search","input":{"query":"Paris forecast"}}`)}},
+			}},
+			msg.UserText("thanks"),
+		}}},
+		{"web_search_paused_call", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindText, Text: "Searching."},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01B","name":"web_search","input":{"query":"Paris forecast"}}`)}},
+			}},
+		}}},
+		{"breakpoint_before_stored_blocks", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindText, Text: "Searching."},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01A","name":"web_search","input":{"query":"weather in Paris"}}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "web_search_tool_result", Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01A","content":[]}`)}},
+			}},
+		}}},
 		{"replay", provider.Request{Model: opus, Messages: history}},
+		{"foreign_replay", provider.Request{Model: opus, Messages: foreign}},
 		{"breakpoints", provider.Request{
 			Model:      haiku,
 			System:     []string{"You are helpful.", "Project: cats."},

@@ -74,8 +74,8 @@ func TestErrorFixturesMapToClasses(t *testing.T) {
 			t.Cleanup(srv.Close)
 
 			pe := streamErr(t, Client{BaseURL: srv.URL, Catalog: testCatalog(t)})
-			if pe.Kind != tc.want || pe.RetryAfter != tc.wantWait || pe.RequestID != "req_header" {
-				t.Fatalf("got kind=%s wait=%v request=%q, want kind=%s wait=%v request=req_header", pe.Kind, pe.RetryAfter, pe.RequestID, tc.want, tc.wantWait)
+			if pe.Kind != tc.want || pe.RetryAfter != tc.wantWait || pe.RequestID != "req_header" || pe.HTTPStatus != tc.status {
+				t.Fatalf("got kind=%s wait=%v request=%q status=%d, want kind=%s wait=%v request=req_header status=%d", pe.Kind, pe.RetryAfter, pe.RequestID, pe.HTTPStatus, tc.want, tc.wantWait, tc.status)
 			}
 		})
 	}
@@ -148,8 +148,8 @@ func TestDroppedConnectionIsProviderDown(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	pe := streamErr(t, Client{BaseURL: srv.URL, Catalog: testCatalog(t)})
-	if pe.Kind != provider.KindProviderDown {
-		t.Fatalf("kind = %s, want provider_down", pe.Kind)
+	if pe.Kind != provider.KindProviderDown || pe.HTTPStatus != 0 {
+		t.Fatalf("kind = %s status = %d, want provider_down with no status", pe.Kind, pe.HTTPStatus)
 	}
 }
 

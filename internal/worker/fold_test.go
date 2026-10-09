@@ -147,11 +147,43 @@ func TestFoldSendsToolResultsInCallOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `[{"msg_v":2,"role":"user","parts":[` +
+	want := `[{"msg_v":3,"role":"user","parts":[` +
 		`{"k":"tool_result","tr":{"call_id":"a","parts":[{"k":"text","text":"outcome unknown; check before retrying"}],"is_error":true}},` +
 		`{"k":"tool_result","tr":{"call_id":"b","parts":[{"k":"text","text":"B done"}]}}]},` +
-		`{"msg_v":2,"role":"user","parts":[{"k":"text","text":"also this"}]}]`
+		`{"msg_v":3,"role":"user","parts":[{"k":"text","text":"also this"}]}]`
 	if string(got) != want {
 		t.Fatalf("messages after the reply =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestFoldTagsToolCallsWithTheirTurnsProvider(t *testing.T) {
+	reply := func(id string) msg.Message {
+		return msg.Message{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+			{Kind: msg.KindToolUse, ToolUse: &msg.ToolUse{ID: id, Name: "memory", Args: json.RawMessage(`{}`)}},
+		}}
+	}
+	evs := []eventlog.Event{
+		ev(t, 1, eventlog.TypeSessionCreated, map[string]any{"agent": map[string]string{"model": "claude-haiku-4-5-20251001"}}),
+		ev(t, 2, eventlog.TypeUserMessage, map[string]any{"message": msg.UserText("hi")}),
+		ev(t, 3, eventlog.TypeTurnStarted, map[string]any{"turn_id": "t1", "provider": "anthropic", "model": "claude-haiku-4-5-20251001", "input_through_seq": 2}),
+		ev(t, 4, eventlog.TypeLLMResponse, map[string]any{"turn_id": "t1", "message": reply("c1"), "stop_reason": "tool_use"}),
+		ev(t, 5, eventlog.TypeConfigChanged, map[string]any{"model": "gemini-3.5-flash-lite"}),
+		ev(t, 6, eventlog.TypeTurnStarted, map[string]any{"turn_id": "t2", "provider": "gemini", "model": "gemini-3.5-flash-lite", "input_through_seq": 5}),
+		ev(t, 7, eventlog.TypeLLMResponse, map[string]any{"turn_id": "t2", "message": reply("c2"), "stop_reason": "tool_use"}),
+	}
+	st, err := worker.Fold(evs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, m := range st.Messages {
+		for _, p := range m.Parts {
+			if p.Kind == msg.KindToolUse {
+				got[p.ToolUse.ID] = p.ToolUse.Provider
+			}
+		}
+	}
+	if got["c1"] != "anthropic" || got["c2"] != "gemini" || len(got) != 2 {
+		t.Fatalf("providers by call = %v, want c1 anthropic and c2 gemini", got)
 	}
 }

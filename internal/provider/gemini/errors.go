@@ -27,6 +27,7 @@ func classify(ctx context.Context, err error, u provider.Usage, requestID string
 	var apiErr genai.APIError
 	switch {
 	case errors.As(err, &apiErr):
+		pe.HTTPStatus = apiErr.Code
 		pe.RetryAfter = retryDelay(apiErr)
 		pe.Kind = provider.WaitKind(kindOf(apiErr), pe.RetryAfter)
 	case errors.Is(err, provider.ErrStreamIdle):
@@ -86,9 +87,12 @@ func detail(e genai.APIError, typ, field string) string {
 // errorTap watches a response body for an in-band error event, which the SDK
 // turns into an empty chunk with no error (provider-gateway.md §5.2). Its
 // Read is called from the goroutine ranging the stream, so err needs no lock.
+// It also keeps the last finishMessage, which the SDK drops for the Gemini
+// Developer API.
 type errorTap struct {
-	rt  http.RoundTripper
-	err error
+	rt        http.RoundTripper
+	err       error
+	finishMsg string
 }
 
 func (t *errorTap) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -126,7 +130,20 @@ func (b *tapBody) Read(p []byte) (int, error) {
 
 func (t *errorTap) scan(line []byte) {
 	data, ok := bytes.CutPrefix(line, []byte("data:"))
-	if !ok || !bytes.Contains(data, []byte(`"error"`)) {
+	if !ok {
+		return
+	}
+	if bytes.Contains(data, []byte(`"finishMessage"`)) {
+		var ev struct {
+			Candidates []struct {
+				FinishMessage string `json:"finishMessage"`
+			} `json:"candidates"`
+		}
+		if json.Unmarshal(data, &ev) == nil && len(ev.Candidates) > 0 {
+			t.finishMsg = ev.Candidates[0].FinishMessage
+		}
+	}
+	if !bytes.Contains(data, []byte(`"error"`)) {
 		return
 	}
 	var ev struct {

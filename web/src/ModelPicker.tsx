@@ -26,7 +26,16 @@ function optionMeta(m: ModelOption): string {
   return parts.join(' · ')
 }
 
-type Item = { m: ModelOption; enabled: boolean; why?: string }
+// missing names the features the model lacks; a model the picker knows
+// nothing about names none.
+function missing(m: ModelOption): string[] {
+  const labels: string[] = []
+  if (m.web_search === false) labels.push('no search')
+  if (m.thinking === false) labels.push('no thinking')
+  return labels
+}
+
+type Item = { m: ModelOption; enabled: boolean }
 
 type Props = {
   models: Models
@@ -37,15 +46,10 @@ type Props = {
 }
 
 // ModelPicker lists models per Provider in a popover, a bottom sheet on phones.
-// A Provider with no key is disabled, with a link to add one. Only the current
-// Provider's models can be picked, since history isn't replayed across
-// Providers (#5); the Fake Provider, which has no history of its own, is exempt
-// either way. Focus stays on the listbox; the highlighted option is its
-// aria-activedescendant.
+// A Provider with no key is disabled, with a link to add one. Focus stays on the
+// listbox; the highlighted option is its aria-activedescendant.
 export function ModelPicker({ models, current, onPick, disabled, ref }: Props) {
   const from = providerOf(models, current)
-  const pickable = (provider: string) =>
-    !from || provider === from || provider === 'fake' || from === 'fake'
 
   const option = models.providers.flatMap((g) => g.models).find((m) => m.id === current)
   const name = option?.display_name || current
@@ -55,11 +59,7 @@ export function ModelPicker({ models, current, onPick, disabled, ref }: Props) {
   const groups = models.providers.map((g) => ({
     ...g,
     items: g.models.map((m): Item => {
-      const item: Item = {
-        m,
-        enabled: g.available && pickable(g.provider),
-        why: g.available && !pickable(g.provider) ? 'Start a new chat to switch Provider' : undefined,
-      }
+      const item: Item = { m, enabled: g.available }
       items.push(item)
       return item
     }),
@@ -157,7 +157,6 @@ export function ModelPicker({ models, current, onPick, disabled, ref }: Props) {
         role="option"
         aria-selected={isCurrent}
         aria-disabled={!item.enabled}
-        title={item.why}
         onMouseMove={() => item.enabled && setActive(i)}
         onClick={() => pick(i)}
         className={`flex min-h-11 scroll-mt-8 items-center gap-3 rounded-btn px-2.5 py-2 text-sm md:min-h-9 md:py-1.5 ${
@@ -165,6 +164,11 @@ export function ModelPicker({ models, current, onPick, disabled, ref }: Props) {
         } ${isCurrent ? 'font-semibold' : ''} ${i === active ? 'bg-accent-tint' : ''}`}
       >
         <span className="min-w-0 flex-1 truncate">{item.m.display_name || item.m.id}</span>
+        {missing(item.m).map((label) => (
+          <span key={label} className="shrink-0 rounded-full bg-sunk px-1.5 text-[11px] text-muted">
+            {label}
+          </span>
+        ))}
         <span
           title="Estimated USD per million input/output tokens"
           className="shrink-0 text-xs font-normal text-muted tabular-nums"

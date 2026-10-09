@@ -7,6 +7,7 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 )
 
 // State is a session folded from its events; it mirrors the sessions row's
@@ -54,6 +55,8 @@ type State struct {
 	// ToolsRan is set while the latest reply's tool results wait for a turn
 	// to read them.
 	ToolsRan bool
+	// Pauses counts the replies in a row that stopped with pause_turn.
+	Pauses int
 }
 
 // CallStatus is how far a tool call has got.
@@ -123,6 +126,7 @@ func (st State) wantsTitle() bool {
 // Turn identifies one model call.
 type Turn struct {
 	ID              string
+	Provider        string
 	InputThroughSeq int64
 }
 
@@ -183,6 +187,7 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		*userSeqs = append(*userSeqs, e.Seq)
 		st.RetryStep = 0
 		st.ToolsSinceUser = nil
+		st.Pauses = 0
 	case eventlog.TypeStatusChanged:
 		var p struct {
 			To string `json:"to"`
@@ -194,26 +199,28 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 	case eventlog.TypeTurnStarted:
 		var p struct {
 			TurnID          string `json:"turn_id"`
+			Provider        string `json:"provider"`
 			InputThroughSeq int64  `json:"input_through_seq"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
-		st.OpenTurn = &Turn{ID: p.TurnID, InputThroughSeq: p.InputThroughSeq}
+		st.OpenTurn = &Turn{ID: p.TurnID, Provider: p.Provider, InputThroughSeq: p.InputThroughSeq}
 		st.TurnsStarted++
 	case eventlog.TypeSessionRenamed:
 		st.Renamed = true
 	case eventlog.TypeLLMResponse:
 		var p struct {
-			Message msg.Message `json:"message"`
+			Message    msg.Message         `json:"message"`
+			StopReason provider.StopReason `json:"stop_reason"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
-		var turnID string
+		var turnID, providerName string
 		if st.OpenTurn != nil {
 			st.InputThroughSeq = st.OpenTurn.InputThroughSeq
-			turnID = st.OpenTurn.ID
+			turnID, providerName = st.OpenTurn.ID, st.OpenTurn.Provider
 		}
 		st.OpenTurn = nil
 		st.Turns++
@@ -221,8 +228,14 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		st.Calls = nil
 		for _, part := range p.Message.Parts {
 			if part.Kind == msg.KindToolUse {
+				part.ToolUse.Provider = providerName
 				st.Calls = append(st.Calls, Call{ID: part.ToolUse.ID, Name: part.ToolUse.Name, Args: part.ToolUse.Args, TurnID: turnID, Status: CallAsked})
 			}
+		}
+		if p.StopReason == provider.StopReasonPauseTurn {
+			st.Pauses++
+		} else {
+			st.Pauses = 0
 		}
 		st.ToolsRan = len(st.Calls) > 0
 		if st.ToolsRan {
@@ -299,7 +312,9 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			return err
 		}
 		if p.Kind == eventlog.KindLLM {
-			st.TokensUsed += p.Quantity
+			if p.Unit != eventlog.UnitWebSearchRequests {
+				st.TokensUsed += p.Quantity
+			}
 			st.CostMicros += p.CostMicros
 		}
 	}

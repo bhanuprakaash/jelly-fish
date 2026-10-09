@@ -11,6 +11,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
+	"github.com/bhanuprakaash/jelly-fish/internal/worker"
 )
 
 type modelsJSON struct {
@@ -27,6 +28,8 @@ type modelsJSON struct {
 				Input  float64 `json:"input"`
 				Output float64 `json:"output"`
 			} `json:"price"`
+			WebSearch bool `json:"web_search"`
+			Thinking  bool `json:"thinking"`
 		} `json:"models"`
 	} `json:"providers"`
 }
@@ -73,11 +76,11 @@ func TestModelsWithOnlyAnAnthropicKey(t *testing.T) {
 	haiku, next := a.Models[0], a.Models[1]
 	// The live limit wins over the catalog's; the price is the catalog's.
 	if haiku.ID != "claude-haiku-4-5-20251001" || haiku.DisplayName != "Claude Haiku 4.5" || haiku.ContextWindow != 190_000 ||
-		haiku.MaxOutput != 64_000 || haiku.Price == nil || haiku.Price.Input != 1 || haiku.Price.Output != 5 {
+		haiku.MaxOutput != 64_000 || haiku.Price == nil || haiku.Price.Input != 1 || haiku.Price.Output != 5 || !haiku.WebSearch || haiku.Thinking {
 		t.Errorf("haiku = %+v", haiku)
 	}
-	if next.ID != "claude-next-preview" || next.Price != nil {
-		t.Errorf("live-only model = %+v, want no price", next)
+	if next.ID != "claude-next-preview" || next.Price != nil || next.WebSearch || next.Thinking {
+		t.Errorf("live-only model = %+v, want no price, search or thinking", next)
 	}
 
 	for i, name := range []string{"openai", "gemini"} {
@@ -169,11 +172,15 @@ func (e *keysEnv) newSession(t *testing.T, model string) uuid.UUID {
 
 func (e *keysEnv) sessionModel(t *testing.T, sid uuid.UUID) string {
 	t.Helper()
-	m, err := eventlog.NewRepo(e.pool, "fake").SessionModel(t.Context(), eventlog.TenantScope{WorkspaceID: e.user.WorkspaceID, UserID: e.user.ID}, sid)
+	evs, err := eventlog.NewStore(e.pool).Load(t.Context(), sid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return m
+	st, err := worker.Fold(evs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st.Model
 }
 
 func TestCreateSessionOnAPickedModel(t *testing.T) {
@@ -212,12 +219,12 @@ func TestChangeSessionModel(t *testing.T) {
 		want  int
 	}{
 		{"within anthropic", haiku, "claude-sonnet-5-5", http.StatusNoContent},
-		{"across providers", haiku, "gpt-6-astra", http.StatusUnprocessableEntity},
+		{"across providers", haiku, "gpt-6-astra", http.StatusNoContent},
 		{"no key for it", haiku, "gemini-3.8-flash", http.StatusUnprocessableEntity},
 		{"not in the live list", haiku, "claude-opus-5-5", http.StatusUnprocessableEntity},
-		{"from a hidden model across providers", hidden, "gpt-6-astra", http.StatusUnprocessableEntity},
+		{"from a hidden model across providers", hidden, "gpt-6-astra", http.StatusNoContent},
 		{"from a hidden model within its provider", hidden, "claude-sonnet-5-5", http.StatusNoContent},
-		{"anthropic to fake", haiku, "fake", http.StatusNoContent},
+		{"to fake", haiku, "fake", http.StatusNoContent},
 		{"fake to openai", fake, "gpt-6-astra", http.StatusNoContent},
 		{"empty", fake, "", http.StatusBadRequest},
 		{"unknown session", uuid.New(), "fake", http.StatusNotFound},
@@ -243,5 +250,25 @@ func TestChangeSessionModel(t *testing.T) {
 				t.Fatalf("model = %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+func TestChangeSessionModelToAnotherProviderAppendsOneEvent(t *testing.T) {
+	e := newKeysEnv(t)
+	e.saveKeys(t)
+	sid := e.newSession(t, "claude-haiku-4-5-20251001")
+
+	rr := e.do(http.MethodPut, "/api/sessions/"+sid.String()+"/model", map[string]string{"model": "gpt-6-astra"}, e.cookie)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("status = %d %s, want 204", rr.Code, rr.Body)
+	}
+	var payload string
+	var n int
+	if err := e.pool.QueryRow(t.Context(), `SELECT count(*), coalesce(max(payload->>'model'), '') FROM events WHERE session_id = $1 AND type = $2`,
+		sid, eventlog.TypeConfigChanged).Scan(&n, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || payload != "gpt-6-astra" {
+		t.Fatalf("session.config_changed events = %d for %q, want 1 for gpt-6-astra", n, payload)
 	}
 }
