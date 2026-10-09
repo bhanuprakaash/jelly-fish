@@ -33,7 +33,7 @@ export function Reply({ payload, cited }: { payload: unknown; cited: Source[] })
     },
   }
   const markdown = textSegments(payload)
-    .map((seg) => seg.text + seg.cites.map((n) => ` [${n}](${citePrefix}${n})`).join(''))
+    .map((seg) => seg.text + seg.cites.map((n) => `[${n}](${citePrefix}${n})`).join(''))
     .join('')
   return (
     <div
