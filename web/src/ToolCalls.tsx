@@ -133,8 +133,8 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
       : call.state === 'running'
         ? `running · ${elapsed}s`
         : call.state === 'unknown'
-        ? 'outcome unknown — check before retrying'
-        : call.error
+          ? 'outcome unknown — check before retrying'
+          : call.error
   const noteTone = call.state === 'failed' || call.state === 'stopped' ? 'text-danger' : 'text-muted'
   return (
     <div className={first ? '' : 'border-t border-line'}>

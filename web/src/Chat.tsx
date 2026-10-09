@@ -135,6 +135,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       .filter((c) => !(isIncognito && c.name === 'memory'))
       .map((c) => [c.seq, c]),
   )
+  const pending = pendingCalls.filter((c) => !(isIncognito && c.name === 'memory'))
   const [memories, setMemories] = useState<Memory[] | null>(null)
   const loadMemories = useCallback(() => {
     getMemories().then((d) => setMemories(d.memories), () => {})
@@ -402,9 +403,9 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               )}
             </Fragment>
           ))}
-          {pendingCalls.length > 0 && (
+          {pending.length > 0 && (
             <ToolCalls
-              calls={pendingCalls.map((c, i) => ({
+              calls={pending.map((c, i) => ({
                 seq: -1 - i,
                 turn: c.turn_id,
                 name: c.name,

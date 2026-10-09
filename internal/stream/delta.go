@@ -181,10 +181,9 @@ type Batcher struct {
 	interval time.Duration
 	logger   *slog.Logger
 
-	mu    sync.Mutex
-	buf   strings.Builder
-	think strings.Builder
-	// starts are the tool_start deltas, sent after the text buffered before them.
+	mu     sync.Mutex
+	buf    strings.Builder
+	think  strings.Builder
 	starts []Delta
 	// pubMu keeps a flush and a Reset from publishing out of order.
 	pubMu sync.Mutex
@@ -212,8 +211,7 @@ func (b *Batcher) AddThinking(text string) {
 }
 
 // AddToolStart buffers a tool_start for the next flush, where it goes out
-// after the text and thinking buffered so far. It is safe to call while
-// Start's flusher runs.
+// after all the text and thinking of that flush.
 func (b *Batcher) AddToolStart(callID, name string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

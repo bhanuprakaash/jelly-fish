@@ -85,6 +85,7 @@ func TestBatcherResetDropsBufferedTextAndTellsSubscribers(t *testing.T) {
 	sid := uuid.New()
 	b := stream.NewBatcher(publish, sid, "t1", time.Hour, slog.New(slog.DiscardHandler))
 	b.Add("first attempt")
+	b.AddToolStart("dropped", "web_search")
 	b.Reset(t.Context())
 	b.Add("second")
 	b.Start(t.Context())()
@@ -92,20 +93,17 @@ func TestBatcherResetDropsBufferedTextAndTellsSubscribers(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	if len(sent) != 2 || sent[0].Kind != stream.KindReset || sent[0].TurnID != "t1" || sent[0].SessionID != sid || sent[1].Text != "second" {
-		t.Fatalf("published %+v, want a reset for t1 then only the second attempt's text", sent)
+		t.Fatalf("published %+v, want a reset for t1 then only the second attempt's text, no tool_start", sent)
 	}
 }
 
-func TestBatcherSendsToolStartAfterBufferedText(t *testing.T) {
+func TestBatcherSendsToolStartAfterTextOfTheSameFlush(t *testing.T) {
 	var sent []stream.Delta
 	publish := func(_ context.Context, d stream.Delta) error {
 		sent = append(sent, d)
 		return nil
 	}
 	b := stream.NewBatcher(publish, uuid.New(), "t1", time.Hour, slog.New(slog.DiscardHandler))
-	b.AddToolStart("dropped", "reset_tool")
-	b.Reset(t.Context())
-	sent = nil
 	b.AddToolStart("c1", "web_search")
 	b.Add("Let me look.")
 	b.Start(t.Context())()

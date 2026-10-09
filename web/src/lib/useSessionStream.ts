@@ -58,8 +58,16 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
           evt.type === 'turn.interrupted' ||
           evt.type === 'session.error'
         ) {
-          const turnId = (evt.payload as { turn_id?: string }).turn_id
+          const payload = evt.payload as {
+            turn_id?: string
+            message?: { parts: { tu?: { id: string } }[] }
+          }
+          const turnId = payload.turn_id
           if (!turnId) return
+          // The reply's tool calls get their tool.call.requested in a later step.
+          const asked = new Set(
+            evt.type === 'llm.response' ? payload.message?.parts.flatMap((p) => (p.tu ? [p.tu.id] : [])) : [],
+          )
           doneTurnsRef.current.add(turnId)
           setPartials((prev) => {
             const next = { ...prev }
@@ -71,7 +79,7 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
             delete next[turnId]
             return next
           })
-          setPendingCalls((prev) => prev.filter((c) => c.turn_id !== turnId))
+          setPendingCalls((prev) => prev.filter((c) => c.turn_id !== turnId || asked.has(c.call_id)))
         }
       }
       es.addEventListener('delta', (e) => {
@@ -92,8 +100,9 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
           return
         }
         if (d.kind === 'tool_start') {
-          const call = { turn_id: d.turn_id, call_id: d.call_id ?? '', name: d.name ?? '' }
-          setPendingCalls((prev) => [...prev, call])
+          const { call_id: callId } = d
+          if (!callId) return
+          setPendingCalls((prev) => [...prev, { turn_id: d.turn_id, call_id: callId, name: d.name ?? '' }])
           return
         }
         if (d.kind === 'thinking') {
