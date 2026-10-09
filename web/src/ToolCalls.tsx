@@ -34,6 +34,7 @@ export function Thought({ text, streaming = false }: { text: string; streaming?:
 }
 
 const stateWords = {
+  pending: 'calling',
   running: 'running',
   done: 'done',
   failed: 'failed',
@@ -44,6 +45,7 @@ const stateWords = {
 const dangerTint = 'bg-danger-tint text-danger'
 
 const stateCircles = {
+  pending: 'bg-accent-tint text-accent-ink',
   running: 'bg-accent-tint text-accent-ink',
   done: 'bg-success-tint text-success',
   failed: dangerTint,
@@ -92,6 +94,7 @@ function StateIcon({ state }: { state: ToolChip['state'] }) {
     'aria-hidden': true,
   }
   switch (state) {
+    case 'pending':
     case 'running':
       return (
         <span
@@ -125,9 +128,11 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
   const elapsed = useElapsedSeconds(call.startedAt, call.state === 'running')
   const summary = argSummary(call.args)
   const note =
-    call.state === 'running'
-      ? `running · ${elapsed}s`
-      : call.state === 'unknown'
+    call.state === 'pending'
+      ? 'calling…'
+      : call.state === 'running'
+        ? `running · ${elapsed}s`
+        : call.state === 'unknown'
         ? 'outcome unknown — check before retrying'
         : call.error
   const noteTone = call.state === 'failed' || call.state === 'stopped' ? 'text-danger' : 'text-muted'

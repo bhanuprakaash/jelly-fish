@@ -35,6 +35,8 @@ const (
 	KindText = "text"
 	// KindThinking carries reasoning text.
 	KindThinking = "thinking"
+	// KindToolStart announces a tool call the model has begun writing.
+	KindToolStart = "tool_start"
 	// KindReset tells subscribers to drop the turn's text so far: the attempt
 	// that produced it failed and another is starting.
 	KindReset = "reset"
@@ -182,6 +184,8 @@ type Batcher struct {
 	mu    sync.Mutex
 	buf   strings.Builder
 	think strings.Builder
+	// starts are the tool_start deltas, sent after the text buffered before them.
+	starts []Delta
 	// pubMu keeps a flush and a Reset from publishing out of order.
 	pubMu sync.Mutex
 }
@@ -207,14 +211,24 @@ func (b *Batcher) AddThinking(text string) {
 	b.think.WriteString(text)
 }
 
-// Reset drops text and thinking not yet published and publishes a reset delta,
-// so subscribers clear the turn's partial reply.
+// AddToolStart buffers a tool_start for the next flush, where it goes out
+// after the text and thinking buffered so far. It is safe to call while
+// Start's flusher runs.
+func (b *Batcher) AddToolStart(callID, name string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.starts = append(b.starts, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindToolStart, CallID: callID, Name: name})
+}
+
+// Reset drops text, thinking and tool starts not yet published and publishes a
+// reset delta, so subscribers clear the turn's partial reply.
 func (b *Batcher) Reset(ctx context.Context) {
 	b.pubMu.Lock()
 	defer b.pubMu.Unlock()
 	b.mu.Lock()
 	b.buf.Reset()
 	b.think.Reset()
+	b.starts = nil
 	b.mu.Unlock()
 	b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindReset})
 }
@@ -251,12 +265,17 @@ func (b *Batcher) flush(ctx context.Context) {
 	text, think := b.buf.String(), b.think.String()
 	b.buf.Reset()
 	b.think.Reset()
+	starts := b.starts
+	b.starts = nil
 	b.mu.Unlock()
 	if think != "" {
 		b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindThinking, Text: think})
 	}
 	if text != "" {
 		b.send(ctx, Delta{SessionID: b.sid, TurnID: b.turnID, Kind: KindText, Text: text})
+	}
+	for _, d := range starts {
+		b.send(ctx, d)
 	}
 }
 

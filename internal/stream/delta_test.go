@@ -96,6 +96,25 @@ func TestBatcherResetDropsBufferedTextAndTellsSubscribers(t *testing.T) {
 	}
 }
 
+func TestBatcherSendsToolStartAfterBufferedText(t *testing.T) {
+	var sent []stream.Delta
+	publish := func(_ context.Context, d stream.Delta) error {
+		sent = append(sent, d)
+		return nil
+	}
+	b := stream.NewBatcher(publish, uuid.New(), "t1", time.Hour, slog.New(slog.DiscardHandler))
+	b.AddToolStart("dropped", "reset_tool")
+	b.Reset(t.Context())
+	sent = nil
+	b.AddToolStart("c1", "web_search")
+	b.Add("Let me look.")
+	b.Start(t.Context())()
+
+	if len(sent) != 2 || sent[0].Text != "Let me look." || sent[1].Kind != stream.KindToolStart || sent[1].CallID != "c1" || sent[1].Name != "web_search" {
+		t.Fatalf("published %+v, want the text, then tool_start c1 web_search", sent)
+	}
+}
+
 func TestPGDeltaBusSplitsAndDelivers(t *testing.T) {
 	pool := testdb.NewPool(t)
 	bus := stream.NewPGDeltaBus(pool)

@@ -399,4 +399,6 @@ export type Delta = {
   idx: number
   kind: string
   text: string
+  call_id?: string
+  name?: string
 }
