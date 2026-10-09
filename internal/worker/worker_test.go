@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -353,4 +354,49 @@ func TestThinkingDeltaReachesStreamAsThinking(t *testing.T) {
 	if thinking.String() != "Check the greeting." {
 		t.Fatalf("thinking deltas = %q, want %q", thinking.String(), "Check the greeting.")
 	}
+}
+
+// pausing stops with pause_turn on its first pauses calls, then ends the
+// turn. It records the last message of each request.
+type pausing struct {
+	fake.Provider
+	pauses int
+	mu     sync.Mutex
+	last   []string
+}
+
+func (p *pausing) Stream(_ context.Context, req provider.Request, _ func(provider.Delta)) (provider.Response, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	last := req.Messages[len(req.Messages)-1]
+	p.last = append(p.last, string(last.Role)+": "+last.Text())
+	if len(p.last) <= p.pauses {
+		return provider.Response{Message: msg.AssistantText("searching"), StopReason: provider.StopReasonPauseTurn}, nil
+	}
+	return provider.Response{Message: msg.AssistantText("done"), StopReason: provider.StopReasonEndTurn}, nil
+}
+
+func TestPausedTurnResumesWithItsOwnReplyAsTheLastMessage(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	p := &pausing{pauses: 1}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, p)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 2)
+
+	if want := []string{"user: hello", "assistant: searching"}; !slices.Equal(p.last, want) {
+		t.Fatalf("last message per request = %q, want %q", p.last, want)
+	}
+}
+
+func TestEndlessPausesStopAfterFiveResumes(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid := uuid.New()
+	if _, err := eventlog.NewRepo(pool, "fake").CreateSession(t.Context(), testdb.NewUser(t, pool).Scope(), sid, uuid.New(), "hello", "", false); err != nil {
+		t.Fatal(err)
+	}
+	startWorkerOn(t, pool, eventlog.Upcasters{}, &pausing{pauses: 100})
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 6)
 }

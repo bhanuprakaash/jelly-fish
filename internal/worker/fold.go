@@ -7,6 +7,7 @@ import (
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
+	"github.com/bhanuprakaash/jelly-fish/internal/provider"
 )
 
 // State is a session folded from its events; it mirrors the sessions row's
@@ -54,6 +55,8 @@ type State struct {
 	// ToolsRan is set while the latest reply's tool results wait for a turn
 	// to read them.
 	ToolsRan bool
+	// Pauses counts the replies in a row that stopped with pause_turn.
+	Pauses int
 }
 
 // CallStatus is how far a tool call has got.
@@ -207,15 +210,16 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		st.Renamed = true
 	case eventlog.TypeLLMResponse:
 		var p struct {
-			Message msg.Message `json:"message"`
+			Message    msg.Message         `json:"message"`
+			StopReason provider.StopReason `json:"stop_reason"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
-		var turnID, provider string
+		var turnID, providerName string
 		if st.OpenTurn != nil {
 			st.InputThroughSeq = st.OpenTurn.InputThroughSeq
-			turnID, provider = st.OpenTurn.ID, st.OpenTurn.Provider
+			turnID, providerName = st.OpenTurn.ID, st.OpenTurn.Provider
 		}
 		st.OpenTurn = nil
 		st.Turns++
@@ -223,9 +227,14 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		st.Calls = nil
 		for _, part := range p.Message.Parts {
 			if part.Kind == msg.KindToolUse {
-				part.ToolUse.Provider = provider
+				part.ToolUse.Provider = providerName
 				st.Calls = append(st.Calls, Call{ID: part.ToolUse.ID, Name: part.ToolUse.Name, Args: part.ToolUse.Args, TurnID: turnID, Status: CallAsked})
 			}
+		}
+		if p.StopReason == provider.StopReasonPauseTurn {
+			st.Pauses++
+		} else {
+			st.Pauses = 0
 		}
 		st.ToolsRan = len(st.Calls) > 0
 		if st.ToolsRan {
