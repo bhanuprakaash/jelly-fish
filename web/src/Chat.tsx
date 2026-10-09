@@ -60,7 +60,7 @@ function refusalNotice(payload: unknown): string {
 
 export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated }: Props) {
   const [started, setStarted] = useState(!isNew)
-  const { events, partials, thoughts, connected, failed } = useSessionStream(sessionId, started)
+  const { events, partials, thoughts, pendingCalls, connected, failed } = useSessionStream(sessionId, started)
   const [showThinking, setShowThinkingState] = useState(getShowThinking)
   // A brand-new chat has a session once its first message creates one; a
   // reopened chat has one once the stream confirms it (streaming's onopen
@@ -135,6 +135,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
       .filter((c) => !(isIncognito && c.name === 'memory'))
       .map((c) => [c.seq, c]),
   )
+  const pending = pendingCalls.filter((c) => !(isIncognito && c.name === 'memory'))
   const [memories, setMemories] = useState<Memory[] | null>(null)
   const loadMemories = useCallback(() => {
     getMemories().then((d) => setMemories(d.memories), () => {})
@@ -402,6 +403,17 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
               )}
             </Fragment>
           ))}
+          {pending.length > 0 && (
+            <ToolCalls
+              calls={pending.map((c, i) => ({
+                seq: -1 - i,
+                turn: c.turn_id,
+                name: c.name,
+                state: 'pending',
+                startedAt: 0,
+              }))}
+            />
+          )}
           {notice && <SessionNotice sessionId={sessionId} notice={notice} provider={models && current ? providerOf(models, current) : undefined} picker={picker} />}
         </div>
       </main>
