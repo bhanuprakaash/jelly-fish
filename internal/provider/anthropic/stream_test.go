@@ -263,6 +263,23 @@ func TestRequestGoldens(t *testing.T) {
 			}},
 			msg.UserText("thanks"),
 		}}},
+		{"web_search_unanswered_call", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindText, Text: "Searching."},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01A","name":"web_search","input":{"query":"weather in Paris"}}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "web_search_tool_result", Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01A","content":[]}`)}},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01B","name":"web_search","input":{"query":"Paris forecast"}}`)}},
+			}},
+			msg.UserText("thanks"),
+		}}},
+		{"web_search_paused_call", provider.Request{Model: haiku, Messages: []msg.Message{
+			msg.UserText("weather in Paris"),
+			{MsgV: msg.CurrentVersion, Role: msg.RoleAssistant, Parts: []msg.Part{
+				{Kind: msg.KindText, Text: "Searching."},
+				{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: "server_tool_use", Raw: json.RawMessage(`{"type":"server_tool_use","id":"srvtoolu_01B","name":"web_search","input":{"query":"Paris forecast"}}`)}},
+			}},
+		}}},
 		{"replay", provider.Request{Model: opus, Messages: history}},
 		{"foreign_replay", provider.Request{Model: opus, Messages: foreign}},
 		{"breakpoints", provider.Request{

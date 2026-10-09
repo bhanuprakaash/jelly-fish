@@ -194,7 +194,11 @@ func toParams(messages []msg.Message) ([]sdk.MessageParam, []int, error) {
 	from := make([]int, 0, len(messages))
 	for mi, m := range messages {
 		var blocks []sdk.ContentBlockParamUnion
-		for _, p := range m.Parts {
+		parts := m.Parts
+		if mi < len(messages)-1 {
+			parts = withoutUnansweredServerToolUse(parts)
+		}
+		for _, p := range parts {
 			b, ok, err := toBlock(p, wireID)
 			if err != nil {
 				return nil, nil, err
@@ -214,6 +218,32 @@ func toParams(messages []msg.Message) ([]sdk.MessageParam, []int, error) {
 		from = append(from, mi)
 	}
 	return out, from, nil
+}
+
+// withoutUnansweredServerToolUse drops a server_tool_use block with no result
+// block in the same message. A reply the pause cap cut off ends in one, and
+// Anthropic rejects it anywhere but last, where a resume sends it as is.
+func withoutUnansweredServerToolUse(parts []msg.Part) []msg.Part {
+	answered := map[string]bool{}
+	for _, p := range parts {
+		if p.Kind == msg.KindNative && p.Native.Provider == Name && (p.Native.Type == typeWebSearchResult || p.Native.Type == typeWebFetchResult) {
+			answered[nativeIDs(p.Native.Raw).ToolUseID] = true
+		}
+	}
+	return slices.DeleteFunc(slices.Clone(parts), func(p msg.Part) bool {
+		return p.Kind == msg.KindNative && p.Native.Provider == Name && p.Native.Type == typeServerToolUse && !answered[nativeIDs(p.Native.Raw).ID]
+	})
+}
+
+type blockIDs struct {
+	ID        string `json:"id"`
+	ToolUseID string `json:"tool_use_id"`
+}
+
+func nativeIDs(raw json.RawMessage) blockIDs {
+	var ids blockIDs
+	_ = json.Unmarshal(raw, &ids)
+	return ids
 }
 
 func toBlock(p msg.Part, wireID map[string]string) (sdk.ContentBlockParamUnion, bool, error) {
