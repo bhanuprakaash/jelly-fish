@@ -25,7 +25,13 @@ const Name = "anthropic"
 // (provider-gateway.md §5.5 item 4).
 const defaultMaxOutput = 8192
 
-const typeRedactedThinking = "redacted_thinking"
+// Native block types Anthropic's replay accepts, sent back as stored.
+const (
+	typeRedactedThinking = "redacted_thinking"
+	typeServerToolUse    = "server_tool_use"
+	typeWebSearchResult  = "web_search_tool_result"
+	typeWebFetchResult   = "web_fetch_tool_result"
+)
 
 // Provider returns a Provider that streams replies on key.
 func (c Client) Provider(key string) provider.Provider {
@@ -135,6 +141,11 @@ func (c chat) params(req provider.Request) (sdk.MessageNewParams, error) {
 		}
 		p.Tools = append(p.Tools, sdk.ToolUnionParam{OfTool: tp})
 	}
+	if req.WebSearch {
+		p.Tools = append(p.Tools,
+			sdk.ToolUnionParam{OfWebSearchTool20250305: &sdk.WebSearchTool20250305Param{}},
+			sdk.ToolUnionParam{OfWebFetchTool20250910: &sdk.WebFetchTool20250910Param{}})
+	}
 	if known && !req.NoThinking && info.Thinking == provider.ThinkingAdaptiveOnly {
 		// Newer models default display to "omitted"; summarized is the only
 		// change from the default, so the prefix stays byte-stable (D17).
@@ -218,12 +229,22 @@ func toBlock(p msg.Part, wireID map[string]string) (sdk.ContentBlockParamUnion, 
 		if p.Native.Provider != Name {
 			return sdk.ContentBlockParamUnion{}, false, nil
 		}
-		if p.Native.Type != typeRedactedThinking {
-			return sdk.ContentBlockParamUnion{}, false, fmt.Errorf("anthropic: can't replay native %q", p.Native.Type)
-		}
 		// Sent as stored, so the block reaches Anthropic byte for byte.
-		b := param.Override[sdk.RedactedThinkingBlockParam](p.Native.Raw)
-		return sdk.ContentBlockParamUnion{OfRedactedThinking: &b}, true, nil
+		switch p.Native.Type {
+		case typeRedactedThinking:
+			b := param.Override[sdk.RedactedThinkingBlockParam](p.Native.Raw)
+			return sdk.ContentBlockParamUnion{OfRedactedThinking: &b}, true, nil
+		case typeServerToolUse:
+			b := param.Override[sdk.ServerToolUseBlockParam](p.Native.Raw)
+			return sdk.ContentBlockParamUnion{OfServerToolUse: &b}, true, nil
+		case typeWebSearchResult:
+			b := param.Override[sdk.WebSearchToolResultBlockParam](p.Native.Raw)
+			return sdk.ContentBlockParamUnion{OfWebSearchToolResult: &b}, true, nil
+		case typeWebFetchResult:
+			b := param.Override[sdk.WebFetchToolResultBlockParam](p.Native.Raw)
+			return sdk.ContentBlockParamUnion{OfWebFetchToolResult: &b}, true, nil
+		}
+		return sdk.ContentBlockParamUnion{}, false, fmt.Errorf("anthropic: can't replay native %q", p.Native.Type)
 	case msg.KindToolUse:
 		id := p.ToolUse.ID
 		if len(p.ToolUse.Opaque) > 0 && p.ToolUse.Provider == Name {
@@ -261,7 +282,7 @@ func fromMessage(m sdk.Message, model string, callID func(int) string) msg.Messa
 		var p msg.Part
 		switch b.Type {
 		case "text":
-			p = msg.Part{Kind: msg.KindText, Text: b.Text}
+			p = msg.Part{Kind: msg.KindText, Text: b.Text, Citations: citations(b.Citations)}
 		case "thinking":
 			p = msg.Part{Kind: msg.KindThinking, Thinking: &msg.Thinking{Text: b.Thinking, Provider: Name, Model: model, Opaque: []byte(b.Signature)}}
 		case "tool_use":
@@ -274,6 +295,18 @@ func fromMessage(m sdk.Message, model string, callID func(int) string) msg.Messa
 			p = msg.Part{Kind: msg.KindNative, Native: &msg.Native{Provider: Name, Type: b.Type, Raw: json.RawMessage(b.RawJSON())}}
 		}
 		out.Parts = append(out.Parts, p)
+	}
+	return out
+}
+
+// citations keeps the web pages a text block cites; other citation kinds
+// point into documents we sent.
+func citations(cs []sdk.TextCitationUnion) []msg.Citation {
+	var out []msg.Citation
+	for _, c := range cs {
+		if c.Type == "web_search_result_location" {
+			out = append(out, msg.Citation{URL: c.URL, Title: c.Title})
+		}
 	}
 	return out
 }
@@ -314,6 +347,7 @@ func usage(u sdk.Usage) provider.Usage {
 		CacheWrite1h: u.CacheCreation.Ephemeral1hInputTokens,
 		Output:       u.OutputTokens,
 		Reasoning:    u.OutputTokensDetails.ThinkingTokens,
+		WebSearches:  u.ServerToolUse.WebSearchRequests,
 	}
 	if out.CacheWrite5m+out.CacheWrite1h == 0 {
 		// No per-TTL split reported: every breakpoint we set is 5m.
