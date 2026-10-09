@@ -75,8 +75,12 @@ type ToolUse struct {
 	ID   string          `json:"id"`
 	Name string          `json:"name"`
 	Args json.RawMessage `json:"args"`
-	// Opaque is the Provider's own call id, replayed only to that Provider.
+	// Opaque is the Provider's own call id, valid only to the Provider that
+	// wrote it: an adapter replays it when Provider is its own.
 	Opaque []byte `json:"opaque,omitempty"`
+	// Provider names who wrote the call. The Worker fills it from the turn's
+	// events; it is never stored.
+	Provider string `json:"-"`
 }
 
 // ToolResult answers the ToolUse whose ID is CallID.

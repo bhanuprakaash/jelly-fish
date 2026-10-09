@@ -123,6 +123,7 @@ func (st State) wantsTitle() bool {
 // Turn identifies one model call.
 type Turn struct {
 	ID              string
+	Provider        string
 	InputThroughSeq int64
 }
 
@@ -194,12 +195,13 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 	case eventlog.TypeTurnStarted:
 		var p struct {
 			TurnID          string `json:"turn_id"`
+			Provider        string `json:"provider"`
 			InputThroughSeq int64  `json:"input_through_seq"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
-		st.OpenTurn = &Turn{ID: p.TurnID, InputThroughSeq: p.InputThroughSeq}
+		st.OpenTurn = &Turn{ID: p.TurnID, Provider: p.Provider, InputThroughSeq: p.InputThroughSeq}
 		st.TurnsStarted++
 	case eventlog.TypeSessionRenamed:
 		st.Renamed = true
@@ -210,10 +212,10 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
-		var turnID string
+		var turnID, provider string
 		if st.OpenTurn != nil {
 			st.InputThroughSeq = st.OpenTurn.InputThroughSeq
-			turnID = st.OpenTurn.ID
+			turnID, provider = st.OpenTurn.ID, st.OpenTurn.Provider
 		}
 		st.OpenTurn = nil
 		st.Turns++
@@ -221,6 +223,7 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		st.Calls = nil
 		for _, part := range p.Message.Parts {
 			if part.Kind == msg.KindToolUse {
+				part.ToolUse.Provider = provider
 				st.Calls = append(st.Calls, Call{ID: part.ToolUse.ID, Name: part.ToolUse.Name, Args: part.ToolUse.Args, TurnID: turnID, Status: CallAsked})
 			}
 		}
