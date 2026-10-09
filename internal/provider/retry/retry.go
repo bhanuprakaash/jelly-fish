@@ -86,5 +86,6 @@ func sum(a, b provider.Usage) provider.Usage {
 		CacheWrite1h: a.CacheWrite1h + b.CacheWrite1h,
 		Output:       a.Output + b.Output,
 		Reasoning:    a.Reasoning + b.Reasoning,
+		WebSearches:  a.WebSearches + b.WebSearches,
 	}
 }

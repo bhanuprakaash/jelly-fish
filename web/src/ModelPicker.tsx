@@ -26,6 +26,15 @@ function optionMeta(m: ModelOption): string {
   return parts.join(' · ')
 }
 
+// missing names the features the model lacks; a model the picker knows
+// nothing about names none.
+function missing(m: ModelOption): string[] {
+  const labels: string[] = []
+  if (m.web_search === false) labels.push('no search')
+  if (m.thinking === false) labels.push('no thinking')
+  return labels
+}
+
 type Item = { m: ModelOption; enabled: boolean }
 
 type Props = {
@@ -155,6 +164,11 @@ export function ModelPicker({ models, current, onPick, disabled, ref }: Props) {
         } ${isCurrent ? 'font-semibold' : ''} ${i === active ? 'bg-accent-tint' : ''}`}
       >
         <span className="min-w-0 flex-1 truncate">{item.m.display_name || item.m.id}</span>
+        {missing(item.m).map((label) => (
+          <span key={label} className="shrink-0 rounded-full bg-sunk px-1.5 text-[11px] text-muted">
+            {label}
+          </span>
+        ))}
         <span
           title="Estimated USD per million input/output tokens"
           className="shrink-0 text-xs font-normal text-muted tabular-nums"

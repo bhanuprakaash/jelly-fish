@@ -173,7 +173,7 @@ export function checker(prefix = '') {
 // Chat List handles (features/chat-list.md, activity-stream.md).
 export const nav = (page) => page.getByRole('navigation', { name: 'Chats' })
 export const row = (page, text) => nav(page).getByRole('listitem').filter({ hasText: text })
-export const badge = (page, text, label) => row(page, text).getByRole('img', { name: label })
+export const badge = (page, text, label) => row(page, text).getByText(label, { exact: true })
 export const header = (page) => page.getByRole('heading', { level: 1 })
 
 // seen and gone report whether loc appears / detaches within timeout.

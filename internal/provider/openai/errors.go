@@ -57,6 +57,7 @@ func classify(ctx context.Context, err error, u provider.Usage, requestID string
 		if apiErr.Response != nil && pe.RequestID == "" {
 			pe.RequestID = apiErr.Response.Header.Get("x-request-id")
 		}
+		pe.HTTPStatus = apiErr.StatusCode
 		pe.RetryAfter = provider.RetryAfter(apiErr.Response)
 		pe.Kind = kindOf(apiErr.StatusCode, apiErr.Code)
 	case errors.Is(err, provider.ErrStreamIdle):

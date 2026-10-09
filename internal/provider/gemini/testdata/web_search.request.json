@@ -1,0 +1,37 @@
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "hi"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "thinkingConfig": {
+      "includeThoughts": true
+    }
+  },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "description": "Wait.",
+          "name": "sleep",
+          "parametersJsonSchema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "googleSearch": {}
+    },
+    {
+      "urlContext": {}
+    }
+  ]
+}
+

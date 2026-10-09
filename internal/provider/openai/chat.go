@@ -26,6 +26,8 @@ const Name = "openai"
 // flag.
 const errorPrefix = "Error: "
 
+const typeWebSearchCall = "web_search_call"
+
 type chat struct {
 	client  sdk.Client
 	catalog Catalog
@@ -94,10 +96,27 @@ func (c chat) Stream(ctx context.Context, req provider.Request, onDelta func(pro
 	}
 
 	m := fromResponse(*final, req.Model, func(i int) string { return callIDs[i] })
+	u := usage(final.Usage)
+	// The usage object has no search count. open_page and find_in_page cost
+	// input tokens, already recorded; any other call, including one with no
+	// action, counts as a search so the estimate errs high.
+	for _, p := range m.Parts {
+		if p.Kind == msg.KindNative && p.Native.Type == typeWebSearchCall {
+			var item struct {
+				Action struct {
+					Type string `json:"type"`
+				} `json:"action"`
+			}
+			_ = json.Unmarshal(p.Native.Raw, &item)
+			if t := item.Action.Type; t != "open_page" && t != "find_in_page" {
+				u.WebSearches++
+			}
+		}
+	}
 	return provider.Response{
 		Message:    m,
 		StopReason: stopReason(*final, m),
-		Usage:      usage(final.Usage),
+		Usage:      u,
 		RequestID:  requestID(httpResp),
 	}, nil
 }
@@ -152,6 +171,9 @@ func (c chat) params(req provider.Request) (responses.ResponseNewParams, error) 
 			return responses.ResponseNewParams{}, fmt.Errorf("openai: tool %s: %w", t.Name, err)
 		}
 		p.Tools = append(p.Tools, param.Override[responses.ToolUnionParam](json.RawMessage(raw)))
+	}
+	if req.WebSearch {
+		p.Tools = append(p.Tools, responses.ToolParamOfWebSearch(responses.WebSearchToolTypeWebSearch))
 	}
 	return p, nil
 }
@@ -260,11 +282,17 @@ func fromResponse(r responses.Response, model string, callID func(int) string) m
 		case "message":
 			// A refusal is shown as the reply text.
 			var text strings.Builder
+			var cites []msg.Citation
 			for _, c := range item.Content {
 				text.WriteString(c.Text)
 				text.WriteString(c.Refusal)
+				for _, a := range c.Annotations {
+					if a.Type == "url_citation" {
+						cites = append(cites, msg.Citation{URL: a.URL, Title: a.Title})
+					}
+				}
 			}
-			p = msg.Part{Kind: msg.KindText, Text: text.String()}
+			p = msg.Part{Kind: msg.KindText, Text: text.String(), Citations: cites}
 		case "reasoning":
 			var summary []string
 			for _, s := range item.AsReasoning().Summary {

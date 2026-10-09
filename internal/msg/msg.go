@@ -16,7 +16,7 @@ var ErrUnsupported = errors.New("unsupported message format")
 // CurrentVersion is the msg_v written into every Message. A new Kind never
 // bumps it; a changed shape of an existing Kind does, with an upcaster
 // (provider-gateway.md §3.2).
-const CurrentVersion = 2
+const CurrentVersion = 3
 
 // Roles a Message can have; system text lives in the request, not here.
 const (
@@ -41,7 +41,7 @@ const (
 // unknown and makes its Message unreadable.
 func kindFields() map[Kind][]string {
 	return map[Kind][]string{
-		KindText:       {"Text"},
+		KindText:       {"Text", "Citations"},
 		KindToolUse:    {"ToolUse"},
 		KindToolResult: {"ToolResult"},
 		KindThinking:   {"Thinking"},
@@ -62,11 +62,18 @@ type Message struct {
 type Part struct {
 	Kind       Kind        `json:"k"`
 	Text       string      `json:"text,omitempty"`
+	Citations  []Citation  `json:"cit,omitempty"`
 	ToolUse    *ToolUse    `json:"tu,omitempty"`
 	ToolResult *ToolResult `json:"tr,omitempty"`
 	Thinking   *Thinking   `json:"th,omitempty"`
 	Native     *Native     `json:"nat,omitempty"`
 	MemoryRef  *MemoryRef  `json:"mem,omitempty"`
+}
+
+// Citation is a web page that a text Part's claims rest on.
+type Citation struct {
+	URL   string `json:"url"`
+	Title string `json:"title,omitempty"`
 }
 
 // ToolUse is a tool call the model asked for.
@@ -148,6 +155,9 @@ func (m *Message) UnmarshalJSON(b []byte) error {
 		if err := json.Unmarshal(b, (*current)(m)); err != nil {
 			return err
 		}
+		// msg_v 2 differs from 3 only by the optional Citations on a text
+		// Part, so upcasting is the new stamp.
+		m.MsgV = CurrentVersion
 	}
 	return checkKinds(m.Parts, kindFields())
 }

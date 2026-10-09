@@ -286,7 +286,9 @@ func project(ctx context.Context, tx pgx.Tx, sid uuid.UUID, seq int64, e NewEven
 			return fmt.Errorf("insert usage: %w", err)
 		}
 		if u.Kind == KindLLM {
-			c.tokens += u.Quantity
+			if u.Unit != UnitWebSearchRequests {
+				c.tokens += u.Quantity
+			}
 			c.cost += u.CostMicros
 		}
 	}

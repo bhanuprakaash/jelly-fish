@@ -19,6 +19,10 @@ const (
 	StepComplete
 )
 
+// maxPauses is how many pause_turn replies in a row the loop resumes; a
+// Provider that keeps pausing ends the turn instead of running up cost.
+const maxPauses = 5
+
 // Parks reports whether the step ends the drive loop by changing status.
 func (k StepKind) Parks() bool { return k == StepComplete }
 
@@ -40,7 +44,7 @@ func Decide(st State) Step {
 		return Step{Kind: StepStartTool}
 	case len(st.calls(CallAsked)) > 0:
 		return Step{Kind: StepRequestTools}
-	case st.ToolsRan || len(st.PendingUserSeqs) > 0:
+	case st.ToolsRan || len(st.PendingUserSeqs) > 0 || (st.Pauses > 0 && st.Pauses <= maxPauses):
 		return Step{Kind: StepStartTurn}
 	default:
 		return Step{Kind: StepComplete}

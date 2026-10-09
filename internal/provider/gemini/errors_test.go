@@ -68,8 +68,8 @@ func TestErrorFixturesMapToClasses(t *testing.T) {
 			}))
 			t.Cleanup(srv.Close)
 			pe := streamErr(t, Client{BaseURL: srv.URL, Catalog: testCatalog(t)})
-			if pe.Kind != tc.want || pe.RetryAfter != tc.wantWait {
-				t.Fatalf("error = %+v, want kind %s, wait %v", pe, tc.want, tc.wantWait)
+			if pe.Kind != tc.want || pe.RetryAfter != tc.wantWait || pe.HTTPStatus != tc.status {
+				t.Fatalf("error = %+v, want kind %s, wait %v, status %d", pe, tc.want, tc.wantWait, tc.status)
 			}
 		})
 	}

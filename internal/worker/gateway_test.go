@@ -350,7 +350,6 @@ func TestRescuedTurnRunsOnTheChangedModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A worker claims, starts a turn on Haiku, and dies before the reply.
 	store := eventlog.NewStore(pool)
 	c, _, err := store.Claim(t.Context(), "dead", 30*time.Second)
 	if err != nil {
