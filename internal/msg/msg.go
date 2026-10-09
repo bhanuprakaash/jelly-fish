@@ -62,11 +62,18 @@ type Message struct {
 type Part struct {
 	Kind       Kind        `json:"k"`
 	Text       string      `json:"text,omitempty"`
+	Citations  []Citation  `json:"cit,omitempty"`
 	ToolUse    *ToolUse    `json:"tu,omitempty"`
 	ToolResult *ToolResult `json:"tr,omitempty"`
 	Thinking   *Thinking   `json:"th,omitempty"`
 	Native     *Native     `json:"nat,omitempty"`
 	MemoryRef  *MemoryRef  `json:"mem,omitempty"`
+}
+
+// Citation is a web page that a text Part's claims rest on.
+type Citation struct {
+	URL   string `json:"url"`
+	Title string `json:"title,omitempty"`
 }
 
 // ToolUse is a tool call the model asked for.

@@ -45,6 +45,9 @@ type Request struct {
 	// CacheKey groups requests that share a prompt prefix (the session id),
 	// for Providers that route the prompt cache by key.
 	CacheKey string
+	// WebSearch adds the Provider's own web search and page fetch to the
+	// tools the model may use.
+	WebSearch bool
 }
 
 // ToolSpec is a tool as the model sees it.
@@ -90,6 +93,8 @@ type Usage struct {
 	Output       int64
 	// Reasoning is the part of Output spent thinking; it is not billed twice.
 	Reasoning int64
+	// WebSearches is how many searches the Provider ran inside the call.
+	WebSearches int64
 }
 
 // Response is the completed reply to a Request.
@@ -148,6 +153,9 @@ type ModelInfo struct {
 	Structured       bool     `json:"structured_outputs"`
 	ForcedToolChoice bool     `json:"forced_tool_choice"`
 	Thinking         Thinking `json:"thinking"`
+	// WebSearch is whether the model can use the Provider's built-in web
+	// search; a model the catalog lacks gets none.
+	WebSearch bool `json:"web_search"`
 	// Price is nil when the list price is unknown; such a model's usage
 	// costs 0 (provider-gateway.md D15).
 	Price *Prices `json:"price,omitempty"`
@@ -161,4 +169,6 @@ type Prices struct {
 	CacheWrite5m float64 `json:"cache_write_5m"`
 	CacheWrite1h float64 `json:"cache_write_1h"`
 	Output       float64 `json:"output"`
+	// WebSearch is USD per 1,000 searches.
+	WebSearch float64 `json:"web_search"`
 }
