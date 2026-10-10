@@ -70,6 +70,10 @@ func (f *fakeRepo) SessionLastSeq(context.Context, eventlog.TenantScope, uuid.UU
 	return f.lastSeq, f.lastSeqErr
 }
 
+func (f *fakeRepo) Blob(context.Context, eventlog.TenantScope, uuid.UUID, string) (string, []byte, error) {
+	return "", nil, eventlog.ErrNotFound
+}
+
 func (f *fakeRepo) ListSessions(context.Context, eventlog.TenantScope) ([]eventlog.SessionSummary, error) {
 	return nil, f.listSessionsErr
 }

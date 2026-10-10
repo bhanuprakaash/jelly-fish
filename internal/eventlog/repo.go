@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/bhanuprakaash/jelly-fish/internal/blob"
 )
 
 // Repo is the API-facing, tenant-scoped view of the event log. Every
@@ -376,6 +378,29 @@ func (r *Repo) ListEvents(ctx context.Context, scope TenantScope, sessionID uuid
 		return nil, fmt.Errorf("iterate events: %w", err)
 	}
 	return evs, nil
+}
+
+// Blob returns the blob sha256 names, if an event of sid references it.
+func (r *Repo) Blob(ctx context.Context, scope TenantScope, sessionID uuid.UUID, sha string) (mime string, data []byte, err error) {
+	var referenced bool
+	err = r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+		  SELECT 1 FROM events e JOIN sessions s ON s.id = e.session_id
+		  WHERE e.session_id = $1 AND s.workspace_id = $2 AND s.user_id = $3
+		    AND e.type IN ($5, $6)
+		    AND (e.payload->'blob_ref'->>'sha256' = $4 OR e.payload->'tools_blob'->>'sha256' = $4))`,
+		sessionID, scope.WorkspaceID, scope.UserID, sha, TypeToolCompleted, TypeTurnStarted).Scan(&referenced)
+	if err != nil {
+		return "", nil, fmt.Errorf("look up blob reference: %w", err)
+	}
+	if !referenced {
+		return "", nil, ErrNotFound
+	}
+	mime, data, err = blob.Get(ctx, r.pool, sha)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, ErrNotFound
+	}
+	return mime, data, err
 }
 
 type queryRower interface {

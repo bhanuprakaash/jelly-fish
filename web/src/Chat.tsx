@@ -369,7 +369,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             <p className="text-center text-muted">Say something to start the chat.</p>
           )}
           {transcript.map((item) => {
-            if ('calls' in item) return <ToolCalls key={item.turn} calls={item.calls} />
+            if ('calls' in item) return <ToolCalls key={item.turn} sessionId={sessionId} calls={item.calls} />
             const e = item
             const chip = chips.get(e.seq)
             if (chip?.memory) {
@@ -413,6 +413,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
           ))}
           {pending.length > 0 && (
             <ToolCalls
+              sessionId={sessionId}
               calls={pending.map((c, i) => ({
                 seq: -1 - i,
                 turn: c.turn_id,
