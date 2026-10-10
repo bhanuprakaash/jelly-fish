@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { interruptSession, retrySession } from './lib/api'
+import { interruptSession, resolveApproval, retrySession } from './lib/api'
 import type { Notice } from './lib/sessionNotice'
 import { useAction } from './lib/useAction'
 
@@ -37,6 +37,10 @@ function errorText(code: string, failed: boolean): string {
   }
 }
 
+function budgetAmount(dimension: string, n: number): string {
+  return dimension === 'dollars' ? `$${(n / 1_000_000).toFixed(2)}` : n.toLocaleString('en-US')
+}
+
 const retryable = (code: string, failed: boolean) =>
   failed || code === 'key_invalid' || code === 'billing' || code === 'bug'
 
@@ -65,6 +69,21 @@ export function SessionNotice({ sessionId, notice, provider, picker }: Props) {
         {button('Stop retrying', interruptSession, 'btn btn-ghost btn-sm')}
       </>
     )
+  } else if (notice.kind === 'budget') {
+    const { approvalId, dimension, limit, used, nextLimit } = notice
+    const unit = dimension === 'dollars' ? '' : ` ${dimension}`
+    text = `Budget reached: ${budgetAmount(dimension, used)} of ${budgetAmount(dimension, limit)}${unit}`
+    const answer = (decision: 'allow' | 'deny') => run(() => resolveApproval(sessionId, approvalId, decision))
+    actions = (
+      <>
+        <button type="button" disabled={busy} onClick={() => answer('allow')} className="btn btn-attention btn-sm">
+          Allow (up to {budgetAmount(dimension, nextLimit)})
+        </button>
+        <button type="button" disabled={busy} onClick={() => answer('deny')} className="btn btn-secondary btn-sm">
+          Deny
+        </button>
+      </>
+    )
   } else {
     text = errorText(notice.code, notice.failed)
     actions = (
@@ -90,12 +109,13 @@ export function SessionNotice({ sessionId, notice, provider, picker }: Props) {
   }
 
   const sleeping = notice.kind === 'sleeping'
+  const budget = notice.kind === 'budget'
   const requestId = notice.kind === 'error' ? notice.requestId : ''
   return (
     <div
       role={sleeping ? 'status' : 'alert'}
       className={`w-full rounded-[14px] border px-4 py-3 ${
-        sleeping ? 'border-line bg-sunk' : 'border-danger bg-danger-tint'
+        sleeping ? 'border-line bg-sunk' : budget ? 'border-attention-line bg-attention-tint' : 'border-danger bg-danger-tint'
       }`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -115,7 +135,13 @@ export function SessionNotice({ sessionId, notice, provider, picker }: Props) {
             <path d="M12 7v5l3 2" />
           </svg>
         )}
-        <p className={`min-w-0 flex-1 basis-40 text-sm ${sleeping ? 'text-ink2' : 'font-semibold text-danger'}`}>{text}</p>
+        <p
+          className={`min-w-0 flex-1 basis-40 text-sm ${
+            sleeping ? 'text-ink2' : budget ? 'font-semibold text-ink' : 'font-semibold text-danger'
+          }`}
+        >
+          {text}
+        </p>
         <div className="flex flex-wrap gap-2">{actions}</div>
       </div>
       {requestId && <p className="mt-2 text-right font-mono text-xs text-muted">ID {requestId}</p>}

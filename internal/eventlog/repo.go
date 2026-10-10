@@ -172,6 +172,49 @@ func (r *Repo) Retry(ctx context.Context, scope TenantScope, sessionID uuid.UUID
 	})
 }
 
+// ResolveApproval appends the User's approval.resolved for the session's open
+// approval. allow makes the session runnable, so the raised limit applies;
+// deny parks it as awaiting_user. Any other decision, a session that is not
+// awaiting approval, or an approvalID that is not the open one returns
+// ErrNoOpenApproval and appends nothing.
+func (r *Repo) ResolveApproval(ctx context.Context, scope TenantScope, sessionID, approvalID uuid.UUID, decision string) error {
+	next := &StatusChange{To: StatusAwaitingUser, Reason: "denied"}
+	if decision == DecisionAllow {
+		next = &StatusChange{To: StatusRunnable, Reason: "approved"}
+	}
+	resolved := NewEvent{
+		Type:    TypeApprovalResolved,
+		Actor:   "user:" + scope.UserID.String(),
+		Payload: map[string]any{"approval_id": approvalID, "decision": decision, "by": scope.UserID},
+	}
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		status, err := lockStatus(ctx, tx, scope, sessionID)
+		if err != nil {
+			return err
+		}
+		if status != StatusAwaitingApproval {
+			return ErrNoOpenApproval
+		}
+		var open bool
+		err = tx.QueryRow(ctx, `
+			SELECT e.payload->>'approval_id' = $3 AND NOT EXISTS (
+				SELECT 1 FROM events r
+				WHERE r.session_id = $1 AND r.type = $4 AND r.seq > e.seq AND r.payload->>'approval_id' = $3)
+			FROM events e
+			WHERE e.session_id = $1 AND e.type = $2
+			ORDER BY e.seq DESC LIMIT 1`,
+			sessionID, TypeApprovalRequested, approvalID.String(), TypeApprovalResolved).Scan(&open)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("look up open approval: %w", err)
+		}
+		if !open || (decision != DecisionAllow && decision != DecisionDeny) {
+			return ErrNoOpenApproval
+		}
+		_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{resolved}, next)
+		return err
+	})
+}
+
 // ChangeModel appends the User's session.config_changed{model}; the next
 // turn runs on model. A session awaiting the user after an error another
 // model can fix (model_unavailable, billing) becomes runnable too, so that

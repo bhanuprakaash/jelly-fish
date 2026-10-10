@@ -211,6 +211,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
     if (e.type === 'session.status_changed') status = (e.payload as { to: JellyStatus }).to
   }
   const canStop = hasSession && status === 'running'
+  const awaitingApproval = hasSession && status === 'awaiting_approval'
   const steering = hasSession && (status === 'runnable' || status === 'running')
   const created = events.find((e) => e.type === 'session.created')
   const agentName = (created?.payload as { agent?: { name?: string } } | undefined)?.agent?.name
@@ -468,6 +469,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             </button>
           </div>
         </div>
+        {awaitingApproval && <p className="px-2 pt-2 text-xs text-muted">Answer the card above to continue</p>}
         {steering && (
           <p className="px-2 pt-2 text-xs text-muted">
             Running · a message now steers at the next tool result.

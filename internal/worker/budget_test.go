@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
@@ -95,6 +96,34 @@ func TestDollarLimitCrossedByAReplyParksBeforeItsTools(t *testing.T) {
 	exceeded := ofType(evs, eventlog.TypeBudgetExceeded)
 	if len(exceeded) != 1 || exceeded[0].Payload["dimension"] != "dollars" || exceeded[0].Payload["limit"] != 2_000_000.0 || exceeded[0].Payload["used"] != 3_000_000.0 {
 		t.Fatalf("budget.exceeded = %v, want one {dollars, limit 2000000, used 3000000}", exceeded)
+	}
+}
+
+func TestAllowedTurnLimitRunsTheNextTurn(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid, scope := newFakeSession(t, pool)
+	_, err := eventlog.NewStore(pool).Append(t.Context(), sid, nil, []eventlog.NewEvent{{
+		Type: eventlog.TypeConfigChanged, Actor: "user", Payload: map[string]any{"budget": eventlog.Budget{Turns: 1}},
+	}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pause := provider.Response{Message: msg.AssistantText("one moment"), StopReason: provider.StopReasonPauseTurn}
+	startTools(t, pool, &replies{list: []provider.Response{pause, done()}}, 10*time.Second, nil)
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingApproval, 1)
+
+	asked := ofType(loadEvents(t, pool, sid), eventlog.TypeApprovalRequested)
+	approvalID, err := uuid.Parse(asked[0].Payload["approval_id"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eventlog.NewRepo(pool, "fake").ResolveApproval(t.Context(), scope, sid, approvalID, eventlog.DecisionAllow); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 2)
+
+	if n := len(ofType(loadEvents(t, pool, sid), eventlog.TypeTurnStarted)); n != 2 {
+		t.Fatalf("turn.started events = %d, want 2", n)
 	}
 }
 

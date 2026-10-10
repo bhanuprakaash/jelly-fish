@@ -17,6 +17,7 @@ type SessionRepo interface {
 	SessionLastSeq(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) (int64, error)
 	Interrupt(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) error
 	Retry(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) error
+	ResolveApproval(ctx context.Context, scope eventlog.TenantScope, sessionID, approvalID uuid.UUID, decision string) error
 	ChangeModel(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, model string) error
 	Rename(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, title string) error
 	ListSessions(ctx context.Context, scope eventlog.TenantScope) ([]eventlog.SessionSummary, error)

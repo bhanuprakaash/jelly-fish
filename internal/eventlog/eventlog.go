@@ -64,6 +64,11 @@ var ErrDuplicate = errors.New("duplicate event")
 // has no Title of its own.
 var ErrChildSession = errors.New("a child session can't be renamed")
 
+// ErrNoOpenApproval is returned when an approval answer names an approval
+// that is not the session's open one: already answered, unknown, or the
+// session is not awaiting approval.
+var ErrNoOpenApproval = errors.New("no such open approval")
+
 // ErrStale is returned by a fenced park whose ExpectSeq no longer matches
 // last_seq: new events arrived after the fold, so the Worker must refold
 // (event-log.md §5.1).

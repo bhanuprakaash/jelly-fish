@@ -308,6 +308,16 @@ export async function retrySession(sessionId: string): Promise<void> {
   await request(`/api/sessions/${sessionId}/retry`, { method: 'POST' })
 }
 
+// resolveApproval answers the budget card: allow raises the limit, deny parks
+// the session.
+export async function resolveApproval(sessionId: string, approvalId: string, decision: 'allow' | 'deny'): Promise<void> {
+  await request(`/api/sessions/${sessionId}/approvals/${approvalId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }),
+  })
+}
+
 export type Memory = {
   id: string
   scope: 'user' | 'project'

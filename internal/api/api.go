@@ -74,6 +74,7 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.HandleFunc("POST /api/sessions/{id}/messages", handlePostMessage(repo, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/interrupt", handleSessionAction(repo.Interrupt, logger))
 	protected.HandleFunc("POST /api/sessions/{id}/retry", handleSessionAction(repo.Retry, logger))
+	protected.HandleFunc("POST /api/sessions/{id}/approvals/{approval_id}", handleResolveApproval(repo, logger))
 	protected.Handle("GET /api/sessions/{id}/events", rejectCrossSite(http.HandlerFunc(streams.handle)))
 	protected.Handle("GET /api/activity", rejectCrossSite(http.HandlerFunc(streams.handleActivity)))
 

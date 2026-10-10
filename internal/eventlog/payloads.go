@@ -29,6 +29,10 @@ const ApprovalKindBudget = "budget"
 // DecisionAllow is the approval.resolved decision that raises a Budget limit.
 const DecisionAllow = "allow"
 
+// DecisionDeny is the approval.resolved decision that parks the session for
+// the User.
+const DecisionDeny = "deny"
+
 func generalBudget() Budget {
 	return Budget{Tokens: 500_000, CostMicros: 2_000_000, Turns: 25}
 }
