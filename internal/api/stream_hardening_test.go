@@ -127,7 +127,7 @@ func TestSessionEventsNeverSendInternals(t *testing.T) {
 	}}
 	h := newStreams(t, repo, stream.NewHub(), &fakeDeltaBus{}).handle
 	w, stop := serve(t, h, uuid.New())
-	w.waitFor(t, "id: 3\n")
+	w.waitFor(t, "id: 5\n")
 	stop()
 
 	body := strings.ToLower(w.body())
@@ -136,7 +136,7 @@ func TestSessionEventsNeverSendInternals(t *testing.T) {
 			t.Errorf("body contains %q: %q", banned, w.body())
 		}
 	}
-	if got, want := frameIDs(t, w.body()), []int64{1, 3}; !slices.Equal(got, want) {
+	if got, want := frameIDs(t, w.body()), []int64{1, 3, 5}; !slices.Equal(got, want) {
 		t.Errorf("frame ids = %v, want %v", got, want)
 	}
 }

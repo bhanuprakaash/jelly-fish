@@ -132,7 +132,7 @@ Upload the blob before appending the event that references it.
 | `user.message` | message (neutral), upload refs, client_msg_id, skill? (`{skill_id, body}` from `/skill-name`, [agents-skills.md](agents-skills.md) D26) | API | no | `awaiting_user`/`completed`/`failed` → `runnable`; `running` → Steering, no status change; clears `background` |
 | `user.interrupt` | reason | API | no | sets `cancel_requested` |
 | `session.backgrounded` | — (from `/background`) | API | no | sets `background = true`; wall-clock Budget starts at 0 |
-| `session.config_changed` | agent_id?, snapshot?, model?, mode? (from `/agent`, `/model`, `/mode`; [agents-skills.md](agents-skills.md) §7) | API | no | — ; `Fold` applies in order, latest wins; `agent_id` also updates `sessions.agent_id` |
+| `session.config_changed` | agent_id?, snapshot?, model?, mode?, budget? (from `/agent`, `/model`, `/mode`, `/budget`; [agents-skills.md](agents-skills.md) §7) | API | no | — ; `Fold` applies in order, latest wins; `agent_id` also updates `sessions.agent_id` |
 | `session.renamed` | title, by (`auto` / `user`) | API (`user`) or Worker (`auto`) | Worker: yes; API: no | — ; sets `sessions.title`; `auto` is skipped once a `user` rename exists |
 | `turn.started` | turn_id, model, provider, input_through_seq, app_version, tools_hash (full tool list stored as a blob for replay) | Worker | yes | — (intent marker for the LLM call) |
 | `llm.response` | turn_id, message (text/thinking/tool_use blocks), stop_reason, usage | Worker | yes | — |
@@ -415,12 +415,12 @@ Wakeups:
 
 ### 5.9 Budget checks
 
-1. Limits come from the Agent config snapshot in `session.created`, or the latest `session.config_changed` snapshot (`/agent`): tokens, dollars, turns, wall clock. A Child Session's tokens and dollars are also added to its parent's counters on `child.completed` (§5.10).
+1. Limits come from the Agent config snapshot in `session.created`, or the latest `session.config_changed` snapshot (`/agent`): tokens, dollars, turns, wall clock. `PUT /api/sessions/{id}/budget` writes a `budget` there, which replaces all limits and clears earlier allows. A Child Session's tokens and dollars are also added to its parent's counters on `child.completed` (§5.10).
 2. Scope: tokens and dollars accumulate over the whole session. Turns reset with each `user.message`: `Fold` counts `turn.started` events since the last `user.message`; no reset event or extra counter. Wall clock counts only `running` time — waiting (`awaiting_*`) and `sleeping` never count — and applies only to Background Sessions, Child Sessions and System Sessions; a foreground chat session never hits a wall-clock limit. A session becomes a Background Session only via `/background`, which starts its clock at 0; the user's next message returns it to foreground and ends the clock; `/background` again restarts the clock at 0. On/off state: `session.backgrounded` event + `sessions.background` column (same tx). It clears on the next `user.message` or when the agent finishes (`session.completed`); finishing also notifies the user on their Channels. After that the session is a normal foreground chat.
 3. Check **before** each `StartTurn` and `StartTool`, using the projected counters on `sessions` (`tokens_used`, `cost_micros`, `turns`).
 4. Check **after** each `llm.response` (tokens and dollars now include this turn).
 5. On exceed, one fenced tx: `budget.exceeded{dimension, limit, used}` + `approval.requested{kind: budget}` + status `awaiting_approval` (reason `budget`). The Worker returns; the lease is cleared.
-6. Resume is the normal `approval.resolved` path: **allow** raises the exceeded dimension by one more increment equal to the original limit (e.g. 50k → 100k) and resumes; hitting the new ceiling asks again. **deny** leaves the session `awaiting_user` instead of `runnable`.
+6. Resume is the normal `approval.resolved` path: **allow** raises the exceeded dimension by one more increment equal to the original limit (e.g. 50k → 100k) and resumes; hitting the new ceiling asks again. **deny** leaves the session `awaiting_user` instead of `runnable`. The User answers with `POST /api/sessions/{id}/approvals/{approval_id}` `{decision}`.
 
 ### 5.10 Delegation parking
 

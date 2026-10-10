@@ -39,6 +39,30 @@ func TestToUI(t *testing.T) {
 			wantPayload: `{"model":"claude-opus-5-5"}`,
 		},
 		{
+			name:        "session.config_changed keeps the budget",
+			event:       eventlog.Event{Seq: 5, Type: eventlog.TypeConfigChanged, Payload: []byte(`{"budget":{"tokens":600,"cost_micros":0,"turns":3},"snapshot":{"x":1}}`)},
+			wantSent:    true,
+			wantPayload: `{"budget":{"tokens":600,"cost_micros":0,"turns":3}}`,
+		},
+		{
+			name:        "budget.exceeded keeps dimension, limit and used",
+			event:       eventlog.Event{Seq: 11, Type: eventlog.TypeBudgetExceeded, Actor: "worker:w1", Payload: []byte(`{"dimension":"tokens","limit":1000,"used":1200,"other":1}`)},
+			wantSent:    true,
+			wantPayload: `{"dimension":"tokens","limit":1000,"used":1200}`,
+		},
+		{
+			name:        "approval.requested keeps the approval id, kind and dimension",
+			event:       eventlog.Event{Seq: 12, Type: eventlog.TypeApprovalRequested, Actor: "worker:w1", Payload: []byte(`{"approval_id":"a1","kind":"budget","dimension":"tokens","other":1}`)},
+			wantSent:    true,
+			wantPayload: `{"approval_id":"a1","dimension":"tokens","kind":"budget"}`,
+		},
+		{
+			name:        "approval.resolved drops who answered",
+			event:       eventlog.Event{Seq: 13, Type: eventlog.TypeApprovalResolved, Payload: []byte(`{"approval_id":"a1","decision":"allow","by":"user"}`)},
+			wantSent:    true,
+			wantPayload: `{"approval_id":"a1","decision":"allow"}`,
+		},
+		{
 			name:        "session.error without a request id",
 			event:       eventlog.Event{Seq: 9, Type: eventlog.TypeSessionError, Payload: []byte(`{"code":"crash_loop","message":"x","retryable":false}`)},
 			wantSent:    true,

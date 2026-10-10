@@ -372,6 +372,7 @@ func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, s
 	sid := c.SessionID
 	if step.Kind.Spends() {
 		if dimension, limit, used, ok := exceeded(st, step.Kind == StepStartTurn); ok {
+			f.ExpectSeq = &st.LastSeq
 			return w.parkOnBudget(ctx, c, f, dimension, limit, used)
 		}
 	}

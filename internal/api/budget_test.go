@@ -47,9 +47,11 @@ func TestChangeBudgetHandler(t *testing.T) {
 		{"missing cost_micros", map[string]any{"tokens": 1_000_000, "turns": 50}},
 		{"not a number", map[string]any{"tokens": "lots", "cost_micros": 4_000_000, "turns": 50}},
 	} {
-		if code := put(chat, tt.body); code != http.StatusBadRequest {
-			t.Errorf("%s: status %d, want 400", tt.name, code)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			if code := put(chat, tt.body); code != http.StatusBadRequest {
+				t.Errorf("status %d, want 400", code)
+			}
+		})
 	}
 	if got := budgets(); len(got) != 0 {
 		t.Fatalf("budgets = %+v after rejected requests, want none", got)

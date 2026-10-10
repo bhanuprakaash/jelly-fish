@@ -219,6 +219,7 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		}
 		if p.Budget != nil {
 			st.Budget = *p.Budget
+			st.Allows = nil
 		}
 	case eventlog.TypeUserMessage:
 		var p struct {
