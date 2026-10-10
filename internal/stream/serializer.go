@@ -41,6 +41,12 @@ func ToUI(e eventlog.Event) (UIEvent, bool) {
 	case eventlog.TypeApprovalResolved:
 		payload, ok := onlyKeys(e.Payload, "approval_id", "decision")
 		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok
+	case eventlog.TypeElicitationRequested:
+		payload, ok := onlyKeys(e.Payload, "elicitation_id", "tool_call_id", "connector", "requests", "legacy")
+		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok
+	case eventlog.TypeElicitationResolved:
+		payload, ok := onlyKeys(e.Payload, "elicitation_id", "tool_call_id", "action")
+		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok
 	case eventlog.TypeTimerSet:
 		payload, ok := onlyKeys(e.Payload, "wake_at", "reason")
 		return UIEvent{Seq: e.Seq, Type: e.Type, CreatedAt: e.CreatedAt, Payload: payload}, ok

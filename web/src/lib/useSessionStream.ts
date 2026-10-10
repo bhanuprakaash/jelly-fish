@@ -26,6 +26,9 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
   // Tool calls the model has begun writing; each ends with its turn or with
   // its tool.call.requested, which brings the real card.
   const [pendingCalls, setPendingCalls] = useState<PendingCall[]>([])
+  // The latest progress text of each running tool call, by call_id. Ephemeral:
+  // the card shows it only while the call runs.
+  const [progress, setProgress] = useState<Record<string, string>>({})
   const lastSeqRef = useRef(0)
   // Turns that ended (llm.response, turn.interrupted or session.error); a late
   // delta for one is ignored.
@@ -41,6 +44,7 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
       setPartials({})
       setThoughts({})
       setPendingCalls([])
+      setProgress({})
       // A stream opened later can't carry deltas of a turn that already ended.
       doneTurnsRef.current.clear()
       es = new EventSource(`/api/sessions/${sessionId}/events?after=${lastSeqRef.current}`)
@@ -84,6 +88,12 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
       }
       es.addEventListener('delta', (e) => {
         const d = JSON.parse((e as MessageEvent<string>).data) as Delta
+        // A call's progress arrives after its turn's reply has ended.
+        if (d.kind === 'progress') {
+          const { call_id: callId } = d
+          if (callId) setProgress((prev) => ({ ...prev, [callId]: d.text }))
+          return
+        }
         if (doneTurnsRef.current.has(d.turn_id)) return
         if (d.kind === 'reset') {
           setPartials((prev) => {
@@ -119,6 +129,7 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
         setPartials({})
         setThoughts({})
         setPendingCalls([])
+        setProgress({})
         if (es?.readyState === EventSource.CLOSED) {
           setFailed(true)
         }
@@ -142,5 +153,5 @@ export function useSessionStream(sessionId: string, enabled: boolean) {
     }
   }, [sessionId, enabled])
 
-  return { events, partials, thoughts, pendingCalls, connected, failed }
+  return { events, partials, thoughts, pendingCalls, progress, connected, failed }
 }

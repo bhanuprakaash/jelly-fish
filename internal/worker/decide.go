@@ -13,7 +13,8 @@ type StepKind int
 const (
 	// StepMarkInterrupted closes a turn a dead Worker left open.
 	StepMarkInterrupted StepKind = iota + 1
-	// StepMarkToolsInterrupted closes tool calls a dead Worker left started.
+	// StepMarkToolsInterrupted closes tool calls a dead Worker left started,
+	// and ones left waiting for an answer the session moved on without.
 	StepMarkToolsInterrupted
 	// StepFinishDenied closes the calls the User denied and those after them.
 	StepFinishDenied
@@ -75,7 +76,7 @@ func Decide(st State) Step {
 	switch {
 	case st.OpenTurn != nil:
 		return Step{Kind: StepMarkInterrupted, TurnID: st.OpenTurn.ID}
-	case len(st.calls(CallStarted)) > 0:
+	case len(st.calls(CallStarted)) > 0 || len(st.calls(CallWaitingInput)) > 0:
 		return Step{Kind: StepMarkToolsInterrupted}
 	case slices.ContainsFunc(st.calls(CallRequested), func(c Call) bool { return c.Denied || c.Skipped }):
 		return Step{Kind: StepFinishDenied}

@@ -143,8 +143,8 @@ Upload the blob before appending the event that references it. Until uploads arr
 | `tool.call.started` | tool_call_id, idempotency_key, approved_by (`rule:<id>`/`jev`/`user`/`mode`), approver trace | Worker | yes | — (intent marker; the tool runs only after this commits) |
 | `tool.call.completed` | tool_call_id, result (neutral or blob_ref), is_error, denied, duration | Worker | yes | — |
 | `tool.call.interrupted` | tool_call_id, reason (`worker_lost`, `user_interrupt`), note for the model | Worker | yes | — |
-| `elicitation.requested` | connector, schema, request_state | Worker | yes | → `awaiting_user` |
-| `elicitation.resolved` | action (`accept`/`decline`/`cancel`), content (optional) | API | no | → `runnable` |
+| `elicitation.requested` | elicitation_id, tool_call_id, connector, connector_id, requests (key → mode, message, schema?, url?), request_state (modern), legacy? | Worker | yes | → `awaiting_user`; legacy: none |
+| `elicitation.resolved` | elicitation_id, tool_call_id, action (`accept`/`decline`/`cancel`), content (optional), by | API | no | → `runnable`; legacy: none |
 | `budget.exceeded` | dimension (`tokens`/`dollars`/`turns`/`wall_clock`), limit, used | Worker | yes | followed by `approval.requested(kind=budget)` |
 | `sandbox.requested` / `.started` / `.stopped` / `.failed` | sandbox_id, image, reason | Worker | yes | — |
 | `child.started` | child_session_id, agent, task, blocking | Worker (parent) | yes | blocking → `awaiting_children` |

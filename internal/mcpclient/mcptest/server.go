@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -37,8 +38,11 @@ type Server struct {
 	methods  []string
 	lastName string
 	lastArgs json.RawMessage
-	header   http.Header
-	caps     json.RawMessage
+	// lastState and lastResponses are the retry fields of the latest tools/call.
+	lastState     string
+	lastResponses json.RawMessage
+	header        http.Header
+	caps          json.RawMessage
 }
 
 // Start serves an MCP server with no tools on a loopback address.
@@ -73,6 +77,8 @@ func (s *Server) record(r *http.Request, body []byte) string {
 		Params struct {
 			Name         string          `json:"name"`
 			Arguments    json.RawMessage `json:"arguments"`
+			State        string          `json:"requestState"`
+			Responses    json.RawMessage `json:"inputResponses"`
 			Capabilities json.RawMessage `json:"capabilities"`
 			Meta         struct {
 				Capabilities json.RawMessage `json:"io.modelcontextprotocol/clientCapabilities"`
@@ -92,6 +98,7 @@ func (s *Server) record(r *http.Request, body []byte) string {
 	}
 	if req.Method == "tools/call" {
 		s.lastName, s.lastArgs = req.Params.Name, req.Params.Arguments
+		s.lastState, s.lastResponses = req.Params.State, req.Params.Responses
 	}
 	return req.Method
 }
@@ -109,6 +116,14 @@ func (s *Server) LastCall() (name string, args json.RawMessage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lastName, slices.Clone(s.lastArgs)
+}
+
+// LastRetry is the request state and input responses the latest tools/call
+// carried, empty on a call that was not a retry.
+func (s *Server) LastRetry() (state string, responses json.RawMessage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastState, slices.Clone(s.lastResponses)
 }
 
 // Header is the header of the latest POST.
@@ -149,6 +164,46 @@ func (s *Server) AddInputRequiredTool(name string) {
 			InputRequests: mcp.InputRequestMap{"confirm": &mcp.ElicitParams{Message: "Proceed?"}},
 			RequestState:  "state-1",
 		}, nil
+	})
+}
+
+// AddLegacyElicitTool registers a tool that asks the client message through
+// elicitation/create, for a Legacy server, and returns the answer as text:
+// the action, then the content if any.
+func (s *Server) AddLegacyElicitTool(name, message string) {
+	schema := map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}}
+	s.addTool(name, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		res, err := req.Session.Elicit(ctx, &mcp.ElicitParams{Message: message, RequestedSchema: schema})
+		if err != nil {
+			return nil, err
+		}
+		text := res.Action
+		if len(res.Content) > 0 {
+			content, _ := json.Marshal(res.Content)
+			text += " " + string(content)
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil
+	})
+}
+
+// AddProgressTool registers a tool that reports steps of steps progress
+// notifications, then waits sleep or until the call is cancelled, and returns
+// "ok".
+func (s *Server) AddProgressTool(name string, steps int, sleep time.Duration) {
+	s.addTool(name, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		for i := 1; i <= steps; i++ {
+			err := req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
+				ProgressToken: req.Params.GetProgressToken(), Progress: float64(i), Total: float64(steps),
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+		select {
+		case <-time.After(sleep):
+		case <-ctx.Done():
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok"}}}, nil
 	})
 }
 

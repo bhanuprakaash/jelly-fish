@@ -35,6 +35,9 @@ const (
 	TypeBudgetExceeded    = "budget.exceeded"
 	TypeApprovalRequested = "approval.requested"
 	TypeApprovalResolved  = "approval.resolved"
+
+	TypeElicitationRequested = "elicitation.requested"
+	TypeElicitationResolved  = "elicitation.resolved"
 )
 
 // Session statuses this slice uses (event-log.md §3).
@@ -68,6 +71,10 @@ var ErrChildSession = errors.New("a child session can't be renamed")
 // that is not the session's open one: already answered, unknown, or the
 // session is not awaiting approval.
 var ErrNoOpenApproval = errors.New("no such open approval")
+
+// ErrNoOpenElicitation is returned when an elicitation answer names an
+// elicitation that is not open: unknown, already answered, or its call ended.
+var ErrNoOpenElicitation = errors.New("no such open elicitation")
 
 // ErrStale is returned by a fenced park whose ExpectSeq no longer matches
 // last_seq: new events arrived after the fold, so the Worker must refold

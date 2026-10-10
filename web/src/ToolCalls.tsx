@@ -137,7 +137,7 @@ function Row({ sessionId, call, first }: { sessionId: string; call: ToolChip; fi
       : call.state === 'waiting'
         ? 'waiting for approval'
         : call.state === 'running'
-          ? `running · ${elapsed}s`
+          ? `running · ${elapsed}s${call.progress ? ` · ${call.progress}` : ''}`
           : call.state === 'unknown'
             ? 'outcome unknown — check before retrying'
             : call.error

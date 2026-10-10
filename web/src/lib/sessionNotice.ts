@@ -18,6 +18,18 @@ export type Notice =
       args: unknown
       reason?: string
     }
+  | { kind: 'elicitation'; elicitationId: string; connector: string; tool: string; requests: Record<string, ElicitationRequest> }
+
+// ElicitationRequest is one thing a Connector's tool asks the user: a form
+// over a flat schema, or a page to open.
+export type ElicitationRequest = {
+  mode: 'form' | 'url'
+  message: string
+  schema?: { properties?: Record<string, SchemaField>; required?: string[] }
+  url?: string
+}
+
+export type SchemaField = { type?: string; title?: string; description?: string; enum?: string[]; default?: string | number | boolean }
 
 type SessionError = { code: string; retryable: boolean; request_id?: string }
 type TimerSet = { wake_at: string; reason: string }
@@ -33,6 +45,12 @@ type ApprovalRequested = {
   reason?: string
 }
 type ApprovalResolved = { approval_id: string; decision: string }
+type ElicitationRequested = {
+  elicitation_id: string
+  tool_call_id: string
+  connector?: string
+  requests: Record<string, ElicitationRequest>
+}
 
 const budgetField = { tokens: 'tokens', dollars: 'cost_micros', turns: 'turns' } as const
 
@@ -99,6 +117,35 @@ function openToolApproval(events: UIEvent[]): Notice | null {
   }
 }
 
+// openElicitation finds the elicitation a tool call waits on: asked, not yet
+// answered, and its call not ended.
+function openElicitation(events: UIEvent[]): Notice | null {
+  const open = new Map<string, ElicitationRequested>()
+  const tools = new Map<string, string>()
+  for (const e of events) {
+    const p = e.payload as ElicitationRequested & { tool?: string }
+    if (e.type === 'tool.call.requested') {
+      tools.set(p.tool_call_id, p.tool ?? '')
+    } else if (e.type === 'elicitation.requested') {
+      open.set(p.elicitation_id, p)
+    } else if (e.type === 'elicitation.resolved') {
+      open.delete(p.elicitation_id)
+    } else if (e.type === 'tool.call.completed' || e.type === 'tool.call.interrupted') {
+      for (const [id, asked] of open) if (asked.tool_call_id === p.tool_call_id) open.delete(id)
+    }
+  }
+  const asked = open.values().next().value
+  if (!asked) return null
+  const name = tools.get(asked.tool_call_id) ?? ''
+  return {
+    kind: 'elicitation',
+    elicitationId: asked.elicitation_id,
+    connector: asked.connector ?? '',
+    tool: name.includes('__') ? name.slice(name.indexOf('__') + 2) : name,
+    requests: asked.requests,
+  }
+}
+
 // sessionNotice derives the Notice from the stream's events: the session's
 // status is its latest status change, and the cause is the last event that
 // isn't one (a rename says nothing about the session's state either).
@@ -116,6 +163,11 @@ export function sessionNotice(events: UIEvent[]): Notice | null {
   if (!cause) return null
 
   if (status === 'awaiting_approval') return openToolApproval(events) ?? openBudgetApproval(events)
+  // A legacy elicitation holds a running session; a modern one parks it.
+  if (status === 'awaiting_user' || status === 'running') {
+    const asking = openElicitation(events)
+    if (asking) return asking
+  }
   if (status === 'sleeping' && cause.type === 'timer.set') {
     const t = cause.payload as TimerSet
     return { kind: 'sleeping', wakeAt: new Date(t.wake_at), longWait: t.reason === 'long_wait' }

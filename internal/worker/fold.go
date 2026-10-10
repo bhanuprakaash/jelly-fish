@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/blob"
@@ -113,6 +114,9 @@ const (
 	CallAsked CallStatus = iota + 1
 	CallRequested
 	CallStarted
+	// CallWaitingInput is a started call whose server asked for input and
+	// whose session is parked until the User answers.
+	CallWaitingInput
 	CallDone
 )
 
@@ -130,8 +134,29 @@ type Call struct {
 	// a call after it in the batch.
 	Denied, Skipped bool
 	DenyReason      string
+	// StartedSeq is the seq of the call's tool.call.started, which names its
+	// idempotency key.
+	StartedSeq int64
+	// Elicitation is the input the call's server asked for; once the User
+	// answers it, Answer is set and the call is CallRequested again to resume.
+	Elicitation *Elicitation
+	Answer      *Answer
 	// Result is the tool_result part, once the call is done.
 	Result *msg.Part
+}
+
+// Elicitation is a parked call's question. Keys name its requests, as the
+// server did, so the answer can be sent back under each.
+type Elicitation struct {
+	ID           string
+	Keys         []string
+	RequestState string
+}
+
+// Answer is the User's answer to an Elicitation.
+type Answer struct {
+	Action  string
+	Content json.RawMessage
 }
 
 // calls lists the calls that have status.
@@ -386,9 +411,48 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		}
 		if e.Type == eventlog.TypeToolStarted {
 			c.Status = CallStarted
+			if c.StartedSeq == 0 {
+				c.StartedSeq = e.Seq
+			}
 			break
 		}
 		c.Status, c.Ask = CallRequested, p.Ask
+	case eventlog.TypeElicitationRequested:
+		var p struct {
+			ID           string                     `json:"elicitation_id"`
+			CallID       string                     `json:"tool_call_id"`
+			Requests     map[string]json.RawMessage `json:"requests"`
+			RequestState string                     `json:"request_state"`
+			Legacy       bool                       `json:"legacy"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		if p.Legacy {
+			break
+		}
+		c, err := st.call(p.CallID)
+		if err != nil {
+			return err
+		}
+		c.Status, c.Answer = CallWaitingInput, nil
+		c.Elicitation = &Elicitation{ID: p.ID, Keys: slices.Sorted(maps.Keys(p.Requests)), RequestState: p.RequestState}
+	case eventlog.TypeElicitationResolved:
+		var p struct {
+			CallID  string          `json:"tool_call_id"`
+			Action  string          `json:"action"`
+			Content json.RawMessage `json:"content"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		c, err := st.call(p.CallID)
+		if err != nil {
+			return err
+		}
+		if c.Status == CallWaitingInput {
+			c.Status, c.Answer = CallRequested, &Answer{Action: p.Action, Content: p.Content}
+		}
 	case eventlog.TypeToolCompleted:
 		var p struct {
 			CallID  string      `json:"tool_call_id"`

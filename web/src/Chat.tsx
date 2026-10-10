@@ -63,7 +63,7 @@ function refusalNotice(payload: unknown): string {
 
 export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onTitleChanged, onCreated }: Props) {
   const [started, setStarted] = useState(!isNew)
-  const { events, partials, thoughts, pendingCalls, connected, failed } = useSessionStream(sessionId, started)
+  const { events, partials, thoughts, pendingCalls, progress, connected, failed } = useSessionStream(sessionId, started)
   const [showThinking, setShowThinkingState] = useState(getShowThinking)
   // A brand-new chat has a session once its first message creates one; a
   // reopened chat has one once the stream confirms it (streaming's onopen
@@ -154,7 +154,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
 
   const isIncognito = incognito || listIncognito === true
   const chips = new Map(
-    toolChips(events)
+    toolChips(events, progress)
       .filter((c) => !(isIncognito && c.name === 'memory'))
       .map((c) => [c.seq, c]),
   )

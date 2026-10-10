@@ -220,6 +220,52 @@ func handleResolveApproval(repo SessionRepo, logger *slog.Logger) http.HandlerFu
 	}
 }
 
+type resolveElicitationRequest struct {
+	Action  string          `json:"action"`
+	Content json.RawMessage `json:"content"`
+}
+
+func handleResolveElicitation(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := pathID(w, r, "session not found")
+		if !ok {
+			return
+		}
+		elicitationID, err := uuid.Parse(r.PathValue("elicitation_id"))
+		if err != nil {
+			writeError(w, http.StatusNotFound, "elicitation not found")
+			return
+		}
+		var req resolveElicitationRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		switch req.Action {
+		case eventlog.ActionAccept, eventlog.ActionDecline, eventlog.ActionCancel:
+		default:
+			writeError(w, http.StatusBadRequest, "action must be accept, decline or cancel")
+			return
+		}
+		var fields map[string]json.RawMessage
+		if len(req.Content) > 0 && (req.Action != eventlog.ActionAccept || json.Unmarshal(req.Content, &fields) != nil || fields == nil) {
+			writeError(w, http.StatusBadRequest, "content must be an object and only goes with accept")
+			return
+		}
+		answer := eventlog.ElicitationAnswer{Action: req.Action, Content: req.Content}
+		switch err := repo.ResolveElicitation(r.Context(), scopeFrom(r), sessionID, elicitationID, answer); {
+		case errors.Is(err, eventlog.ErrNotFound):
+			writeError(w, http.StatusNotFound, "session not found")
+		case errors.Is(err, eventlog.ErrNoOpenElicitation):
+			writeError(w, http.StatusConflict, "no such open elicitation")
+		case err != nil:
+			logger.Error("resolve elicitation", "error", err, "session_id", sessionID)
+			writeError(w, http.StatusInternalServerError, "could not resolve elicitation")
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}
+}
+
 func handleGetBlob(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID, ok := pathID(w, r, "blob not found")

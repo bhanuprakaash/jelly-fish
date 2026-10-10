@@ -63,6 +63,18 @@ func TestToUI(t *testing.T) {
 			wantPayload: `{"approval_id":"a1","args":{"q":1},"connector":"Notion","kind":"tool","reason":"r","tool":"notion__x","tool_call_id":"c1"}`,
 		},
 		{
+			name:        "elicitation.requested keeps what to ask and drops the request state",
+			event:       eventlog.Event{Seq: 14, Type: eventlog.TypeElicitationRequested, Payload: []byte(`{"elicitation_id":"e1","tool_call_id":"c1","connector":"Notion","connector_id":"i","requests":{"k":{"mode":"url","message":"m","url":"https://a.example"}},"request_state":"s","legacy":true}`)},
+			wantSent:    true,
+			wantPayload: `{"connector":"Notion","elicitation_id":"e1","legacy":true,"requests":{"k":{"mode":"url","message":"m","url":"https://a.example"}},"tool_call_id":"c1"}`,
+		},
+		{
+			name:        "elicitation.resolved drops the content and who answered",
+			event:       eventlog.Event{Seq: 15, Type: eventlog.TypeElicitationResolved, Payload: []byte(`{"elicitation_id":"e1","tool_call_id":"c1","action":"accept","content":{"pw":"x"},"by":"u"}`)},
+			wantSent:    true,
+			wantPayload: `{"action":"accept","elicitation_id":"e1","tool_call_id":"c1"}`,
+		},
+		{
 			name:        "approval.resolved drops who answered",
 			event:       eventlog.Event{Seq: 13, Type: eventlog.TypeApprovalResolved, Payload: []byte(`{"approval_id":"a1","decision":"allow","by":"user"}`)},
 			wantSent:    true,

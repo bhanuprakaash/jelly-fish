@@ -63,6 +63,7 @@ type Worker struct {
 	tools    *tool.Registry
 	held     held
 	cancels  cancels
+	elicits  elicitWaiters
 	deltas   DeltaPublisher
 	lease    Lease
 	upcast   eventlog.Upcasters
@@ -72,6 +73,8 @@ type Worker struct {
 	slots    chan struct{}
 	// titleTimeout bounds each Title call; zero or less turns Titles off.
 	titleTimeout time.Duration
+	// legacyHold is how long a legacy elicitation holds its call.
+	legacyHold time.Duration
 
 	// connectors and mcp add each session's Project Connectors to tools; both
 	// are nil when the Worker has none.
@@ -101,6 +104,7 @@ func New(pool *pgxpool.Pool, gw Gateway, tools *tool.Registry, deltas DeltaPubli
 		slots:   make(chan struct{}, maxSessions),
 
 		titleTimeout: defaultTitleTimeout,
+		legacyHold:   defaultLegacyHold,
 	}
 }
 
@@ -156,8 +160,9 @@ func (w *Worker) claimAll(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-// listen wakes the claim loop on every jf_runnable NOTIFY and cancels the
-// session named by every jf_cancel NOTIFY, reconnecting when the connection
+// listen wakes the claim loop on every jf_runnable NOTIFY, cancels the
+// session named by every jf_cancel NOTIFY and wakes the call held on the
+// elicitation named by every jf_elicit NOTIFY, reconnecting when the connection
 // drops. The poll and the heartbeat cover anything missed meanwhile.
 func (w *Worker) listen(ctx context.Context, wake chan<- struct{}) {
 	for ctx.Err() == nil {
@@ -177,7 +182,7 @@ func (w *Worker) listenOnce(ctx context.Context, wake chan<- struct{}) error {
 		return fmt.Errorf("acquire conn: %w", err)
 	}
 	defer conn.Release()
-	for _, ch := range []string{runnableChannel, cancelChannel} {
+	for _, ch := range []string{runnableChannel, cancelChannel, elicitChannel} {
 		if _, err := conn.Exec(ctx, "LISTEN "+ch); err != nil {
 			return fmt.Errorf("listen %s: %w", ch, err)
 		}
@@ -187,10 +192,14 @@ func (w *Worker) listenOnce(ctx context.Context, wake chan<- struct{}) error {
 		if err != nil {
 			return fmt.Errorf("wait for notification: %w", err)
 		}
-		if n.Channel == cancelChannel {
+		switch n.Channel {
+		case cancelChannel:
 			if sid, err := uuid.Parse(n.Payload); err == nil {
 				w.cancels.interrupt(sid)
 			}
+			continue
+		case elicitChannel:
+			w.elicits.wake(n.Payload)
 			continue
 		}
 		select {

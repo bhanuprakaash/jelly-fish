@@ -29,6 +29,7 @@ type fakeRepo struct {
 	interruptErr, retryErr      error
 	resolveErr                  error
 	resolved                    eventlog.Answer
+	elicited                    eventlog.ElicitationAnswer
 	interrupted, retried        []uuid.UUID
 	events                      []eventlog.Event
 }
@@ -49,6 +50,11 @@ func (f *fakeRepo) CreateSession(context.Context, eventlog.TenantScope, uuid.UUI
 
 func (f *fakeRepo) ResolveApproval(_ context.Context, _ eventlog.TenantScope, _, _ uuid.UUID, a eventlog.Answer) error {
 	f.resolved = a
+	return f.resolveErr
+}
+
+func (f *fakeRepo) ResolveElicitation(_ context.Context, _ eventlog.TenantScope, _, _ uuid.UUID, a eventlog.ElicitationAnswer) error {
+	f.elicited = a
 	return f.resolveErr
 }
 
@@ -261,6 +267,45 @@ func TestResolveApprovalHandler(t *testing.T) {
 			}
 			if repo.resolved != tt.wantAnswer {
 				t.Fatalf("repo answered %+v, want %+v", repo.resolved, tt.wantAnswer)
+			}
+		})
+	}
+}
+
+func TestResolveElicitationHandler(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		repoErr    error
+		wantStatus int
+		wantAction string
+		wantBody   string
+	}{
+		{"accept with content", `{"action":"accept","content":{"confirm":true}}`, nil, http.StatusNoContent, "accept", `{"confirm":true}`},
+		{"decline", `{"action":"decline"}`, nil, http.StatusNoContent, "decline", ""},
+		{"cancel", `{"action":"cancel"}`, nil, http.StatusNoContent, "cancel", ""},
+		{"unknown action", `{"action":"maybe"}`, nil, http.StatusBadRequest, "", ""},
+		{"no action", `{}`, nil, http.StatusBadRequest, "", ""},
+		{"content that is not an object", `{"action":"accept","content":[1]}`, nil, http.StatusBadRequest, "", ""},
+		{"content with decline", `{"action":"decline","content":{"a":1}}`, nil, http.StatusBadRequest, "", ""},
+		{"another tenant's session", `{"action":"accept"}`, eventlog.ErrNotFound, http.StatusNotFound, "accept", ""},
+		{"no open elicitation", `{"action":"accept"}`, eventlog.ErrNoOpenElicitation, http.StatusConflict, "accept", ""},
+		{"repo failing", `{"action":"accept"}`, errors.New("db down"), http.StatusInternalServerError, "accept", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &fakeRepo{resolveErr: tt.repoErr}
+			srv := newTestServer(t, repo)
+			url := "/api/sessions/" + uuid.NewString() + "/elicitations/" + uuid.NewString()
+			req := signIn(httptest.NewRequest(http.MethodPost, url, strings.NewReader(tt.body)))
+			rr := httptest.NewRecorder()
+			srv.Handler.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d (body %s)", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+			if repo.elicited.Action != tt.wantAction || string(repo.elicited.Content) != tt.wantBody {
+				t.Fatalf("repo answered %q %s, want %q %s", repo.elicited.Action, repo.elicited.Content, tt.wantAction, tt.wantBody)
 			}
 		})
 	}

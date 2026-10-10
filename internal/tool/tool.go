@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/bhanuprakaash/jelly-fish/internal/mcpclient"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 )
 
@@ -45,7 +46,26 @@ type CallInput struct {
 	CallID, IdempotencyKey string
 	Args                   json.RawMessage
 	Session                Session
+	// Resume carries the User's answer when the call retries after returning
+	// InputRequired; Args stay the original.
+	Resume *Resume
+	// Elicit asks the User during the call and blocks for the answer; Progress
+	// reports how far the call is. Either may be nil.
+	Elicit   func(ctx context.Context, req InputRequest) (InputResponse, error)
+	Progress func(message string, progress, total float64)
 }
+
+// InputRequired is what a call needs answered before it can finish.
+type InputRequired = mcpclient.InputRequired
+
+// InputRequest is one question of an InputRequired, or a legacy elicitation.
+type InputRequest = mcpclient.InputRequest
+
+// InputResponse is the User's answer to one InputRequest.
+type InputResponse = mcpclient.InputResponse
+
+// Resume is the answer a call retries with.
+type Resume = mcpclient.ResumeMeta
 
 // Session is the session a call runs for.
 type Session struct {
@@ -61,6 +81,9 @@ type Session struct {
 type Result struct {
 	Content []msg.Part
 	IsError bool
+	// InputRequired is set when the call cannot finish before the User answers.
+	// The Worker parks the session, and the call runs again with Resume.
+	InputRequired *InputRequired
 	// Commit, if set, runs in the transaction that records the call's
 	// completion, so the call's database writes land with it or not at all.
 	// The Result it returns replaces this one, and its Events are appended
