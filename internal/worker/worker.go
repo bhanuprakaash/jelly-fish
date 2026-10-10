@@ -224,7 +224,7 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 		case errors.Is(err, eventlog.ErrStale):
 			continue
 		case errors.Is(err, errParked):
-			logger.Info("session parked after provider error")
+			logger.Info("session parked")
 			return
 		case err != nil:
 			w.stop(ctx, logger, c, err)
@@ -370,6 +370,11 @@ func (w *Worker) actor() string { return "worker:" + w.id }
 
 func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State, step Step) error {
 	sid := c.SessionID
+	if step.Kind.Spends() {
+		if dimension, limit, used, ok := exceeded(st, step.Kind == StepStartTurn); ok {
+			return w.parkOnBudget(ctx, c, f, dimension, limit, used)
+		}
+	}
 	switch step.Kind {
 	case StepMarkInterrupted:
 		_, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
@@ -396,6 +401,19 @@ func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, s
 		return err
 	}
 	return fmt.Errorf("unknown step %d", step.Kind)
+}
+
+// parkOnBudget asks the User to allow a limit that is used up, and parks the
+// session until they answer (event-log.md §5.9).
+func (w *Worker) parkOnBudget(ctx context.Context, c eventlog.Claim, f eventlog.Fence, dimension string, limit, used int64) error {
+	_, err := w.store.AppendFenced(ctx, c.SessionID, f, []eventlog.NewEvent{
+		{Type: eventlog.TypeBudgetExceeded, Actor: w.actor(), Payload: map[string]any{"dimension": dimension, "limit": limit, "used": used}},
+		{Type: eventlog.TypeApprovalRequested, Actor: w.actor(), Payload: map[string]any{"approval_id": uuid.New(), "kind": eventlog.ApprovalKindBudget, "dimension": dimension}},
+	}, &eventlog.StatusChange{To: eventlog.StatusAwaitingApproval, Reason: "budget"})
+	if err != nil {
+		return err
+	}
+	return errParked
 }
 
 func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {

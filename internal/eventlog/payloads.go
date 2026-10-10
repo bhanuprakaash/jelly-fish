@@ -8,10 +8,35 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 )
 
+// Budget is the token, dollar and turn limits of a session; a zero limit is
+// no limit. Turns count per user.message (event-log.md §5.9).
+type Budget struct {
+	Tokens     int64 `json:"tokens"`
+	CostMicros int64 `json:"cost_micros"`
+	Turns      int   `json:"turns"`
+}
+
+// Budget dimensions, as budget.exceeded and approval.requested name them.
+const (
+	DimTokens  = "tokens"
+	DimDollars = "dollars"
+	DimTurns   = "turns"
+)
+
+// ApprovalKindBudget is the kind of an approval.requested for a Budget limit.
+const ApprovalKindBudget = "budget"
+
+// DecisionAllow is the approval.resolved decision that raises a Budget limit.
+const DecisionAllow = "allow"
+
+func generalBudget() Budget {
+	return Budget{Tokens: 500_000, CostMicros: 2_000_000, Turns: 25}
+}
+
 func sessionCreatedPayload(model string) map[string]any {
 	return map[string]any{
 		"agent_id": generalAgent(),
-		"agent":    map[string]string{"name": "General", "model": model},
+		"agent":    map[string]any{"name": "General", "model": model, "budget": generalBudget()},
 		"trigger":  TriggerUserMessage,
 	}
 }

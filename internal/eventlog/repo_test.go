@@ -161,6 +161,39 @@ func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestPostMessage_WhileAwaitingApprovalIsStoredAndStatusStays(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	scope := testdb.NewUser(t, pool).Scope()
+	sessionID := uuid.New()
+
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", "", false); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if _, err := eventlog.NewStore(pool).Append(t.Context(), sessionID, nil, nil, &eventlog.StatusChange{To: eventlog.StatusAwaitingApproval, Reason: "budget"}); err != nil {
+		t.Fatalf("park: %v", err)
+	}
+
+	seq, err := repo.PostMessage(t.Context(), scope, sessionID, uuid.New(), "more")
+	if err != nil {
+		t.Fatalf("PostMessage: %v", err)
+	}
+	evs, err := repo.ListEvents(t.Context(), scope, sessionID, seq-1)
+	if err != nil {
+		t.Fatalf("ListEvents: %v", err)
+	}
+	if len(evs) != 1 || evs[0].Type != eventlog.TypeUserMessage {
+		t.Fatalf("events from seq %d = %v, want one user.message", seq, evs)
+	}
+	var status string
+	if err := pool.QueryRow(t.Context(), `SELECT status FROM sessions WHERE id = $1`, sessionID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != eventlog.StatusAwaitingApproval {
+		t.Fatalf("status = %s, want %s", status, eventlog.StatusAwaitingApproval)
+	}
+}
+
 func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool, "fake")
