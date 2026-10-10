@@ -86,6 +86,7 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	apiSrv := api.NewServer(cfg.APIAddr, logger, webFS, repo, hub, deltas, metrics, api.AuthConfig{
 		Authenticator:  authStore,
 		Admin:          authStore,
+		UserSessions:   eventlog.NewStore(pool),
 		Mailer:         mailer,
 		PublicURL:      cfg.PublicURL,
 		InsecureCookie: cfg.DevInsecureCookie,

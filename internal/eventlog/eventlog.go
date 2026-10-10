@@ -13,25 +13,28 @@ import (
 
 // Event types this slice writes and reads (event-log.md §4).
 const (
-	TypeSessionCreated   = "session.created"
-	TypeUserMessage      = "user.message"
-	TypeStatusChanged    = "session.status_changed"
-	TypeTurnStarted      = "turn.started"
-	TypeTurnInterrupted  = "turn.interrupted"
-	TypeLLMResponse      = "llm.response"
-	TypeUsageRecorded    = "usage.recorded"
-	TypeSessionError     = "session.error"
-	TypeSessionCompleted = "session.completed"
-	TypeUserInterrupt    = "user.interrupt"
-	TypeTimerSet         = "timer.set"
-	TypeTimerFired       = "timer.fired"
-	TypeConfigChanged    = "session.config_changed"
-	TypeSessionRenamed   = "session.renamed"
-	TypeToolRequested    = "tool.call.requested"
-	TypeToolStarted      = "tool.call.started"
-	TypeToolCompleted    = "tool.call.completed"
-	TypeToolInterrupted  = "tool.call.interrupted"
-	TypeMemoryWritten    = "memory.written"
+	TypeSessionCreated    = "session.created"
+	TypeUserMessage       = "user.message"
+	TypeStatusChanged     = "session.status_changed"
+	TypeTurnStarted       = "turn.started"
+	TypeTurnInterrupted   = "turn.interrupted"
+	TypeLLMResponse       = "llm.response"
+	TypeUsageRecorded     = "usage.recorded"
+	TypeSessionError      = "session.error"
+	TypeSessionCompleted  = "session.completed"
+	TypeUserInterrupt     = "user.interrupt"
+	TypeTimerSet          = "timer.set"
+	TypeTimerFired        = "timer.fired"
+	TypeConfigChanged     = "session.config_changed"
+	TypeSessionRenamed    = "session.renamed"
+	TypeToolRequested     = "tool.call.requested"
+	TypeToolStarted       = "tool.call.started"
+	TypeToolCompleted     = "tool.call.completed"
+	TypeToolInterrupted   = "tool.call.interrupted"
+	TypeMemoryWritten     = "memory.written"
+	TypeBudgetExceeded    = "budget.exceeded"
+	TypeApprovalRequested = "approval.requested"
+	TypeApprovalResolved  = "approval.resolved"
 )
 
 // Session statuses this slice uses (event-log.md §3).
@@ -60,6 +63,11 @@ var ErrDuplicate = errors.New("duplicate event")
 // ErrChildSession is returned when a rename targets a Child Session, which
 // has no Title of its own.
 var ErrChildSession = errors.New("a child session can't be renamed")
+
+// ErrNoOpenApproval is returned when an approval answer names an approval
+// that is not the session's open one: already answered, unknown, or the
+// session is not awaiting approval.
+var ErrNoOpenApproval = errors.New("no such open approval")
 
 // ErrStale is returned by a fenced park whose ExpectSeq no longer matches
 // last_seq: new events arrived after the fold, so the Worker must refold

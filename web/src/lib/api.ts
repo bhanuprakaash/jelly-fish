@@ -1,3 +1,5 @@
+import type { Budget } from './budget'
+
 // Payload of a user.message event (internal/msg.Message, ADR 0002). Events
 // arrive as stored: msg_v 1 parts carry `type`, msg_v 2 and up carry `k`. Only
 // text parts have a top-level `text`.
@@ -250,6 +252,14 @@ export async function changeModel(sessionId: string, model: string): Promise<voi
   })
 }
 
+export async function changeBudget(sessionId: string, budget: Budget): Promise<void> {
+  await request(`/api/sessions/${sessionId}/budget`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(budget),
+  })
+}
+
 export type ChatSummary = {
   id: string
   // title is the chat's Title, else a placeholder cut from its first message.
@@ -306,6 +316,14 @@ export async function interruptSession(sessionId: string): Promise<void> {
 // retrySession is "Retry now" after a Provider error.
 export async function retrySession(sessionId: string): Promise<void> {
   await request(`/api/sessions/${sessionId}/retry`, { method: 'POST' })
+}
+
+export async function resolveApproval(sessionId: string, approvalId: string, decision: 'allow' | 'deny'): Promise<void> {
+  await request(`/api/sessions/${sessionId}/approvals/${approvalId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }),
+  })
 }
 
 export type Memory = {

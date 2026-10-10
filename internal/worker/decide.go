@@ -1,5 +1,7 @@
 package worker
 
+import "github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+
 // StepKind is what exec does next.
 type StepKind int
 
@@ -25,6 +27,33 @@ const maxPauses = 5
 
 // Parks reports whether the step ends the drive loop by changing status.
 func (k StepKind) Parks() bool { return k == StepComplete }
+
+// Spends reports whether the step makes the session do more work, so the
+// Budget applies before it.
+func (k StepKind) Spends() bool {
+	return k == StepRequestTools || k == StepStartTool || k == StepStartTurn
+}
+
+// exceeded reports the first Budget dimension st has used up. Turns count
+// only before a new turn, which is what they limit.
+func exceeded(st State, newTurn bool) (dimension string, limit, used int64, ok bool) {
+	dims := []struct {
+		name string
+		used int64
+	}{{eventlog.DimTokens, st.TokensUsed}, {eventlog.DimDollars, st.CostMicros}}
+	if newTurn {
+		dims = append(dims, struct {
+			name string
+			used int64
+		}{eventlog.DimTurns, int64(st.TurnsSinceUser)})
+	}
+	for _, d := range dims {
+		if l := st.Limit(d.name); l > 0 && d.used >= l {
+			return d.name, l, d.used, true
+		}
+	}
+	return "", 0, 0, false
+}
 
 // Step is Decide's verdict for a State.
 type Step struct {

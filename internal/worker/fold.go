@@ -19,6 +19,15 @@ type State struct {
 	TokensUsed int64
 	CostMicros int64
 	Turns      int
+	// Budget is the limits of the latest snapshot; Limit adds what allows
+	// raised them by.
+	Budget eventlog.Budget
+	// Allows counts, per dimension, the budget approvals answered allow.
+	Allows map[string]int
+	// OpenApproval is set from approval.requested until its approval.resolved.
+	OpenApproval *Approval
+	// TurnsSinceUser counts turn.started since the last user.message.
+	TurnsSinceUser int
 	// InputThroughSeq is the last_seq the latest completed turn was started
 	// from. An interrupted turn doesn't advance it, so its input is re-run.
 	InputThroughSeq int64
@@ -57,6 +66,35 @@ type State struct {
 	ToolsRan bool
 	// Pauses counts the replies in a row that stopped with pause_turn.
 	Pauses int
+	// afterStop is set from a turn the User interrupted until the next
+	// user.message, which then carries interruptMarker.
+	afterStop bool
+}
+
+// interruptMarker prefixes the user message that follows an interrupted turn,
+// so the model knows its last reply was cut off (agent-loop.md Decision 10).
+const interruptMarker = "[Previous turn interrupted by user]\n\n"
+
+// Approval is a question waiting for the User's answer.
+type Approval struct {
+	ID        string
+	Kind      string
+	Dimension string
+}
+
+// Limit is the limit of a budget dimension: the snapshot's value plus one
+// more of it for each allow.
+func (st State) Limit(dimension string) int64 {
+	var base int64
+	switch dimension {
+	case eventlog.DimTokens:
+		base = st.Budget.Tokens
+	case eventlog.DimDollars:
+		base = st.Budget.CostMicros
+	case eventlog.DimTurns:
+		base = int64(st.Budget.Turns)
+	}
+	return base * int64(1+st.Allows[dimension])
 }
 
 // CallStatus is how far a tool call has got.
@@ -154,7 +192,8 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 	case eventlog.TypeSessionCreated:
 		var p struct {
 			Agent struct {
-				Model string `json:"model"`
+				Model  string          `json:"model"`
+				Budget eventlog.Budget `json:"budget"`
 			} `json:"agent"`
 			Trigger  string  `json:"trigger"`
 			ParentID *string `json:"parent_id"`
@@ -164,17 +203,23 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		}
 		st.Status = eventlog.StatusRunnable
 		st.Model = p.Agent.Model
+		st.Budget = p.Agent.Budget
 		st.Trigger = cmp.Or(p.Trigger, eventlog.TriggerUserMessage)
 		st.TopLevel = p.ParentID == nil
 	case eventlog.TypeConfigChanged:
 		var p struct {
-			Model string `json:"model"`
+			Model  string           `json:"model"`
+			Budget *eventlog.Budget `json:"budget"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
 		if p.Model != "" {
 			st.Model = p.Model
+		}
+		if p.Budget != nil {
+			st.Budget = *p.Budget
+			st.Allows = nil
 		}
 	case eventlog.TypeUserMessage:
 		var p struct {
@@ -183,9 +228,19 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
+		if st.afterStop {
+			for i, part := range p.Message.Parts {
+				if part.Kind == msg.KindText {
+					p.Message.Parts[i].Text = interruptMarker + part.Text
+					break
+				}
+			}
+			st.afterStop = false
+		}
 		st.Messages = append(st.Messages, p.Message)
 		*userSeqs = append(*userSeqs, e.Seq)
 		st.RetryStep = 0
+		st.TurnsSinceUser = 0
 		st.ToolsSinceUser = nil
 		st.Pauses = 0
 	case eventlog.TypeStatusChanged:
@@ -207,6 +262,36 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		}
 		st.OpenTurn = &Turn{ID: p.TurnID, Provider: p.Provider, InputThroughSeq: p.InputThroughSeq}
 		st.TurnsStarted++
+		st.TurnsSinceUser++
+	case eventlog.TypeApprovalRequested:
+		var p struct {
+			ApprovalID string `json:"approval_id"`
+			Kind       string `json:"kind"`
+			Dimension  string `json:"dimension"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		st.OpenApproval = &Approval{ID: p.ApprovalID, Kind: p.Kind, Dimension: p.Dimension}
+	case eventlog.TypeApprovalResolved:
+		var p struct {
+			ApprovalID string `json:"approval_id"`
+			Decision   string `json:"decision"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
+		a := st.OpenApproval
+		if a == nil || a.ID != p.ApprovalID {
+			break
+		}
+		if a.Kind == eventlog.ApprovalKindBudget && p.Decision == eventlog.DecisionAllow {
+			if st.Allows == nil {
+				st.Allows = map[string]int{}
+			}
+			st.Allows[a.Dimension]++
+		}
+		st.OpenApproval = nil
 	case eventlog.TypeSessionRenamed:
 		st.Renamed = true
 	case eventlog.TypeLLMResponse:
@@ -290,7 +375,14 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			CallID: p.CallID, IsError: true, Parts: []msg.Part{{Kind: msg.KindText, Text: p.Note}},
 		}})
 	case eventlog.TypeTurnInterrupted:
+		var p struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
 		st.OpenTurn = nil
+		st.afterStop = p.Reason == "user_interrupt"
 	case eventlog.TypeSessionError:
 		var p struct {
 			Retryable bool `json:"retryable"`

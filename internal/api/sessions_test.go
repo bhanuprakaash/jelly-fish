@@ -27,6 +27,7 @@ type fakeRepo struct {
 	lastSeqErr, listErr         error
 	listSessionsErr             error
 	interruptErr, retryErr      error
+	resolveErr                  error
 	interrupted, retried        []uuid.UUID
 	events                      []eventlog.Event
 }
@@ -45,7 +46,15 @@ func (f *fakeRepo) CreateSession(context.Context, eventlog.TenantScope, uuid.UUI
 	return f.createSeq, f.createErr
 }
 
+func (f *fakeRepo) ResolveApproval(context.Context, eventlog.TenantScope, uuid.UUID, uuid.UUID, string) error {
+	return f.resolveErr
+}
+
 func (f *fakeRepo) ChangeModel(context.Context, eventlog.TenantScope, uuid.UUID, string) error {
+	return nil
+}
+
+func (f *fakeRepo) ChangeBudget(context.Context, eventlog.TenantScope, uuid.UUID, eventlog.Budget) error {
 	return nil
 }
 
@@ -208,6 +217,36 @@ func TestInterruptAndRetryHandlers(t *testing.T) {
 			}
 			if len(called) != 1 || called[0] != sid {
 				t.Fatalf("repo called with %v, want the path's session id", called)
+			}
+		})
+	}
+}
+
+func TestResolveApprovalHandler(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		repoErr    error
+		wantStatus int
+	}{
+		{"allow", `{"decision":"allow"}`, nil, http.StatusNoContent},
+		{"deny", `{"decision":"deny"}`, nil, http.StatusNoContent},
+		{"unknown decision", `{"decision":"maybe"}`, nil, http.StatusBadRequest},
+		{"no decision", `{}`, nil, http.StatusBadRequest},
+		{"another tenant's session", `{"decision":"allow"}`, eventlog.ErrNotFound, http.StatusNotFound},
+		{"not the open approval", `{"decision":"allow"}`, eventlog.ErrNoOpenApproval, http.StatusConflict},
+		{"repo failing", `{"decision":"allow"}`, errors.New("db down"), http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newTestServer(t, &fakeRepo{resolveErr: tt.repoErr})
+			url := "/api/sessions/" + uuid.NewString() + "/approvals/" + uuid.NewString()
+			req := signIn(httptest.NewRequest(http.MethodPost, url, strings.NewReader(tt.body)))
+			rr := httptest.NewRecorder()
+			srv.Handler.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d (body %s)", rr.Code, tt.wantStatus, rr.Body.String())
 			}
 		})
 	}

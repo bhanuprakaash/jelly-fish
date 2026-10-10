@@ -313,27 +313,23 @@ func TestInterruptKeepsASleepingSessionFromRetrying(t *testing.T) {
 	assertFoldMatchesRow(t, pool, sid)
 }
 
-func TestInterruptReachesARunningTurnThroughTheHeartbeat(t *testing.T) {
-	pool := testdb.NewPool(t)
-	sid, scope := newFakeSession(t, pool)
-	p := &scripted{results: []error{nil}, block: true, started: make(chan struct{}, 1)}
-	startScripted(t, pool, p, 20*time.Millisecond)
+func blockingProvider() *scripted {
+	return &scripted{results: []error{nil}, block: true, started: make(chan struct{}, 1)}
+}
 
+func waitProviderCalled(t *testing.T, p *scripted) {
+	t.Helper()
 	select {
 	case <-p.started:
 	case <-time.After(15 * time.Second):
 		t.Fatal("provider never called")
 	}
-	if err := eventlog.NewRepo(pool, fake.Name).Interrupt(t.Context(), scope, sid); err != nil {
-		t.Fatal(err)
-	}
-	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 0)
-	assertFoldMatchesRow(t, pool, sid)
+}
 
+func assertStoppedByUser(t *testing.T, pool *pgxpool.Pool, sid uuid.UUID, p *scripted) {
+	t.Helper()
+	assertFoldMatchesRow(t, pool, sid)
 	evs := loadEvents(t, pool, sid)
-	if n := len(ofType(evs, eventlog.TypeUserInterrupt)); n != 1 {
-		t.Fatalf("user.interrupt events = %d", n)
-	}
 	ti := ofType(evs, eventlog.TypeTurnInterrupted)
 	if len(ti) != 1 || ti[0].Payload["reason"] != "user_interrupt" {
 		t.Fatalf("turn.interrupted = %v, want one user_interrupt", ti)
@@ -349,6 +345,97 @@ func TestInterruptReachesARunningTurnThroughTheHeartbeat(t *testing.T) {
 	if n := p.callCount(); n != 1 {
 		t.Fatalf("provider calls = %d", n)
 	}
+}
+
+func TestInterruptStopsARunningTurnWithinASecond(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid, scope := newFakeSession(t, pool)
+	p := blockingProvider()
+	startScripted(t, pool, p, 30*time.Second)
+	waitProviderCalled(t, p)
+
+	began := time.Now()
+	if err := eventlog.NewRepo(pool, fake.Name).Interrupt(t.Context(), scope, sid); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 0)
+	if took := time.Since(began); took > time.Second {
+		t.Fatalf("stopped after %v, want under 1s", took)
+	}
+	assertStoppedByUser(t, pool, sid, p)
+}
+
+func TestDisablingTheUserStopsItsRunningTurn(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid, scope := newFakeSession(t, pool)
+	p := blockingProvider()
+	startScripted(t, pool, p, 30*time.Second)
+	waitProviderCalled(t, p)
+
+	if err := eventlog.NewStore(pool).InterruptUserSessions(t.Context(), scope.UserID, "user:admin"); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 0)
+
+	evs := loadEvents(t, pool, sid)
+	ui := ofType(evs, eventlog.TypeUserInterrupt)
+	if len(ui) != 1 || ui[0].Payload["reason"] != "user_disabled" {
+		t.Fatalf("user.interrupt = %v, want one user_disabled", ui)
+	}
+	ti := ofType(evs, eventlog.TypeTurnInterrupted)
+	if len(ti) != 1 || ti[0].Payload["reason"] != "user_interrupt" {
+		t.Fatalf("turn.interrupted = %v, want one user_interrupt", ti)
+	}
+}
+
+// Flagging the row without a notify is what a lost notify looks like.
+func TestInterruptReachesARunningTurnThroughTheHeartbeat(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid, _ := newFakeSession(t, pool)
+	p := blockingProvider()
+	startScripted(t, pool, p, time.Second)
+	waitProviderCalled(t, p)
+
+	began := time.Now()
+	if _, err := pool.Exec(t.Context(), `UPDATE sessions SET cancel_requested = true WHERE id = $1`, sid); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 0)
+	if took := time.Since(began); took > 10*time.Second {
+		t.Fatalf("stopped after %v, want within 10s", took)
+	}
+	assertStoppedByUser(t, pool, sid, p)
+}
+
+func TestCancelNotifyForAnotherSessionIsIgnored(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid, scope := newFakeSession(t, pool)
+	p := blockingProvider()
+	startScripted(t, pool, p, 30*time.Second)
+	waitProviderCalled(t, p)
+
+	for _, payload := range []string{uuid.NewString(), "not a session id"} {
+		if _, err := pool.Exec(t.Context(), `SELECT pg_notify('jf_cancel', $1)`, payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := len(ofType(loadEvents(t, pool, sid), eventlog.TypeTurnInterrupted)); n != 0 {
+		t.Fatalf("turn.interrupted events = %d, want none", n)
+	}
+	var status string
+	var cancel bool
+	if err := pool.QueryRow(t.Context(), `SELECT status, cancel_requested FROM sessions WHERE id = $1`, sid).Scan(&status, &cancel); err != nil {
+		t.Fatal(err)
+	}
+	if status != eventlog.StatusRunning || cancel {
+		t.Fatalf("status = %s, cancel_requested = %v, want running without cancel", status, cancel)
+	}
+
+	if err := eventlog.NewRepo(pool, fake.Name).Interrupt(t.Context(), scope, sid); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 0)
 }
 
 func TestFailedAttemptsResetTheTurnsPartialText(t *testing.T) {

@@ -29,6 +29,7 @@ const (
 	maxSessions     = 50
 	pollInterval    = 3 * time.Second
 	runnableChannel = "jf_runnable"
+	cancelChannel   = "jf_cancel"
 	// maxRecoveryAttempts is how many claims in a row may make no fenced
 	// append before the session is failed (event-log.md §5.6).
 	maxRecoveryAttempts = 5
@@ -56,6 +57,7 @@ type Worker struct {
 	gateway  Gateway
 	tools    *tool.Registry
 	held     held
+	cancels  cancels
 	deltas   DeltaPublisher
 	lease    Lease
 	upcast   eventlog.Upcasters
@@ -137,8 +139,9 @@ func (w *Worker) claimAll(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-// listen wakes the claim loop on every jf_runnable NOTIFY, reconnecting when
-// the connection drops. The poll covers anything missed meanwhile.
+// listen wakes the claim loop on every jf_runnable NOTIFY and cancels the
+// session named by every jf_cancel NOTIFY, reconnecting when the connection
+// drops. The poll and the heartbeat cover anything missed meanwhile.
 func (w *Worker) listen(ctx context.Context, wake chan<- struct{}) {
 	for ctx.Err() == nil {
 		if err := w.listenOnce(ctx, wake); err != nil && ctx.Err() == nil {
@@ -157,12 +160,21 @@ func (w *Worker) listenOnce(ctx context.Context, wake chan<- struct{}) error {
 		return fmt.Errorf("acquire conn: %w", err)
 	}
 	defer conn.Release()
-	if _, err := conn.Exec(ctx, "LISTEN "+runnableChannel); err != nil {
-		return fmt.Errorf("listen: %w", err)
+	for _, ch := range []string{runnableChannel, cancelChannel} {
+		if _, err := conn.Exec(ctx, "LISTEN "+ch); err != nil {
+			return fmt.Errorf("listen %s: %w", ch, err)
+		}
 	}
 	for {
-		if _, err := conn.Conn().WaitForNotification(ctx); err != nil {
+		n, err := conn.Conn().WaitForNotification(ctx)
+		if err != nil {
 			return fmt.Errorf("wait for notification: %w", err)
+		}
+		if n.Channel == cancelChannel {
+			if sid, err := uuid.Parse(n.Payload); err == nil {
+				w.cancels.interrupt(sid)
+			}
+			continue
 		}
 		select {
 		case wake <- struct{}{}:
@@ -177,6 +189,8 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 	defer hb.Wait()
 	defer cancel(nil)
 	defer w.held.drop(c.SessionID)
+	w.cancels.add(c.SessionID, cancel)
+	defer w.cancels.remove(c.SessionID)
 	hb.Go(func() { w.heartbeat(ctx, cancel, c) })
 
 	logger := w.logger.With("session_id", c.SessionID)
@@ -210,7 +224,7 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 		case errors.Is(err, eventlog.ErrStale):
 			continue
 		case errors.Is(err, errParked):
-			logger.Info("session parked after provider error")
+			logger.Info("session parked")
 			return
 		case err != nil:
 			w.stop(ctx, logger, c, err)
@@ -356,6 +370,12 @@ func (w *Worker) actor() string { return "worker:" + w.id }
 
 func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State, step Step) error {
 	sid := c.SessionID
+	if step.Kind.Spends() {
+		if dimension, limit, used, ok := exceeded(st, step.Kind == StepStartTurn); ok {
+			f.ExpectSeq = &st.LastSeq
+			return w.parkOnBudget(ctx, c, f, dimension, limit, used)
+		}
+	}
 	switch step.Kind {
 	case StepMarkInterrupted:
 		_, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
@@ -382,6 +402,19 @@ func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, s
 		return err
 	}
 	return fmt.Errorf("unknown step %d", step.Kind)
+}
+
+// parkOnBudget asks the User to allow a limit that is used up, and parks the
+// session until they answer (event-log.md §5.9).
+func (w *Worker) parkOnBudget(ctx context.Context, c eventlog.Claim, f eventlog.Fence, dimension string, limit, used int64) error {
+	_, err := w.store.AppendFenced(ctx, c.SessionID, f, []eventlog.NewEvent{
+		{Type: eventlog.TypeBudgetExceeded, Actor: w.actor(), Payload: map[string]any{"dimension": dimension, "limit": limit, "used": used}},
+		{Type: eventlog.TypeApprovalRequested, Actor: w.actor(), Payload: map[string]any{"approval_id": uuid.New(), "kind": eventlog.ApprovalKindBudget, "dimension": dimension}},
+	}, &eventlog.StatusChange{To: eventlog.StatusAwaitingApproval, Reason: "budget"})
+	if err != nil {
+		return err
+	}
+	return errParked
 }
 
 func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {

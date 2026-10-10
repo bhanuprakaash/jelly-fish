@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type Ref, type SubmitEvent } from 'react'
 import {
+  changeBudget,
   changeModel,
   createSession,
   getMe,
@@ -13,6 +14,7 @@ import {
   type UIEvent,
 } from './lib/api'
 import { JellyGlyph } from './JellyGlyph'
+import { budgetHint, parseBudget, sessionBudget } from './lib/budget'
 import { providerOf, sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
 import { getShowThinking, setShowThinking } from './lib/showThinking'
@@ -105,10 +107,30 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const budget = sessionBudget(events)
+  const setBudget = async (args: string) => {
+    const next = parseBudget(args, budget)
+    if (!next) {
+      setError('Could not set the budget.')
+      return
+    }
+    setError(null)
+    try {
+      await changeBudget(sessionId, next)
+      setDraft('')
+    } catch {
+      setError('Could not set the budget.')
+    }
+  }
+
   const send = async (e: SubmitEvent) => {
     e.preventDefault()
     const text = draft.trim()
     if (!text || sending) return
+    if (hasSession && /^\/budget(\s|$)/i.test(text)) {
+      await setBudget(text.slice('/budget'.length))
+      return
+    }
 
     setSending(true)
     setError(null)
@@ -211,6 +233,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
     if (e.type === 'session.status_changed') status = (e.payload as { to: JellyStatus }).to
   }
   const canStop = hasSession && status === 'running'
+  const awaitingApproval = hasSession && status === 'awaiting_approval'
   const steering = hasSession && (status === 'runnable' || status === 'running')
   const created = events.find((e) => e.type === 'session.created')
   const agentName = (created?.payload as { agent?: { name?: string } } | undefined)?.agent?.name
@@ -229,6 +252,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
 
   const commands = [
     ...(picker ? [{ name: '/model', hint: 'Switch model' }] : []),
+    ...(hasSession ? [{ name: '/budget', hint: budgetHint(budget) }] : []),
     ...(canStop ? [{ name: '/stop', hint: 'Interrupt this chat' }] : []),
   ]
   const typed = /^\/\S*$/.test(draft) ? draft.toLowerCase() : null
@@ -237,6 +261,10 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   const activeIndex = Math.min(active, matches.length - 1)
 
   const runCommand = (name: string) => {
+    if (name === '/budget') {
+      setDraft('/budget ')
+      return
+    }
     setDraft('')
     if (name === '/stop') {
       void stop()
@@ -468,6 +496,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
             </button>
           </div>
         </div>
+        {awaitingApproval && <p className="px-2 pt-2 text-xs text-muted">Answer the card above to continue</p>}
         {steering && (
           <p className="px-2 pt-2 text-xs text-muted">
             Running · a message now steers at the next tool result.

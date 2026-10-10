@@ -161,6 +161,39 @@ func TestPostMessage_DuplicateClientMsgIDIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestPostMessage_WhileAwaitingApprovalIsStoredAndStatusStays(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	scope := testdb.NewUser(t, pool).Scope()
+	sessionID := uuid.New()
+
+	if _, err := repo.CreateSession(t.Context(), scope, sessionID, uuid.New(), "hello", "", false); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if _, err := eventlog.NewStore(pool).Append(t.Context(), sessionID, nil, nil, &eventlog.StatusChange{To: eventlog.StatusAwaitingApproval, Reason: "budget"}); err != nil {
+		t.Fatalf("park: %v", err)
+	}
+
+	seq, err := repo.PostMessage(t.Context(), scope, sessionID, uuid.New(), "more")
+	if err != nil {
+		t.Fatalf("PostMessage: %v", err)
+	}
+	evs, err := repo.ListEvents(t.Context(), scope, sessionID, seq-1)
+	if err != nil {
+		t.Fatalf("ListEvents: %v", err)
+	}
+	if len(evs) != 1 || evs[0].Type != eventlog.TypeUserMessage {
+		t.Fatalf("events from seq %d = %v, want one user.message", seq, evs)
+	}
+	var status string
+	if err := pool.QueryRow(t.Context(), `SELECT status FROM sessions WHERE id = $1`, sessionID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != eventlog.StatusAwaitingApproval {
+		t.Fatalf("status = %s, want %s", status, eventlog.StatusAwaitingApproval)
+	}
+}
+
 func TestPostMessage_GaplessSeqUnderConcurrency(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool, "fake")
@@ -373,6 +406,29 @@ func TestInterruptIgnoresOtherStatusesAndTenants(t *testing.T) {
 	}
 }
 
+func TestInterruptLeavesAParkedSessionAlone(t *testing.T) {
+	for _, status := range []string{eventlog.StatusAwaitingUser, eventlog.StatusCompleted, eventlog.StatusFailed} {
+		t.Run(status, func(t *testing.T) {
+			pool := testdb.NewPool(t)
+			repo := eventlog.NewRepo(pool, "fake")
+			sid, scope := parkedWith(t, pool, false, status)
+			last, err := repo.SessionLastSeq(t.Context(), scope, sid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.Interrupt(t.Context(), scope, sid); err != nil {
+				t.Fatal(err)
+			}
+			if got := eventTypes(t, repo, scope, sid, last); len(got) != 0 {
+				t.Fatalf("events = %v, want none", got)
+			}
+			if r := readRow(t, pool, sid); r.status != status || r.cancel {
+				t.Fatalf("row = %+v, want %s unflagged", r, status)
+			}
+		})
+	}
+}
+
 func parkedWith(t *testing.T, pool *pgxpool.Pool, retryable bool, to string) (uuid.UUID, eventlog.TenantScope) {
 	t.Helper()
 	return parkedOn(t, pool, "key_invalid", retryable, to)
@@ -543,6 +599,29 @@ func TestChangeModelElsewhereOnlyRecordsIt(t *testing.T) {
 	}
 }
 
+func TestChangeBudgetAppendsTheLimits(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	sid, scope := parkedWith(t, pool, true, eventlog.StatusAwaitingUser)
+	last, _ := repo.SessionLastSeq(t.Context(), scope, sid)
+
+	want := eventlog.Budget{Tokens: 1_000_000, CostMicros: 4_000_000, Turns: 50}
+	if err := repo.ChangeBudget(t.Context(), scope, sid, want); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := repo.ListEvents(t.Context(), scope, sid, last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 1 || evs[0].Type != eventlog.TypeConfigChanged {
+		t.Fatalf("events = %+v, want one config_changed", evs)
+	}
+	var payload struct{ Budget eventlog.Budget }
+	if err := json.Unmarshal(evs[0].Payload, &payload); err != nil || payload.Budget != want {
+		t.Fatalf("payload = %s (%v), want budget %+v", evs[0].Payload, err, want)
+	}
+}
+
 func TestChangeModelChecksTenancy(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool, "fake")
@@ -550,5 +629,75 @@ func TestChangeModelChecksTenancy(t *testing.T) {
 
 	if err := repo.ChangeModel(t.Context(), testdb.NewUser(t, pool).Scope(), ended, "x"); !errors.Is(err, eventlog.ErrNotFound) {
 		t.Fatalf("other tenant: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestInterruptUserSessionsStopsLiveSessionsOnly(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	store := eventlog.NewStore(pool)
+	scope := testdb.NewUser(t, pool).Scope()
+	claim := func() eventlog.Claim {
+		t.Helper()
+		if _, err := repo.CreateSession(t.Context(), scope, uuid.New(), uuid.New(), "hi", "", false); err != nil {
+			t.Fatal(err)
+		}
+		c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
+		if err != nil || !ok {
+			t.Fatalf("Claim: ok=%v err=%v", ok, err)
+		}
+		return c
+	}
+	running := claim().SessionID
+	sleepingClaim := claim()
+	if _, err := store.AppendFenced(t.Context(), sleepingClaim.SessionID, sleepingClaim.Fence, nil, &eventlog.StatusChange{To: eventlog.StatusSleeping, Reason: "rate_limit", WakeIn: time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	parkedClaim := claim()
+	if _, err := store.AppendFenced(t.Context(), parkedClaim.SessionID, parkedClaim.Fence, nil, &eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "turn_complete"}); err != nil {
+		t.Fatal(err)
+	}
+	runnable := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, runnable, uuid.New(), "hi", "", false); err != nil {
+		t.Fatal(err)
+	}
+	sleeping, parked := sleepingClaim.SessionID, parkedClaim.SessionID
+	last := map[uuid.UUID]int64{}
+	for _, id := range []uuid.UUID{running, runnable, sleeping, parked} {
+		seq, err := repo.SessionLastSeq(t.Context(), scope, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		last[id] = seq
+	}
+
+	if err := store.InterruptUserSessions(t.Context(), scope.UserID, "user:admin"); err != nil {
+		t.Fatal(err)
+	}
+
+	evs, err := repo.ListEvents(t.Context(), scope, running, last[running])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 1 || evs[0].Type != eventlog.TypeUserInterrupt || evs[0].Actor != "user:admin" || string(evs[0].Payload) != `{"reason": "user_disabled"}` {
+		t.Fatalf("running session events = %+v, want one user.interrupt{user_disabled} by user:admin", evs)
+	}
+	if r := readRow(t, pool, running); r.status != eventlog.StatusRunning || !r.cancel {
+		t.Fatalf("running row = %+v, want running with cancel_requested", r)
+	}
+	wantParked := []string{eventlog.TypeUserInterrupt, eventlog.TypeStatusChanged}
+	for name, id := range map[string]uuid.UUID{"runnable": runnable, "sleeping": sleeping} {
+		if got := eventTypes(t, repo, scope, id, last[id]); !reflect.DeepEqual(got, wantParked) {
+			t.Fatalf("%s session events = %v, want %v", name, got, wantParked)
+		}
+		if r := readRow(t, pool, id); r.status != eventlog.StatusAwaitingUser || r.wake != nil || r.cancel {
+			t.Fatalf("%s row = %+v, want awaiting_user without wake_at or cancel_requested", name, r)
+		}
+	}
+	if got := eventTypes(t, repo, scope, parked, last[parked]); len(got) != 0 {
+		t.Fatalf("parked session got events %v", got)
+	}
+	if r := readRow(t, pool, parked); r.status != eventlog.StatusAwaitingUser || r.cancel {
+		t.Fatalf("parked row = %+v, want awaiting_user without cancel_requested", r)
 	}
 }

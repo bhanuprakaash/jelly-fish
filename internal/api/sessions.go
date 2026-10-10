@@ -174,6 +174,43 @@ func handleRenameSession(repo SessionRepo, logger *slog.Logger) http.HandlerFunc
 	}
 }
 
+type resolveApprovalRequest struct {
+	Decision string `json:"decision"`
+}
+
+func handleResolveApproval(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := pathID(w, r, "session not found")
+		if !ok {
+			return
+		}
+		approvalID, err := uuid.Parse(r.PathValue("approval_id"))
+		if err != nil {
+			writeError(w, http.StatusNotFound, "approval not found")
+			return
+		}
+		var req resolveApprovalRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if req.Decision != eventlog.DecisionAllow && req.Decision != eventlog.DecisionDeny {
+			writeError(w, http.StatusBadRequest, "decision must be allow or deny")
+			return
+		}
+		switch err := repo.ResolveApproval(r.Context(), scopeFrom(r), sessionID, approvalID, req.Decision); {
+		case errors.Is(err, eventlog.ErrNotFound):
+			writeError(w, http.StatusNotFound, "session not found")
+		case errors.Is(err, eventlog.ErrNoOpenApproval):
+			writeError(w, http.StatusConflict, "no such open approval")
+		case err != nil:
+			logger.Error("resolve approval", "error", err, "session_id", sessionID)
+			writeError(w, http.StatusInternalServerError, "could not resolve approval")
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}
+}
+
 // handleSessionAction serves a POST on a session that takes no body and
 // answers 204: do is one of the repo's tenant-scoped actions.
 func handleSessionAction(do func(context.Context, eventlog.TenantScope, uuid.UUID) error, logger *slog.Logger) http.HandlerFunc {
@@ -457,4 +494,32 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+// handleChangeBudget sets all three of a session's limits; each must be given
+// and above zero.
+func handleChangeBudget(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := pathID(w, r, "session not found")
+		if !ok {
+			return
+		}
+		var b eventlog.Budget
+		if !decodeJSON(w, r, &b) {
+			return
+		}
+		if b.Tokens <= 0 || b.CostMicros <= 0 || b.Turns <= 0 {
+			writeError(w, http.StatusBadRequest, "tokens, cost_micros and turns are required and must be above zero")
+			return
+		}
+		switch err := repo.ChangeBudget(r.Context(), scopeFrom(r), sessionID, b); {
+		case errors.Is(err, eventlog.ErrNotFound):
+			writeError(w, http.StatusNotFound, "session not found")
+		case err != nil:
+			logger.Error("change budget", "error", err, "session_id", sessionID)
+			writeError(w, http.StatusInternalServerError, "could not change budget")
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}
 }

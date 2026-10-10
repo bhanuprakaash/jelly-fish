@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
+	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
 )
 
@@ -237,6 +239,33 @@ func TestAdminDisablesAndEnablesUser(t *testing.T) {
 		if got := e.status(missing+"/"+action, http.MethodPost, ac); got != http.StatusNotFound {
 			t.Errorf("%s unknown User: status %d, want 404", action, got)
 		}
+	}
+}
+
+func TestAdminDisablingAUserInterruptsTheirRunningSession(t *testing.T) {
+	e := newLoginEnv(t)
+	a, ac := e.adminCookie(t)
+	u := testdb.NewUser(t, e.pool)
+	repo := eventlog.NewRepo(e.pool, "fake")
+	sid := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), u.Scope(), sid, uuid.New(), "hi", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := eventlog.NewStore(e.pool).Claim(t.Context(), "w1", 30*time.Second); err != nil || !ok {
+		t.Fatalf("Claim: ok=%v err=%v", ok, err)
+	}
+
+	if got := e.status("/api/admin/users/"+u.ID.String()+"/disable", http.MethodPost, ac); got != http.StatusNoContent {
+		t.Fatalf("disable: status %d, want 204", got)
+	}
+
+	evs, err := repo.ListEvents(t.Context(), u.Scope(), sid, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := evs[len(evs)-1]
+	if last.Type != eventlog.TypeUserInterrupt || last.Actor != "user:"+a.ID.String() || string(last.Payload) != `{"reason": "user_disabled"}` {
+		t.Fatalf("last event = %+v, want user.interrupt{user_disabled} by the admin", last)
 	}
 }
 

@@ -119,8 +119,9 @@ func (r *Repo) PostMessage(ctx context.Context, scope TenantScope, sessionID, cl
 }
 
 // Interrupt appends the User's user.interrupt. A sleeping session ("Stop
-// retrying") parks as awaiting_user at once. A running one is only flagged:
-// its Worker's heartbeat cancels the in-flight call (event-log.md §5.8, §8).
+// retrying") parks as awaiting_user at once. A running one is flagged and
+// its Worker is notified on jf_cancel to cancel the in-flight call; the
+// heartbeat is the fallback (event-log.md §5.8, §8).
 // A session in any other status is left alone (§5.17).
 func (r *Repo) Interrupt(ctx context.Context, scope TenantScope, sessionID uuid.UUID) error {
 	interrupt := NewEvent{Type: TypeUserInterrupt, Actor: "user:" + scope.UserID.String(), Payload: map[string]string{"reason": "user_request"}}
@@ -133,9 +134,7 @@ func (r *Repo) Interrupt(ctx context.Context, scope TenantScope, sessionID uuid.
 		case StatusSleeping:
 			_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{interrupt}, &StatusChange{To: StatusAwaitingUser, Reason: "interrupted"})
 		case StatusRunning:
-			if _, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{interrupt}, nil); err == nil {
-				_, err = tx.Exec(ctx, `UPDATE sessions SET cancel_requested = true WHERE id = $1`, sessionID)
-			}
+			err = r.store.interruptRunning(ctx, tx, sessionID, &scope, interrupt)
 		}
 		return err
 	})
@@ -173,6 +172,46 @@ func (r *Repo) Retry(ctx context.Context, scope TenantScope, sessionID uuid.UUID
 	})
 }
 
+// ResolveApproval appends the User's approval.resolved for the session's open
+// approval. allow makes the session runnable, so the raised limit applies;
+// deny parks it as awaiting_user. A session that is not awaiting approval, or an
+// approvalID that is not the open one, returns ErrNoOpenApproval and appends
+// nothing.
+func (r *Repo) ResolveApproval(ctx context.Context, scope TenantScope, sessionID, approvalID uuid.UUID, decision string) error {
+	next := &StatusChange{To: StatusAwaitingUser, Reason: "denied"}
+	if decision == DecisionAllow {
+		next = &StatusChange{To: StatusRunnable, Reason: "approved"}
+	}
+	resolved := NewEvent{
+		Type:    TypeApprovalResolved,
+		Actor:   "user:" + scope.UserID.String(),
+		Payload: map[string]any{"approval_id": approvalID, "decision": decision, "by": scope.UserID},
+	}
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		status, err := lockStatus(ctx, tx, scope, sessionID)
+		if err != nil {
+			return err
+		}
+		if status != StatusAwaitingApproval {
+			return ErrNoOpenApproval
+		}
+		var open bool
+		err = tx.QueryRow(ctx, `
+			SELECT payload->>'approval_id' = $3 FROM events
+			WHERE session_id = $1 AND type = $2
+			ORDER BY seq DESC LIMIT 1`,
+			sessionID, TypeApprovalRequested, approvalID.String()).Scan(&open)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("look up open approval: %w", err)
+		}
+		if !open {
+			return ErrNoOpenApproval
+		}
+		_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{resolved}, next)
+		return err
+	})
+}
+
 // ChangeModel appends the User's session.config_changed{model}; the next
 // turn runs on model. A session awaiting the user after an error another
 // model can fix (model_unavailable, billing) becomes runnable too, so that
@@ -195,6 +234,19 @@ func (r *Repo) ChangeModel(ctx context.Context, scope TenantScope, sessionID uui
 			}
 		}
 		_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{changed}, resume)
+		return err
+	})
+}
+
+// ChangeBudget appends the User's session.config_changed{budget}; it
+// replaces all three limits from the next check on.
+func (r *Repo) ChangeBudget(ctx context.Context, scope TenantScope, sessionID uuid.UUID, b Budget) error {
+	changed := NewEvent{Type: TypeConfigChanged, Actor: "user:" + scope.UserID.String(), Payload: map[string]Budget{"budget": b}}
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		if _, err := lockStatus(ctx, tx, scope, sessionID); err != nil {
+			return err
+		}
+		_, err := r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{changed}, nil)
 		return err
 	})
 }

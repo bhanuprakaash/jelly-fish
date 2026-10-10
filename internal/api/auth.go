@@ -54,8 +54,9 @@ var _ Mailer = (*mail.SMTP)(nil)
 type AuthConfig struct {
 	Authenticator Authenticator
 	// Admin backs /api/admin/*.
-	Admin  UserAdmin
-	Mailer Mailer
+	Admin        UserAdmin
+	UserSessions UserSessions
+	Mailer       Mailer
 	// ProviderKeys backs /api/provider-keys.
 	ProviderKeys ProviderKeyConfig
 	// Models backs /api/models and the model a session runs on.

@@ -187,3 +187,34 @@ func TestFoldTagsToolCallsWithTheirTurnsProvider(t *testing.T) {
 		t.Fatalf("providers by call = %v, want c1 anthropic and c2 gemini", got)
 	}
 }
+
+func TestFoldMarksTheMessageAfterAnInterruptedTurn(t *testing.T) {
+	created := ev(t, 1, eventlog.TypeSessionCreated, map[string]any{"agent": map[string]string{"model": "fake"}})
+	user := func(seq int64, text string) eventlog.Event {
+		return ev(t, seq, eventlog.TypeUserMessage, map[string]any{"message": msg.UserText(text)})
+	}
+	turn := ev(t, 3, eventlog.TypeTurnStarted, map[string]any{"turn_id": "t1", "input_through_seq": 2})
+	interrupted := func(reason string) eventlog.Event {
+		return ev(t, 4, eventlog.TypeTurnInterrupted, map[string]string{"turn_id": "t1", "reason": reason})
+	}
+	tests := []struct {
+		name string
+		evs  []eventlog.Event
+		want string
+	}{
+		{"after a user interrupt", []eventlog.Event{created, user(2, "hi"), turn, interrupted("user_interrupt"), user(5, "go on")}, "[Previous turn interrupted by user]\n\ngo on"},
+		{"after a lost worker", []eventlog.Event{created, user(2, "hi"), turn, interrupted("worker_lost"), user(5, "go on")}, "go on"},
+		{"only the next message", []eventlog.Event{created, user(2, "hi"), turn, interrupted("user_interrupt"), user(5, "go on"), user(6, "more")}, "more"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st, err := worker.Fold(tt.evs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := st.Messages[len(st.Messages)-1].Parts[0].Text; got != tt.want {
+				t.Fatalf("last message = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
