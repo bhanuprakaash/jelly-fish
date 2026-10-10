@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { interruptSession, resolveApproval, retrySession } from './lib/api'
-import type { Notice } from './lib/sessionNotice'
+import { interruptSession, resolveApproval, resolveElicitation, retrySession } from './lib/api'
+import type { ElicitationRequest, Notice } from './lib/sessionNotice'
 import { useAction } from './lib/useAction'
 
 const billingURLs: Record<string, string> = {
@@ -93,6 +93,149 @@ function ToolApproval({ sessionId, notice }: { sessionId: string; notice: Extrac
   )
 }
 
+type Field = { name: string; label: string; type: string; options?: string[]; required: boolean; initial: string | boolean }
+
+// formFields lists the properties of every form request, which one answer covers.
+function formFields(requests: Record<string, ElicitationRequest>): Field[] {
+  return Object.values(requests).flatMap((r) =>
+    r.mode !== 'form' || !r.schema?.properties
+      ? []
+      : Object.entries(r.schema.properties).map(([name, f]) => ({
+          name,
+          label: f.title ?? name,
+          type: f.enum ? 'enum' : (f.type ?? 'string'),
+          options: f.enum,
+          required: r.schema?.required?.includes(name) ?? false,
+          initial: f.type === 'boolean' ? f.default === true : String(f.default ?? ''),
+        })),
+  )
+}
+
+function pageHost(url: string): string | null {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.hostname : null
+  } catch {
+    return null
+  }
+}
+
+function Elicitation({ sessionId, notice }: { sessionId: string; notice: Extract<Notice, { kind: 'elicitation' }> }) {
+  const { run, busy, error } = useAction({}, 'Could not do that. Try again.')
+  const fields = formFields(notice.requests)
+  const [values, setValues] = useState<Record<string, string | boolean>>(() =>
+    Object.fromEntries(fields.map((f) => [f.name, f.initial])),
+  )
+  const answer = (action: 'accept' | 'decline' | 'cancel', content?: Record<string, unknown>) =>
+    run(() => resolveElicitation(sessionId, notice.elicitationId, action, content))
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const content: Record<string, unknown> = {}
+    for (const f of fields) {
+      const v = values[f.name]
+      if (f.type === 'boolean') content[f.name] = v === true
+      else if (v !== '') content[f.name] = f.type === 'number' || f.type === 'integer' ? Number(v) : v
+    }
+    answer('accept', fields.length > 0 ? content : undefined)
+  }
+  const set = (name: string, v: string | boolean) => setValues((prev) => ({ ...prev, [name]: v }))
+  const requests = Object.entries(notice.requests)
+  return (
+    <form
+      onSubmit={submit}
+      role="alert"
+      className="w-full space-y-3 rounded-[14px] border border-attention-line bg-attention-tint px-4 py-3"
+    >
+      <div className="flex items-start gap-3">
+        <p className="min-w-0 flex-1 text-sm font-semibold text-ink">
+          {notice.connector} · <span className="font-mono">{notice.tool}</span> needs your input
+        </p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => answer('cancel')}
+          aria-label="Cancel"
+          className="btn btn-ghost btn-sm"
+        >
+          ✕
+        </button>
+      </div>
+      {requests.map(([key, r]) => {
+        const host = r.mode === 'url' && r.url ? pageHost(r.url) : null
+        return (
+          <div key={key} className="space-y-2">
+            {r.message && <p className="whitespace-pre-wrap text-sm text-ink2">{r.message}</p>}
+            {r.mode === 'url' && (
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <span>
+                  <span className="font-mono">{notice.tool}</span> wants to open{' '}
+                  <span className="font-semibold">{host ?? 'an address that cannot be opened'}</span>
+                </span>
+                {host && (
+                  <a href={r.url} target="_blank" rel="noopener noreferrer" className={linkClass}>
+                    Open
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {fields.map((f) => (
+        <label key={f.name} className="flex flex-col gap-1 text-sm text-ink">
+          {f.type === 'boolean' ? (
+            <span className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={values[f.name] === true}
+                onChange={(e) => set(f.name, e.target.checked)}
+              />
+              {f.label}
+            </span>
+          ) : (
+            <>
+              {f.label}
+              {f.type === 'enum' ? (
+                <select
+                  value={String(values[f.name])}
+                  required={f.required}
+                  onChange={(e) => set(f.name, e.target.value)}
+                  className="input w-full"
+                >
+                  <option value="" />
+                  {f.options?.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={f.type === 'number' || f.type === 'integer' ? 'number' : 'text'}
+                  step={f.type === 'integer' ? 1 : 'any'}
+                  value={String(values[f.name])}
+                  required={f.required}
+                  onChange={(e) => set(f.name, e.target.value)}
+                  className="input w-full"
+                />
+              )}
+            </>
+          )}
+        </label>
+      ))}
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={busy} className="btn btn-attention btn-sm">
+          {fields.length > 0 || requests.every(([, r]) => r.mode === 'form') ? 'Submit' : 'Done'}
+        </button>
+        <button type="button" disabled={busy} onClick={() => answer('decline')} className={linkClass}>
+          Decline
+        </button>
+      </div>
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </form>
+  )
+}
+
 export function SessionNotice({ sessionId, notice, provider, picker }: Props) {
   const { run, busy, error } = useAction({}, 'Could not do that. Try again.')
   const [picking, setPicking] = useState(false)
@@ -106,6 +249,7 @@ export function SessionNotice({ sessionId, notice, provider, picker }: Props) {
   )
 
   if (notice.kind === 'tool') return <ToolApproval key={notice.approvalId} sessionId={sessionId} notice={notice} />
+  if (notice.kind === 'elicitation') return <Elicitation key={notice.elicitationId} sessionId={sessionId} notice={notice} />
 
   let text: string
   let actions: React.ReactNode

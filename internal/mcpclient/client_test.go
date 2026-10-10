@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -113,7 +114,7 @@ func TestCallToolSendsTheNameAndArgsGiven(t *testing.T) {
 	srv := mcptest.Start(t, mcptest.Options{})
 	srv.AddTool("notion__search", textResult("found"))
 
-	res, err := New(true).CallTool(testCtx(t), Target{URL: srv.URL}, "notion__search", json.RawMessage(`{"q":"plans"}`), nil)
+	res, err := New(true).CallTool(testCtx(t), Target{URL: srv.URL}, "notion__search", json.RawMessage(`{"q":"plans"}`), nil, Handlers{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestResultMapping(t *testing.T) {
 	})
 	srv.AddTool("structured", &mcp.CallToolResult{StructuredContent: map[string]any{"n": 1}})
 
-	res, err := New(true).CallTool(testCtx(t), Target{URL: srv.URL}, "mixed", nil, nil)
+	res, err := New(true).CallTool(testCtx(t), Target{URL: srv.URL}, "mixed", nil, nil, Handlers{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +157,7 @@ func TestResultMapping(t *testing.T) {
 		t.Fatalf("image part %+v", img)
 	}
 
-	res, err = New(true).CallTool(testCtx(t), Target{URL: srv.URL}, "structured", nil, nil)
+	res, err = New(true).CallTool(testCtx(t), Target{URL: srv.URL}, "structured", nil, nil, Handlers{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +171,7 @@ func TestInputRequiredIsReturnedAndResumedByTheCaller(t *testing.T) {
 	srv.AddInputRequiredTool("ask")
 	c := New(true)
 
-	res, err := c.CallTool(testCtx(t), Target{URL: srv.URL}, "ask", nil, nil)
+	res, err := c.CallTool(testCtx(t), Target{URL: srv.URL}, "ask", nil, nil, Handlers{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,12 +181,44 @@ func TestInputRequiredIsReturnedAndResumedByTheCaller(t *testing.T) {
 	}
 
 	meta := &ResumeMeta{RequestState: ir.RequestState, InputResponses: map[string]InputResponse{"confirm": {Action: "accept"}}}
-	res, err = c.CallTool(testCtx(t), Target{URL: srv.URL}, "ask", nil, meta)
+	res, err = c.CallTool(testCtx(t), Target{URL: srv.URL}, "ask", nil, meta, Handlers{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.InputRequired != nil || len(res.Content) != 1 || res.Content[0].Text != "done" {
 		t.Fatalf("got %+v", res)
+	}
+}
+
+func TestLegacyElicitationIsAnsweredByTheHandler(t *testing.T) {
+	srv := mcptest.Start(t, mcptest.Options{Legacy: true})
+	srv.AddLegacyElicitTool("ask", "Your name?")
+	var asked InputRequest
+	h := Handlers{Elicit: func(_ context.Context, req InputRequest) (InputResponse, error) {
+		asked = req
+		return InputResponse{Action: "accept", Content: json.RawMessage(`{"name":"Ada"}`)}, nil
+	}}
+
+	res, err := New(true).CallTool(testCtx(t), Target{URL: srv.URL, Era: EraLegacy}, "ask", nil, nil, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked.Mode != "form" || asked.Message != "Your name?" || len(res.Content) != 1 || res.Content[0].Text != `accept {"name":"Ada"}` {
+		t.Fatalf("asked %+v, got %+v", asked, res)
+	}
+}
+
+func TestProgressReachesTheHandlerInBothEras(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		srv := mcptest.Start(t, mcptest.Options{Legacy: legacy})
+		srv.AddProgressTool("work", 3, 0)
+		var got []string
+		h := Handlers{Progress: func(_ string, progress, total float64) { got = append(got, fmt.Sprintf("%g/%g", progress, total)) }}
+
+		if _, err := New(true).CallTool(testCtx(t), Target{URL: srv.URL}, "work", nil, nil, h); err != nil {
+			t.Fatal(err)
+		}
+		equalStrings(t, got, []string{"1/3", "2/3", "3/3"})
 	}
 }
 
@@ -216,8 +249,8 @@ func TestLogsHoldNoCredential(t *testing.T) {
 	target := Target{URL: srv.URL, Header: http.Header{"Authorization": {"Bearer s3cret-token"}, "X-Api-Key": {"k3y-value"}}}
 
 	c := New(true)
-	_, _ = c.CallTool(testCtx(t), target, "echo", nil, nil)
-	_, _ = c.CallTool(testCtx(t), target, "missing", nil, nil)
+	_, _ = c.CallTool(testCtx(t), target, "echo", nil, nil, Handlers{})
+	_, _ = c.CallTool(testCtx(t), target, "missing", nil, nil, Handlers{})
 
 	if got := srv.Header().Get("X-Api-Key"); got != "k3y-value" {
 		t.Fatalf("server saw X-Api-Key %q", got)

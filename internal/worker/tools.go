@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -31,6 +32,7 @@ const (
 	noteWorkerLost = "outcome unknown; check before retrying"
 	noteUserStop   = "interrupted by user; it may have partially run"
 	noteNotRun     = "not run: interrupted by user"
+	noteUnanswered = "needs user input; no answer was given"
 )
 
 // requestTools records every call of the latest reply in one transaction. If
@@ -170,33 +172,52 @@ func (w *Worker) session(c eventlog.Claim, st State) tool.Session {
 }
 
 // startTools commits tool.call.started for the next batch, and only then runs
-// it: a started call is never run again (event-log.md §5.5).
+// it: a started call is never run again (event-log.md §5.5). A call that
+// resumes after an elicitation gets a second tool.call.started, so a crash
+// mid-resume interrupts it, and keeps the idempotency key of its first. Once
+// every call of the batch has ended, calls whose server asked for input park
+// the session.
 func (w *Worker) startTools(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {
 	batch := w.nextBatch(st)
-	evs := make([]eventlog.NewEvent, len(batch))
-	for i, call := range batch {
-		evs[i] = eventlog.NewEvent{
+	var evs []eventlog.NewEvent
+	startedAt := make(map[string]int64, len(batch))
+	for _, call := range batch {
+		payload := map[string]any{"tool_call_id": call.ID, "approved_by": approvedBy(call), "trace": ""}
+		if call.Answer != nil {
+			startedAt[call.ID] = call.StartedSeq
+			payload["resumed"] = true
+		}
+		evs = append(evs, eventlog.NewEvent{
 			Type:          eventlog.TypeToolStarted,
 			Actor:         w.actor(),
 			CorrelationID: call.ID,
-			Payload:       map[string]any{"tool_call_id": call.ID, "approved_by": approvedBy(call), "trace": ""},
-		}
+			Payload:       payload,
+		})
 	}
 	seqs, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, nil)
 	if err != nil {
 		return err
 	}
+	for i, call := range batch {
+		if call.Answer == nil {
+			startedAt[call.ID] = seqs[i]
+		}
+	}
 
 	sess := w.session(c, st)
+	asks := make([]*eventlog.NewEvent, len(batch))
 	errs := make([]error, len(batch))
 	var wg sync.WaitGroup
 	for i, call := range batch {
 		wg.Go(func() {
-			errs[i] = w.runCall(ctx, c, f, st.tools, call, fmt.Sprintf("%s:%d", c.SessionID, seqs[i]), sess)
+			asks[i], errs[i] = w.runCall(ctx, c, f, st.tools, call, fmt.Sprintf("%s:%d", c.SessionID, startedAt[call.ID]), sess)
 		})
 	}
 	wg.Wait()
-	return errors.Join(errs...)
+	if err := errors.Join(errs...); err != nil {
+		return err
+	}
+	return w.parkOnInput(ctx, c, f, asks)
 }
 
 func approvedBy(call Call) string {
@@ -207,12 +228,19 @@ func approvedBy(call Call) string {
 }
 
 // runCall calls one tool and records its result. A call cut short by ctx
-// records nothing: whoever ends the drive closes it.
-func (w *Worker) runCall(ctx context.Context, c eventlog.Claim, f eventlog.Fence, tools *tool.Registry, call Call, key string, sess tool.Session) error {
+// records nothing: whoever ends the drive closes it. A call whose server asks
+// for input records nothing either, and returns the elicitation.requested the
+// batch parks with.
+func (w *Worker) runCall(ctx context.Context, c eventlog.Claim, f eventlog.Fence, tools *tool.Registry, call Call, key string, sess tool.Session) (*eventlog.NewEvent, error) {
 	began := time.Now()
-	res := w.invoke(ctx, c, tools, call, key, sess)
+	res := w.invoke(ctx, c, f, tools, call, key, sess)
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
+	}
+	if ir := res.InputRequired; ir != nil {
+		t, _ := tools.Get(call.Name)
+		ev := w.elicitationEvent(uuid.NewString(), call, t, ir.Requests, ir.RequestState, false)
+		return &ev, nil
 	}
 	took := time.Since(began)
 	_, err := w.store.AppendFencedFunc(ctx, c.SessionID, f, func(ctx context.Context, tx pgx.Tx) ([]eventlog.NewEvent, error) {
@@ -230,7 +258,7 @@ func (w *Worker) runCall(ctx context.Context, c eventlog.Claim, f eventlog.Fence
 		}
 		return append(evs, done), nil
 	})
-	return err
+	return nil, err
 }
 
 // completedWithBlob is completedEvent, except that a result over
@@ -284,8 +312,13 @@ func (w *Worker) commit(ctx context.Context, tx pgx.Tx, c eventlog.Claim, call C
 	return out, added
 }
 
+// errCallTimeout is the cancel cause of a call that outlived its Timeout.
+var errCallTimeout = errors.New("tool call timed out")
+
 // invoke turns every way a call can fail into an error Result for the model.
-func (w *Worker) invoke(ctx context.Context, c eventlog.Claim, tools *tool.Registry, call Call, key string, sess tool.Session) tool.Result {
+// A legacy elicitation restarts the call's full timeout once the answer
+// arrives, so the time the User takes to answer is not the tool's.
+func (w *Worker) invoke(ctx context.Context, c eventlog.Claim, f eventlog.Fence, tools *tool.Registry, call Call, key string, sess tool.Session) tool.Result {
 	t, ok := tools.Get(call.Name)
 	if !ok || c.Incognito && call.Name == memory.ToolName {
 		return tool.TextResult(fmt.Sprintf("unknown tool %q", call.Name), true)
@@ -301,14 +334,34 @@ func (w *Worker) invoke(ctx context.Context, c eventlog.Claim, tools *tool.Regis
 		}
 	}
 	timeout := cmp.Or(t.Def().Timeout, tool.DefaultTimeout)
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	cctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	clock := time.AfterFunc(timeout, func() { cancel(errCallTimeout) })
+	defer clock.Stop()
+	var heldOut atomic.Bool
+	in := tool.CallInput{
+		CallID: call.ID, IdempotencyKey: key, Args: args, Session: sess, Resume: call.resume(),
+		Elicit: func(ctx context.Context, req tool.InputRequest) (tool.InputResponse, error) {
+			clock.Stop()
+			defer clock.Reset(timeout)
+			resp, err := w.holdElicitation(ctx, c, f, call, t, req)
+			if errors.Is(err, errHoldTimedOut) {
+				heldOut.Store(true)
+			}
+			return resp, err
+		},
+		Progress: func(message string, progress, total float64) {
+			w.publishProgress(cctx, c, call, message, progress, total)
+		},
+	}
 
-	res, err := w.traced(t, c, call).Call(cctx, tool.CallInput{CallID: call.ID, IdempotencyKey: key, Args: args, Session: sess})
+	res, err := w.traced(t, c, call).Call(cctx, in)
 	switch {
 	case ctx.Err() != nil:
 		return res
-	case errors.Is(cctx.Err(), context.DeadlineExceeded):
+	case heldOut.Load():
+		return tool.TextResult(errHoldTimedOut.Error(), true)
+	case errors.Is(context.Cause(cctx), errCallTimeout):
 		return tool.TextResult(fmt.Sprintf("timed out after %s; the call may have partially run", timeout), true)
 	case err != nil:
 		w.logger.Error("tool call", "session_id", c.SessionID, "tool", call.Name, "error", err)
@@ -350,11 +403,15 @@ func (w *Worker) interruptedEvent(id, reason, note string) eventlog.NewEvent {
 }
 
 // markToolsInterrupted closes the calls a dead Worker left started. Their
-// outcome is unknown and they are never run again.
+// outcome is unknown and they are never run again. A call still waiting for
+// an answer when the session woke for another reason is closed too.
 func (w *Worker) markToolsInterrupted(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {
 	var evs []eventlog.NewEvent
 	for _, call := range st.calls(CallStarted) {
 		evs = append(evs, w.interruptedEvent(call.ID, "worker_lost", noteWorkerLost))
+	}
+	for _, call := range st.calls(CallWaitingInput) {
+		evs = append(evs, w.interruptedEvent(call.ID, "unanswered", noteUnanswered))
 	}
 	_, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, nil)
 	return err

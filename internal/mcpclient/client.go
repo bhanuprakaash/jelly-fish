@@ -71,6 +71,16 @@ type InputResponse struct {
 	Content json.RawMessage
 }
 
+// Handlers receive what a server sends while a call runs; either may be nil.
+type Handlers struct {
+	// Elicit answers a legacy elicitation/create request. Without it the
+	// client tells the server it cannot.
+	Elicit func(ctx context.Context, req InputRequest) (InputResponse, error)
+	// Progress receives each notifications/progress of the call. total is 0
+	// when the server does not know it.
+	Progress func(message string, progress, total float64)
+}
+
 // Result is what a tool call returned.
 type Result struct {
 	Content []msg.Part
@@ -111,7 +121,7 @@ func New(devAllowLocalhost bool) *Client {
 // ListTools returns every tool the server lists, and the era it answered in.
 // Store the era in Target.Era to skip the probe on later calls.
 func (c *Client) ListTools(ctx context.Context, t Target) ([]RawTool, Era, error) {
-	cs, era, err := c.connect(ctx, t)
+	cs, era, err := c.connect(ctx, t, Handlers{})
 	if err != nil {
 		return nil, "", err
 	}
@@ -149,8 +159,8 @@ func (c *Client) ListTools(ctx context.Context, t Target) ([]RawTool, Era, error
 
 // CallTool calls the tool name with args. meta is nil on a fresh call and
 // carries the answers when retrying a call that returned InputRequired.
-func (c *Client) CallTool(ctx context.Context, t Target, name string, args json.RawMessage, meta *ResumeMeta) (Result, error) {
-	cs, _, err := c.connect(ctx, t)
+func (c *Client) CallTool(ctx context.Context, t Target, name string, args json.RawMessage, meta *ResumeMeta, h Handlers) (Result, error) {
+	cs, _, err := c.connect(ctx, t, h)
 	if err != nil {
 		return Result{}, err
 	}
@@ -165,6 +175,9 @@ func (c *Client) CallTool(ctx context.Context, t Target, name string, args json.
 			return Result{}, err
 		}
 	}
+	if h.Progress != nil {
+		params.SetProgressToken("call")
+	}
 	res, err := cs.CallTool(ctx, params)
 	if err != nil {
 		return Result{}, fmt.Errorf("call tool %q: %w", name, err)
@@ -172,7 +185,7 @@ func (c *Client) CallTool(ctx context.Context, t Target, name string, args json.
 	return mapResult(res)
 }
 
-func (c *Client) connect(ctx context.Context, t Target) (*mcp.ClientSession, Era, error) {
+func (c *Client) connect(ctx context.Context, t Target, h Handlers) (*mcp.ClientSession, Era, error) {
 	u, err := url.Parse(t.URL)
 	if err != nil {
 		return nil, "", fmt.Errorf("parse connector url: %w", err)
@@ -180,17 +193,36 @@ func (c *Client) connect(ctx context.Context, t Target) (*mcp.ClientSession, Era
 	hc := *c.http
 	cred := &credTransport{base: c.http.Transport, host: u.Host, header: t.Header}
 	hc.Transport = cred
-	client := mcp.NewClient(&mcp.Implementation{Name: "jelly-fish", Version: "0"}, &mcp.ClientOptions{
+	opts := &mcp.ClientOptions{
 		Logger: slog.Default(),
 		// The client declares elicitation only: never sampling or roots.
 		Capabilities:   &mcp.ClientCapabilities{Elicitation: &mcp.ElicitationCapabilities{Form: &mcp.FormElicitationCapabilities{}, URL: &mcp.URLElicitationCapabilities{}}},
 		MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true},
-	})
-	var opts *mcp.ClientSessionOptions
-	if t.Era == EraLegacy {
-		opts = &mcp.ClientSessionOptions{ProtocolVersion: legacyVersion}
 	}
-	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: t.URL, HTTPClient: &hc, DisableStandaloneSSE: true}, opts)
+	if h.Elicit != nil {
+		opts.ElicitationHandler = func(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			in, err := inputRequest(req.Params)
+			if err != nil {
+				return nil, err
+			}
+			out, err := h.Elicit(ctx, in)
+			if err != nil {
+				return nil, err
+			}
+			return sdkResponse(out)
+		}
+	}
+	if h.Progress != nil {
+		opts.ProgressNotificationHandler = func(_ context.Context, req *mcp.ProgressNotificationClientRequest) {
+			h.Progress(req.Params.Message, req.Params.Progress, req.Params.Total)
+		}
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "jelly-fish", Version: "0"}, opts)
+	var sessionOpts *mcp.ClientSessionOptions
+	if t.Era == EraLegacy {
+		sessionOpts = &mcp.ClientSessionOptions{ProtocolVersion: legacyVersion}
+	}
+	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: t.URL, HTTPClient: &hc, DisableStandaloneSSE: true}, sessionOpts)
 	if err != nil {
 		switch cred.status.Load() {
 		case http.StatusBadRequest, http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotAcceptable, http.StatusUnsupportedMediaType:

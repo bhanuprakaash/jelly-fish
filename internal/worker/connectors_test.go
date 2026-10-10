@@ -34,6 +34,8 @@ type connectorEnv struct {
 	store *connector.Store
 	// stop ends the running Worker.
 	stop func()
+	// configure, if set, adjusts each Worker start builds.
+	configure func(*worker.Worker)
 }
 
 // newConnectorEnv starts a Worker that offers builtins and each session's
@@ -56,6 +58,9 @@ func (e *connectorEnv) start(t *testing.T, p provider.Provider, builtins ...tool
 	w := worker.New(e.pool, worker.Gateway{Fake: p, Keyring: e.kr}, tool.NewRegistry(builtins...), stream.NewPGDeltaBus(e.pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
 	w.UseConnectors(e.store, mcpclient.New(true))
 	worker.SetTitleTimeout(w, 0)
+	if e.configure != nil {
+		e.configure(w)
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()

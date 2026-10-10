@@ -3,6 +3,7 @@ package eventlog
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -239,6 +240,71 @@ func (r *Repo) ResolveApproval(ctx context.Context, scope TenantScope, sessionID
 		resolved := NewEvent{Type: TypeApprovalResolved, Actor: "user:" + scope.UserID.String(), Payload: payload}
 		_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{resolved}, next)
 		return err
+	})
+}
+
+// ElicitationAnswer is the User's answer to an elicitation. Content is a JSON
+// object, set only with ActionAccept.
+type ElicitationAnswer struct {
+	Action  string
+	Content json.RawMessage
+}
+
+// legacyElicitationChannel wakes the Worker holding a legacy elicitation.
+const legacyElicitationChannel = "jf_elicit"
+
+// ResolveElicitation appends the User's elicitation.resolved for the open
+// elicitation elicitationID. A parked session becomes runnable. A legacy
+// elicitation has a Worker blocked on it, so the session keeps running and
+// that Worker is notified on jf_elicit. An elicitation that is not open, or
+// whose session is not in the status that goes with it, returns
+// ErrNoOpenElicitation and appends nothing.
+func (r *Repo) ResolveElicitation(ctx context.Context, scope TenantScope, sessionID, elicitationID uuid.UUID, a ElicitationAnswer) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		status, err := lockStatus(ctx, tx, scope, sessionID)
+		if err != nil {
+			return err
+		}
+		var legacy bool
+		var callID string
+		err = tx.QueryRow(ctx, `
+			SELECT COALESCE((payload->>'legacy')::bool, false), payload->>'tool_call_id' FROM events asked
+			WHERE session_id = $1 AND type = $2 AND payload->>'elicitation_id' = $3
+			  AND NOT EXISTS (
+			    SELECT 1 FROM events ended WHERE ended.session_id = $1
+			      AND ((ended.type = $4 AND ended.payload->>'elicitation_id' = $3)
+			        OR (ended.type = ANY($5) AND ended.payload->>'tool_call_id' = asked.payload->>'tool_call_id')))`,
+			sessionID, TypeElicitationRequested, elicitationID.String(), TypeElicitationResolved, []string{TypeToolCompleted, TypeToolInterrupted},
+		).Scan(&legacy, &callID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNoOpenElicitation
+		}
+		if err != nil {
+			return fmt.Errorf("look up open elicitation: %w", err)
+		}
+		var next *StatusChange
+		switch {
+		case legacy && status != StatusRunning:
+			return ErrNoOpenElicitation
+		case !legacy && status != StatusAwaitingUser:
+			return ErrNoOpenElicitation
+		case !legacy:
+			next = &StatusChange{To: StatusRunnable, Reason: "answered"}
+		}
+		payload := map[string]any{"elicitation_id": elicitationID, "tool_call_id": callID, "action": a.Action, "by": scope.UserID}
+		if len(a.Content) > 0 {
+			payload["content"] = a.Content
+		}
+		resolved := NewEvent{Type: TypeElicitationResolved, Actor: "user:" + scope.UserID.String(), CorrelationID: callID, Payload: payload}
+		if _, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{resolved}, next); err != nil {
+			return err
+		}
+		if legacy {
+			if _, err = tx.Exec(ctx, `SELECT pg_notify($1, $2)`, legacyElicitationChannel, elicitationID.String()); err != nil {
+				return fmt.Errorf("notify %s: %w", legacyElicitationChannel, err)
+			}
+		}
+		return nil
 	})
 }
 

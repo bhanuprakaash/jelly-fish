@@ -20,21 +20,11 @@ func mapResult(res *mcp.CallToolResult) (Result, error) {
 			if !ok {
 				return Result{}, fmt.Errorf("input request %q: unsupported type %T", key, req)
 			}
-			var schema json.RawMessage
-			if p.RequestedSchema != nil {
-				var err error
-				if schema, err = json.Marshal(p.RequestedSchema); err != nil {
-					return Result{}, fmt.Errorf("input request %q: encode schema: %w", key, err)
-				}
+			r, err := inputRequest(p)
+			if err != nil {
+				return Result{}, fmt.Errorf("input request %q: %w", key, err)
 			}
-			mode := p.Mode
-			if mode == "" {
-				mode = "form"
-				if p.URL != "" {
-					mode = "url"
-				}
-			}
-			ir.Requests[key] = InputRequest{Mode: mode, Message: p.Message, RequestedSchema: schema, URL: p.URL}
+			ir.Requests[key] = r
 		}
 		return Result{InputRequired: ir}, nil
 	}
@@ -67,16 +57,42 @@ func mapResult(res *mcp.CallToolResult) (Result, error) {
 	return out, nil
 }
 
+func inputRequest(p *mcp.ElicitParams) (InputRequest, error) {
+	var schema json.RawMessage
+	if p.RequestedSchema != nil {
+		var err error
+		if schema, err = json.Marshal(p.RequestedSchema); err != nil {
+			return InputRequest{}, fmt.Errorf("encode schema: %w", err)
+		}
+	}
+	mode := p.Mode
+	if mode == "" {
+		mode = "form"
+		if p.URL != "" {
+			mode = "url"
+		}
+	}
+	return InputRequest{Mode: mode, Message: p.Message, RequestedSchema: schema, URL: p.URL}, nil
+}
+
 func text(s string) msg.Part { return msg.Part{Kind: msg.KindText, Text: s} }
+
+func sdkResponse(r InputResponse) (*mcp.ElicitResult, error) {
+	res := &mcp.ElicitResult{Action: r.Action}
+	if len(r.Content) > 0 {
+		if err := json.Unmarshal(r.Content, &res.Content); err != nil {
+			return nil, fmt.Errorf("decode answer: %w", err)
+		}
+	}
+	return res, nil
+}
 
 func sdkResponses(in map[string]InputResponse) (mcp.InputResponseMap, error) {
 	out := make(mcp.InputResponseMap, len(in))
 	for key, r := range in {
-		res := &mcp.ElicitResult{Action: r.Action}
-		if len(r.Content) > 0 {
-			if err := json.Unmarshal(r.Content, &res.Content); err != nil {
-				return nil, fmt.Errorf("input response %q: %w", key, err)
-			}
+		res, err := sdkResponse(r)
+		if err != nil {
+			return nil, fmt.Errorf("input response %q: %w", key, err)
 		}
 		out[key] = res
 	}

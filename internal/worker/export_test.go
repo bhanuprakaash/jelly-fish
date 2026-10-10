@@ -15,3 +15,9 @@ func SetTitleTimeout(w *Worker, d time.Duration) { w.titleTimeout = d }
 func Exec(ctx context.Context, w *Worker, c eventlog.Claim, st State, step Step) error {
 	return w.exec(ctx, c, c.Fence, st, step)
 }
+
+// SetLegacyHold bounds a legacy elicitation to d.
+func SetLegacyHold(w *Worker, d time.Duration) { w.legacyHold = d }
+
+// SetDeltas makes the Worker publish its deltas to p.
+func SetDeltas(w *Worker, p DeltaPublisher) { w.deltas = p }

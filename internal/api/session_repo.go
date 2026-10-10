@@ -18,6 +18,7 @@ type SessionRepo interface {
 	Interrupt(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) error
 	Retry(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) error
 	ResolveApproval(ctx context.Context, scope eventlog.TenantScope, sessionID, approvalID uuid.UUID, a eventlog.Answer) error
+	ResolveElicitation(ctx context.Context, scope eventlog.TenantScope, sessionID, elicitationID uuid.UUID, a eventlog.ElicitationAnswer) error
 	ChangeModel(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, model string) error
 	ChangeBudget(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, b eventlog.Budget) error
 	Rename(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, title string) error

@@ -337,6 +337,21 @@ export async function resolveApproval(
   })
 }
 
+// resolveElicitation answers an elicitation a Connector's tool asked. content
+// goes only with accept.
+export async function resolveElicitation(
+  sessionId: string,
+  elicitationId: string,
+  action: 'accept' | 'decline' | 'cancel',
+  content?: Record<string, unknown>,
+): Promise<void> {
+  await request(`/api/sessions/${sessionId}/elicitations/${elicitationId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, content }),
+  })
+}
+
 export type Memory = {
   id: string
   scope: 'user' | 'project'

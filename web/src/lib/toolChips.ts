@@ -22,6 +22,8 @@ export type ToolChip = {
   error?: string
   // approvedBy is who allowed the call: the user, or the mode for a tool that needs no approval.
   approvedBy?: string
+  // progress is the latest progress text of a running call.
+  progress?: string
   // memory is set for a finished memory write.
   memory?: { id: string; version: number; op: string; path: string }
 }
@@ -47,8 +49,9 @@ type Payload = {
 const memoryWrites = ['create', 'str_replace', 'insert', 'delete', 'rename']
 
 // toolChips is one chip per tool call in the stream, in the order the calls
-// were requested.
-export function toolChips(events: UIEvent[]): ToolChip[] {
+// were requested. progress is the live progress text by call id; a chip shows
+// it only while its call runs.
+export function toolChips(events: UIEvent[], progress: Record<string, string> = {}): ToolChip[] {
   const chips = new Map<string, ToolChip>()
   let turn = ''
   for (const e of events) {
@@ -99,6 +102,7 @@ export function toolChips(events: UIEvent[]): ToolChip[] {
       }
     }
   }
+  for (const [id, chip] of chips) if (chip.state === 'running') chip.progress = progress[id]
   return [...chips.values()]
 }
 

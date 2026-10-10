@@ -37,6 +37,9 @@ const (
 	KindThinking = "thinking"
 	// KindToolStart announces a tool call the model has begun writing.
 	KindToolStart = "tool_start"
+	// KindProgress carries a running tool call's progress text; CallID names
+	// the call.
+	KindProgress = "progress"
 	// KindReset tells subscribers to drop the turn's text so far: the attempt
 	// that produced it failed and another is starting.
 	KindReset = "reset"

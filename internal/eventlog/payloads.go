@@ -36,6 +36,13 @@ const DecisionAllow = "allow"
 // the User.
 const DecisionDeny = "deny"
 
+// Actions of an elicitation.resolved, as MCP names them.
+const (
+	ActionAccept  = "accept"
+	ActionDecline = "decline"
+	ActionCancel  = "cancel"
+)
+
 func generalBudget() Budget {
 	return Budget{Tokens: 500_000, CostMicros: 2_000_000, Turns: 25}
 }
