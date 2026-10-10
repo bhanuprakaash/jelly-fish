@@ -57,7 +57,14 @@ type State struct {
 	ToolsRan bool
 	// Pauses counts the replies in a row that stopped with pause_turn.
 	Pauses int
+	// afterStop is set from a turn the User interrupted until the next
+	// user.message, which then carries interruptMarker.
+	afterStop bool
 }
+
+// interruptMarker prefixes the user message that follows an interrupted turn,
+// so the model knows its last reply was cut off (agent-loop.md Decision 10).
+const interruptMarker = "[Previous turn interrupted by user]\n\n"
 
 // CallStatus is how far a tool call has got.
 type CallStatus int
@@ -183,6 +190,15 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
+		if st.afterStop {
+			for i, part := range p.Message.Parts {
+				if part.Kind == msg.KindText {
+					p.Message.Parts[i].Text = interruptMarker + part.Text
+					break
+				}
+			}
+			st.afterStop = false
+		}
 		st.Messages = append(st.Messages, p.Message)
 		*userSeqs = append(*userSeqs, e.Seq)
 		st.RetryStep = 0
@@ -290,7 +306,14 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			CallID: p.CallID, IsError: true, Parts: []msg.Part{{Kind: msg.KindText, Text: p.Note}},
 		}})
 	case eventlog.TypeTurnInterrupted:
+		var p struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return err
+		}
 		st.OpenTurn = nil
+		st.afterStop = p.Reason == "user_interrupt"
 	case eventlog.TypeSessionError:
 		var p struct {
 			Retryable bool `json:"retryable"`

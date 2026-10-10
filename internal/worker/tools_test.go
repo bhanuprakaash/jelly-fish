@@ -3,7 +3,9 @@ package worker_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -260,28 +262,40 @@ func TestInterruptClosesEveryCallOfTheBatch(t *testing.T) {
 	pool := testdb.NewPool(t)
 	sid, scope := newFakeSession(t, pool)
 	started := make(chan struct{})
-	block := fn{id: "a", call: func(ctx context.Context) tool.Result {
+	parallel := tool.Def{ParallelSafe: true}
+	a := fn{id: "a", def: parallel, call: func(ctx context.Context) tool.Result {
 		close(started)
 		<-ctx.Done()
 		return tool.Result{}
 	}}
-	never := fn{id: "b", call: func(context.Context) tool.Result { t.Error("b ran"); return tool.Result{} }}
-	p := &replies{list: []provider.Response{toolUse("a", "b"), done()}}
-	startTools(t, pool, p, 20*time.Millisecond, tool.NewRegistry(block, never))
+	b := fn{id: "b", def: parallel, call: func(context.Context) tool.Result { return tool.TextResult("result b", false) }}
+	c := fn{id: "c", call: func(context.Context) tool.Result { t.Error("c ran"); return tool.Result{} }}
+	p := &replies{list: []provider.Response{toolUse("a", "b", "c"), done()}}
+	startTools(t, pool, p, 10*time.Second, tool.NewRegistry(a, b, c))
 
 	<-started
+	for len(ofType(loadEvents(t, pool, sid), eventlog.TypeToolCompleted)) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if err := eventlog.NewRepo(pool, fake.Name).Interrupt(t.Context(), scope, sid); err != nil {
 		t.Fatal(err)
 	}
 	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 1)
 
 	evs := loadEvents(t, pool, sid)
-	if got := callIDs(evs, eventlog.TypeToolInterrupted); !slices.Equal(got, []string{"a"}) {
-		t.Fatalf("interrupted = %v, want [a]", got)
+	interrupted := ofType(evs, eventlog.TypeToolInterrupted)
+	if len(interrupted) != 1 || interrupted[0].Payload["tool_call_id"] != "a" || interrupted[0].Payload["reason"] != "user_interrupt" {
+		t.Fatalf("interrupted = %+v, want a by user_interrupt", interrupted)
 	}
 	completed := ofType(evs, eventlog.TypeToolCompleted)
-	if len(completed) != 1 || completed[0].Payload["tool_call_id"] != "b" || completed[0].Payload["is_error"] != true {
-		t.Fatalf("completed = %+v, want b as an error", completed)
+	if len(completed) != 2 || completed[0].Payload["tool_call_id"] != "b" || completed[0].Payload["is_error"] == true {
+		t.Fatalf("completed = %+v, want b done first", completed)
+	}
+	if completed[1].Payload["tool_call_id"] != "c" || completed[1].Payload["is_error"] != true {
+		t.Fatalf("completed = %+v, want c as an error", completed)
+	}
+	if note := fmt.Sprint(completed[1].Payload["result"]); !strings.Contains(note, "not run: interrupted by user") {
+		t.Fatalf("c result = %s, want the not-run note", note)
 	}
 
 	// The next message resumes with an answer for every call.
@@ -290,8 +304,8 @@ func TestInterruptClosesEveryCallOfTheBatch(t *testing.T) {
 	}
 	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 2)
 	reqs := p.requests()
-	if n := len(reqs[len(reqs)-1].Messages[2].Parts); n != 2 {
-		t.Fatalf("results sent = %d, want 2", n)
+	if n := len(reqs[len(reqs)-1].Messages[2].Parts); n != 3 {
+		t.Fatalf("results sent = %d, want 3", n)
 	}
 }
 

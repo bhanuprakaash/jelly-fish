@@ -373,6 +373,29 @@ func TestInterruptIgnoresOtherStatusesAndTenants(t *testing.T) {
 	}
 }
 
+func TestInterruptLeavesAParkedSessionAlone(t *testing.T) {
+	for _, status := range []string{eventlog.StatusAwaitingUser, eventlog.StatusCompleted, eventlog.StatusFailed} {
+		t.Run(status, func(t *testing.T) {
+			pool := testdb.NewPool(t)
+			repo := eventlog.NewRepo(pool, "fake")
+			sid, scope := parkedWith(t, pool, false, status)
+			last, err := repo.SessionLastSeq(t.Context(), scope, sid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.Interrupt(t.Context(), scope, sid); err != nil {
+				t.Fatal(err)
+			}
+			if got := eventTypes(t, repo, scope, sid, last); len(got) != 0 {
+				t.Fatalf("events = %v, want none", got)
+			}
+			if r := readRow(t, pool, sid); r.status != status || r.cancel {
+				t.Fatalf("row = %+v, want %s unflagged", r, status)
+			}
+		})
+	}
+}
+
 func parkedWith(t *testing.T, pool *pgxpool.Pool, retryable bool, to string) (uuid.UUID, eventlog.TenantScope) {
 	t.Helper()
 	return parkedOn(t, pool, "key_invalid", retryable, to)

@@ -119,8 +119,9 @@ func (r *Repo) PostMessage(ctx context.Context, scope TenantScope, sessionID, cl
 }
 
 // Interrupt appends the User's user.interrupt. A sleeping session ("Stop
-// retrying") parks as awaiting_user at once. A running one is only flagged:
-// its Worker's heartbeat cancels the in-flight call (event-log.md §5.8, §8).
+// retrying") parks as awaiting_user at once. A running one is flagged and
+// its Worker is notified on jf_cancel to cancel the in-flight call; the
+// heartbeat is the fallback (event-log.md §5.8, §8).
 // A session in any other status is left alone (§5.17).
 func (r *Repo) Interrupt(ctx context.Context, scope TenantScope, sessionID uuid.UUID) error {
 	interrupt := NewEvent{Type: TypeUserInterrupt, Actor: "user:" + scope.UserID.String(), Payload: map[string]string{"reason": "user_request"}}
@@ -135,6 +136,9 @@ func (r *Repo) Interrupt(ctx context.Context, scope TenantScope, sessionID uuid.
 		case StatusRunning:
 			if _, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{interrupt}, nil); err == nil {
 				_, err = tx.Exec(ctx, `UPDATE sessions SET cancel_requested = true WHERE id = $1`, sessionID)
+			}
+			if err == nil {
+				_, err = tx.Exec(ctx, `SELECT pg_notify('jf_cancel', $1)`, sessionID.String())
 			}
 		}
 		return err

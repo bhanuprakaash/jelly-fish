@@ -405,7 +405,7 @@ Wakeups:
 1. API appends `user.message` while `status='running'`. No status change.
 2. At each tool-result boundary the Worker refolds (`events > cursor`), sees `PendingUserSeqs`, and includes them in the next turn.
 3. `turn.started.input_through_seq` records the last user seq the model saw.
-4. The log keeps wall-clock order (a message may sit between `tool.call.started` and `completed`); the context builder places it after the results.
+4. The log keeps wall-clock order (a message may sit between `tool.call.started` and `completed`); the context builder places it after the results. Tool results and steering text may reach the Provider as two consecutive user messages; adapters do not merge them.
 
 **Interrupt** (signal):
 1. API, in one tx: append `user.interrupt`, set `cancel_requested=true`, `NOTIFY jf_cancel, '<session_id>'`.
