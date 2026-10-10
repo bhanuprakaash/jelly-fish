@@ -25,13 +25,15 @@ export class UnauthorizedError extends Error {
 }
 
 // HttpError is any other non-2xx answer, with its status for callers that
-// word it differently.
+// word it differently, and the api's own message when it sent one.
 export class HttpError extends Error {
   status: number
+  detail: string
 
-  constructor(path: string, status: number) {
+  constructor(path: string, status: number, detail = '') {
     super(`${path}: status ${status}`)
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -51,7 +53,8 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
     throw new UnauthorizedError(path)
   }
   if (!res.ok) {
-    throw new HttpError(path, res.status)
+    const detail = await res.json().then((b: { error?: string }) => b.error ?? '', () => '')
+    throw new HttpError(path, res.status, detail)
   }
   return res
 }

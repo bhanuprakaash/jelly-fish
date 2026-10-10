@@ -29,3 +29,4 @@ This directory is the maintained source for verifying jelly-fish's real behavior
 - [S5 demo](./s5-demo.md) — the whole S5 flow on desktop and Pixel 7 emulation: live badges, Title, rename, hide/show recovery.
 - [Tool calls](./tool-calls.md) — `tool.call.*` events, the parallel batch of the dev fake tools, Interrupt mid-call.
 - [Memory](./memory.md) — the `memory` tool: rows + revisions, `memory.written`, taint → `pending_review`, secret refusal, no memory text in the log.
+- [Connectors](./connectors.md) — Add and Remove Connector in Settings: probe, per-tool switches, slug, remove confirm, on desktop and Pixel 7 emulation.
