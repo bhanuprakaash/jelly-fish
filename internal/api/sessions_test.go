@@ -54,6 +54,10 @@ func (f *fakeRepo) ChangeModel(context.Context, eventlog.TenantScope, uuid.UUID,
 	return nil
 }
 
+func (f *fakeRepo) ChangeBudget(context.Context, eventlog.TenantScope, uuid.UUID, eventlog.Budget) error {
+	return nil
+}
+
 func (f *fakeRepo) Rename(context.Context, eventlog.TenantScope, uuid.UUID, string) error {
 	return nil
 }

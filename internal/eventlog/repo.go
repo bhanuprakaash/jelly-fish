@@ -241,6 +241,19 @@ func (r *Repo) ChangeModel(ctx context.Context, scope TenantScope, sessionID uui
 	})
 }
 
+// ChangeBudget appends the User's session.config_changed{budget}; it
+// replaces all three limits from the next check on.
+func (r *Repo) ChangeBudget(ctx context.Context, scope TenantScope, sessionID uuid.UUID, b Budget) error {
+	changed := NewEvent{Type: TypeConfigChanged, Actor: "user:" + scope.UserID.String(), Payload: map[string]Budget{"budget": b}}
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		if _, err := lockStatus(ctx, tx, scope, sessionID); err != nil {
+			return err
+		}
+		_, err := r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{changed}, nil)
+		return err
+	})
+}
+
 // Rename sets the Title of a top-level session to title, which the caller has
 // already trimmed and checked. A Child Session is refused with
 // ErrChildSession. Like every API write it is unfenced, so it lands even

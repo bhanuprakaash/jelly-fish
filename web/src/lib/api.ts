@@ -1,3 +1,5 @@
+import type { Budget } from './budget'
+
 // Payload of a user.message event (internal/msg.Message, ADR 0002). Events
 // arrive as stored: msg_v 1 parts carry `type`, msg_v 2 and up carry `k`. Only
 // text parts have a top-level `text`.
@@ -247,6 +249,15 @@ export async function changeModel(sessionId: string, model: string): Promise<voi
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model }),
+  })
+}
+
+// changeBudget replaces all three of a session's limits.
+export async function changeBudget(sessionId: string, budget: Budget): Promise<void> {
+  await request(`/api/sessions/${sessionId}/budget`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(budget),
   })
 }
 

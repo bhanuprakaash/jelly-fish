@@ -495,3 +495,31 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
+
+// handleChangeBudget sets all three of a session's limits; each must be given
+// and above zero.
+func handleChangeBudget(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := pathID(w, r, "session not found")
+		if !ok {
+			return
+		}
+		var b eventlog.Budget
+		if !decodeJSON(w, r, &b) {
+			return
+		}
+		if b.Tokens <= 0 || b.CostMicros <= 0 || b.Turns <= 0 {
+			writeError(w, http.StatusBadRequest, "tokens, cost_micros and turns are required and must be above zero")
+			return
+		}
+		switch err := repo.ChangeBudget(r.Context(), scopeFrom(r), sessionID, b); {
+		case errors.Is(err, eventlog.ErrNotFound):
+			writeError(w, http.StatusNotFound, "session not found")
+		case err != nil:
+			logger.Error("change budget", "error", err, "session_id", sessionID)
+			writeError(w, http.StatusInternalServerError, "could not change budget")
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}
+}

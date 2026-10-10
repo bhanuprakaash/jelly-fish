@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type Ref, type SubmitEvent } from 'react'
 import {
+  changeBudget,
   changeModel,
   createSession,
   getMe,
@@ -13,6 +14,7 @@ import {
   type UIEvent,
 } from './lib/api'
 import { JellyGlyph } from './JellyGlyph'
+import { budgetHint, parseBudget, sessionBudget } from './lib/budget'
 import { providerOf, sessionModel } from './lib/sessionModel'
 import { sessionNotice } from './lib/sessionNotice'
 import { getShowThinking, setShowThinking } from './lib/showThinking'
@@ -105,10 +107,30 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const budget = sessionBudget(events)
+  const setBudget = async (args: string) => {
+    const next = budget && parseBudget(args, budget)
+    if (!next) {
+      setError('Could not set the budget.')
+      return
+    }
+    setError(null)
+    try {
+      await changeBudget(sessionId, next)
+      setDraft('')
+    } catch {
+      setError('Could not set the budget.')
+    }
+  }
+
   const send = async (e: SubmitEvent) => {
     e.preventDefault()
     const text = draft.trim()
     if (!text || sending) return
+    if (hasSession && /^\/budget(\s|$)/i.test(text)) {
+      await setBudget(text.slice('/budget'.length))
+      return
+    }
 
     setSending(true)
     setError(null)
@@ -230,6 +252,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
 
   const commands = [
     ...(picker ? [{ name: '/model', hint: 'Switch model' }] : []),
+    ...(hasSession && budget ? [{ name: '/budget', hint: budgetHint(budget) }] : []),
     ...(canStop ? [{ name: '/stop', hint: 'Interrupt this chat' }] : []),
   ]
   const typed = /^\/\S*$/.test(draft) ? draft.toLowerCase() : null
@@ -238,6 +261,10 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
   const activeIndex = Math.min(active, matches.length - 1)
 
   const runCommand = (name: string) => {
+    if (name === '/budget') {
+      setDraft('/budget ')
+      return
+    }
     setDraft('')
     if (name === '/stop') {
       void stop()

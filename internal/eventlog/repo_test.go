@@ -599,6 +599,29 @@ func TestChangeModelElsewhereOnlyRecordsIt(t *testing.T) {
 	}
 }
 
+func TestChangeBudgetAppendsTheLimits(t *testing.T) {
+	pool := testdb.NewPool(t)
+	repo := eventlog.NewRepo(pool, "fake")
+	sid, scope := parkedWith(t, pool, true, eventlog.StatusAwaitingUser)
+	last, _ := repo.SessionLastSeq(t.Context(), scope, sid)
+
+	want := eventlog.Budget{Tokens: 1_000_000, CostMicros: 4_000_000, Turns: 50}
+	if err := repo.ChangeBudget(t.Context(), scope, sid, want); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := repo.ListEvents(t.Context(), scope, sid, last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 1 || evs[0].Type != eventlog.TypeConfigChanged {
+		t.Fatalf("events = %+v, want one config_changed", evs)
+	}
+	var payload struct{ Budget eventlog.Budget }
+	if err := json.Unmarshal(evs[0].Payload, &payload); err != nil || payload.Budget != want {
+		t.Fatalf("payload = %s (%v), want budget %+v", evs[0].Payload, err, want)
+	}
+}
+
 func TestChangeModelChecksTenancy(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool, "fake")
