@@ -134,12 +134,7 @@ func (r *Repo) Interrupt(ctx context.Context, scope TenantScope, sessionID uuid.
 		case StatusSleeping:
 			_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{interrupt}, &StatusChange{To: StatusAwaitingUser, Reason: "interrupted"})
 		case StatusRunning:
-			if _, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{interrupt}, nil); err == nil {
-				_, err = tx.Exec(ctx, `UPDATE sessions SET cancel_requested = true WHERE id = $1`, sessionID)
-			}
-			if err == nil {
-				_, err = tx.Exec(ctx, `SELECT pg_notify('jf_cancel', $1)`, sessionID.String())
-			}
+			err = r.store.interruptRunning(ctx, tx, sessionID, &scope, interrupt)
 		}
 		return err
 	})

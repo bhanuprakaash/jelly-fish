@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
+	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 )
 
 // UserAdmin is what the /api/admin routes need from the store
@@ -26,6 +27,14 @@ type UserAdmin interface {
 }
 
 var _ UserAdmin = (*auth.Store)(nil)
+
+// UserSessions stops a disabled User's running sessions
+// (internal/eventlog.Store satisfies it).
+type UserSessions interface {
+	InterruptUserSessions(ctx context.Context, userID uuid.UUID, actor string) error
+}
+
+var _ UserSessions = (*eventlog.Store)(nil)
 
 // adminOnly answers 404 to anyone but an Admin, so the routes behind it
 // cannot be told apart from routes that do not exist (auth-keys.md §4.1).
@@ -170,7 +179,13 @@ func (a *authHandlers) handleListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *authHandlers) handleDisableUser(w http.ResponseWriter, r *http.Request) {
-	a.userAction(w, r, "user disabled", a.cfg.Admin.DisableUser)
+	actor, _ := auth.UserFrom(r.Context())
+	a.userAction(w, r, "user disabled", func(ctx context.Context, id uuid.UUID) error {
+		if err := a.cfg.Admin.DisableUser(ctx, id); err != nil {
+			return err
+		}
+		return a.cfg.UserSessions.InterruptUserSessions(ctx, id, "user:"+actor.ID.String())
+	})
 }
 
 func (a *authHandlers) handleEnableUser(w http.ResponseWriter, r *http.Request) {
