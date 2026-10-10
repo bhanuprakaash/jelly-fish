@@ -5,10 +5,10 @@ export type ToolChip = {
   // turn is the turn_id of the reply that requested the call.
   turn: string
   name: string
-  // pending is a call the model is still writing; stopped is a call the user
-  // interrupted; unknown is one a lost Worker left started, so whether it ran
-  // is not known.
-  state: 'pending' | 'running' | 'done' | 'failed' | 'stopped' | 'unknown'
+  // pending is a call the model is still writing; waiting is one that needs
+  // the user's approval; stopped is a call the user interrupted; unknown is
+  // one a lost Worker left started, so whether it ran is not known.
+  state: 'pending' | 'waiting' | 'running' | 'done' | 'failed' | 'stopped' | 'unknown'
   args?: unknown
   // startedAt is when the call was requested, in epoch milliseconds.
   startedAt: number
@@ -20,6 +20,8 @@ export type ToolChip = {
   blob?: { sha256: string; size: number }
   // error is the error text of a failed call, or the note of an interrupted one.
   error?: string
+  // approvedBy is who allowed the call: the user, or the mode for a tool that needs no approval.
+  approvedBy?: string
   // memory is set for a finished memory write.
   memory?: { id: string; version: number; op: string; path: string }
 }
@@ -30,6 +32,8 @@ type Payload = {
   tool_call_id: string
   turn_id?: string
   tool?: string
+  ask?: boolean
+  approved_by?: string
   args?: { command?: string; path?: string; new_path?: string }
   is_error?: boolean
   duration_ms?: number
@@ -58,11 +62,18 @@ export function toolChips(events: UIEvent[]): ToolChip[] {
           seq: e.seq,
           turn,
           name: p.tool ?? '',
-          state: 'running',
+          state: p.ask ? 'waiting' : 'running',
           args: p.args,
           startedAt: Date.parse(e.created_at),
         })
         break
+      case 'tool.call.started': {
+        const chip = chips.get(p.tool_call_id)
+        if (!chip) break
+        chip.state = 'running'
+        chip.approvedBy = p.approved_by
+        break
+      }
       case 'tool.call.completed': {
         const chip = chips.get(p.tool_call_id)
         if (!chip) break

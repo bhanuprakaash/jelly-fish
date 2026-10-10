@@ -1,6 +1,10 @@
 package worker
 
-import "github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+import (
+	"slices"
+
+	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+)
 
 // StepKind is what exec does next.
 type StepKind int
@@ -11,6 +15,10 @@ const (
 	StepMarkInterrupted StepKind = iota + 1
 	// StepMarkToolsInterrupted closes tool calls a dead Worker left started.
 	StepMarkToolsInterrupted
+	// StepFinishDenied closes the calls the User denied and those after them.
+	StepFinishDenied
+	// StepRequestApproval asks the User about the next call that waits.
+	StepRequestApproval
 	// StepStartTool runs the next batch of requested tool calls.
 	StepStartTool
 	// StepRequestTools records every call of the latest reply.
@@ -69,6 +77,10 @@ func Decide(st State) Step {
 		return Step{Kind: StepMarkInterrupted, TurnID: st.OpenTurn.ID}
 	case len(st.calls(CallStarted)) > 0:
 		return Step{Kind: StepMarkToolsInterrupted}
+	case slices.ContainsFunc(st.calls(CallRequested), func(c Call) bool { return c.Denied || c.Skipped }):
+		return Step{Kind: StepFinishDenied}
+	case slices.ContainsFunc(st.calls(CallRequested), func(c Call) bool { return c.Ask && !c.Resolved }):
+		return Step{Kind: StepRequestApproval}
 	case len(st.calls(CallRequested)) > 0:
 		return Step{Kind: StepStartTool}
 	case len(st.calls(CallAsked)) > 0:

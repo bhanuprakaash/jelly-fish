@@ -57,6 +57,12 @@ func TestToUI(t *testing.T) {
 			wantPayload: `{"approval_id":"a1","dimension":"tokens","kind":"budget"}`,
 		},
 		{
+			name:        "a tool approval.requested keeps the call to show and drops the hash",
+			event:       eventlog.Event{Seq: 12, Type: eventlog.TypeApprovalRequested, Payload: []byte(`{"approval_id":"a1","kind":"tool","tool_call_id":"c1","tool":"notion__x","args":{"q":1},"connector":"Notion","reason":"r","tool_hash":"h","connector_id":"i","tool_name":"x"}`)},
+			wantSent:    true,
+			wantPayload: `{"approval_id":"a1","args":{"q":1},"connector":"Notion","kind":"tool","reason":"r","tool":"notion__x","tool_call_id":"c1"}`,
+		},
+		{
 			name:        "approval.resolved drops who answered",
 			event:       eventlog.Event{Seq: 13, Type: eventlog.TypeApprovalResolved, Payload: []byte(`{"approval_id":"a1","decision":"allow","by":"user"}`)},
 			wantSent:    true,

@@ -28,6 +28,7 @@ type fakeRepo struct {
 	listSessionsErr             error
 	interruptErr, retryErr      error
 	resolveErr                  error
+	resolved                    eventlog.Answer
 	interrupted, retried        []uuid.UUID
 	events                      []eventlog.Event
 }
@@ -46,7 +47,8 @@ func (f *fakeRepo) CreateSession(context.Context, eventlog.TenantScope, uuid.UUI
 	return f.createSeq, f.createErr
 }
 
-func (f *fakeRepo) ResolveApproval(context.Context, eventlog.TenantScope, uuid.UUID, uuid.UUID, string) error {
+func (f *fakeRepo) ResolveApproval(_ context.Context, _ eventlog.TenantScope, _, _ uuid.UUID, a eventlog.Answer) error {
+	f.resolved = a
 	return f.resolveErr
 }
 
@@ -232,18 +234,23 @@ func TestResolveApprovalHandler(t *testing.T) {
 		body       string
 		repoErr    error
 		wantStatus int
+		wantAnswer eventlog.Answer
 	}{
-		{"allow", `{"decision":"allow"}`, nil, http.StatusNoContent},
-		{"deny", `{"decision":"deny"}`, nil, http.StatusNoContent},
-		{"unknown decision", `{"decision":"maybe"}`, nil, http.StatusBadRequest},
-		{"no decision", `{}`, nil, http.StatusBadRequest},
-		{"another tenant's session", `{"decision":"allow"}`, eventlog.ErrNotFound, http.StatusNotFound},
-		{"not the open approval", `{"decision":"allow"}`, eventlog.ErrNoOpenApproval, http.StatusConflict},
-		{"repo failing", `{"decision":"allow"}`, errors.New("db down"), http.StatusInternalServerError},
+		{"allow", `{"decision":"allow"}`, nil, http.StatusNoContent, eventlog.Answer{Decision: "allow"}},
+		{"deny", `{"decision":"deny"}`, nil, http.StatusNoContent, eventlog.Answer{Decision: "deny"}},
+		{"deny with a reason", `{"decision":"deny","scope":"once","reason":"no"}`, nil, http.StatusNoContent, eventlog.Answer{Decision: "deny", Reason: "no"}},
+		{"allow all", `{"decision":"allow","all":true}`, nil, http.StatusNoContent, eventlog.Answer{Decision: "allow", All: true}},
+		{"unknown decision", `{"decision":"maybe"}`, nil, http.StatusBadRequest, eventlog.Answer{}},
+		{"unknown scope", `{"decision":"allow","scope":"always"}`, nil, http.StatusBadRequest, eventlog.Answer{}},
+		{"no decision", `{}`, nil, http.StatusBadRequest, eventlog.Answer{}},
+		{"another tenant's session", `{"decision":"allow"}`, eventlog.ErrNotFound, http.StatusNotFound, eventlog.Answer{Decision: "allow"}},
+		{"not the open approval", `{"decision":"allow"}`, eventlog.ErrNoOpenApproval, http.StatusConflict, eventlog.Answer{Decision: "allow"}},
+		{"repo failing", `{"decision":"allow"}`, errors.New("db down"), http.StatusInternalServerError, eventlog.Answer{Decision: "allow"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := newTestServer(t, &fakeRepo{resolveErr: tt.repoErr})
+			repo := &fakeRepo{resolveErr: tt.repoErr}
+			srv := newTestServer(t, repo)
 			url := "/api/sessions/" + uuid.NewString() + "/approvals/" + uuid.NewString()
 			req := signIn(httptest.NewRequest(http.MethodPost, url, strings.NewReader(tt.body)))
 			rr := httptest.NewRecorder()
@@ -251,6 +258,9 @@ func TestResolveApprovalHandler(t *testing.T) {
 
 			if rr.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d (body %s)", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+			if repo.resolved != tt.wantAnswer {
+				t.Fatalf("repo answered %+v, want %+v", repo.resolved, tt.wantAnswer)
 			}
 		})
 	}

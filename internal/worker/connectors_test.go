@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,9 +32,13 @@ type connectorEnv struct {
 	pool  *pgxpool.Pool
 	kr    *keyring.Keyring
 	store *connector.Store
+	// stop ends the running Worker.
+	stop func()
 }
 
-func newConnectorEnv(t *testing.T, p provider.Provider) *connectorEnv {
+// newConnectorEnv starts a Worker that offers builtins and each session's
+// connector tools.
+func newConnectorEnv(t *testing.T, p provider.Provider, builtins ...tool.Tool) *connectorEnv {
 	t.Helper()
 	pool := testdb.NewPool(t)
 	kr, err := keyring.Parse("m1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
@@ -41,14 +46,21 @@ func newConnectorEnv(t *testing.T, p provider.Provider) *connectorEnv {
 		t.Fatal(err)
 	}
 	e := &connectorEnv{pool: pool, kr: kr, store: connector.NewStore(pool)}
-	w := worker.New(pool, worker.Gateway{Fake: p, Keyring: kr}, tool.NewRegistry(), stream.NewPGDeltaBus(pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
+	e.start(t, p, builtins...)
+	return e
+}
+
+// start runs a new Worker; call it after stop to simulate a restart.
+func (e *connectorEnv) start(t *testing.T, p provider.Provider, builtins ...tool.Tool) {
+	t.Helper()
+	w := worker.New(e.pool, worker.Gateway{Fake: p, Keyring: e.kr}, tool.NewRegistry(builtins...), stream.NewPGDeltaBus(e.pool), worker.Lease{TTL: 30 * time.Second, Heartbeat: 10 * time.Second}, eventlog.Upcasters{}, slog.New(slog.DiscardHandler))
 	w.UseConnectors(e.store, mcpclient.New(true))
 	worker.SetTitleTimeout(w, 0)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
-	t.Cleanup(func() { cancel(); <-done })
-	return e
+	e.stop = sync.OnceFunc(func() { cancel(); <-done })
+	t.Cleanup(e.stop)
 }
 
 // addConnector attaches a connector for server to userID's project, with the
@@ -119,6 +131,8 @@ func TestConnectorToolsAreScopedToTheProjectAndCalledUnprefixed(t *testing.T) {
 	scope := user.Scope()
 	id := e.addConnector(t, user.ID, srv, time.Minute)
 	sid := e.newSession(t, scope)
+	waitStatus(t, e.pool, sid, eventlog.StatusAwaitingApproval, 1)
+	resolveLatest(t, e.pool, scope, sid, eventlog.Answer{Decision: eventlog.DecisionAllow})
 	waitStatus(t, e.pool, sid, eventlog.StatusAwaitingUser, 2)
 
 	if got := e.toolNames(t, sid, 0); !slices.Equal(got, []string{"notion__search_pages"}) {

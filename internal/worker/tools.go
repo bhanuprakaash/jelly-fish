@@ -14,7 +14,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/bhanuprakaash/jelly-fish/internal/approver"
 	"github.com/bhanuprakaash/jelly-fish/internal/blob"
+	"github.com/bhanuprakaash/jelly-fish/internal/connector"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
@@ -31,22 +33,87 @@ const (
 	noteNotRun     = "not run: interrupted by user"
 )
 
-// requestTools records every call of the latest reply in one transaction.
+// requestTools records every call of the latest reply in one transaction. If
+// any call asks, it also asks about the first one and parks.
 func (w *Worker) requestTools(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {
 	var evs []eventlog.NewEvent
+	var first *Call
 	for _, call := range st.calls(CallAsked) {
-		evs = append(evs, w.requestedEvent(call))
+		t, _ := st.tools.Get(call.Name)
+		ask := approver.Decide(t).Ask
+		evs = append(evs, w.requestedEvent(call, ask))
+		if ask && first == nil {
+			first = &call
+		}
+	}
+	if first == nil {
+		_, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, nil)
+		return err
+	}
+	return w.parkOnTool(ctx, c, f, st, *first, evs)
+}
+
+// requestApproval asks about the first call that still waits for the User.
+func (w *Worker) requestApproval(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {
+	i := slices.IndexFunc(st.Calls, func(call Call) bool { return call.Status == CallRequested && call.Ask && !call.Resolved })
+	return w.parkOnTool(ctx, c, f, st, st.Calls[i], nil)
+}
+
+// parkOnTool appends evs and the question about call, and parks the session
+// until the User answers.
+func (w *Worker) parkOnTool(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State, call Call, evs []eventlog.NewEvent) error {
+	f.ExpectSeq = &st.LastSeq
+	evs = append(evs, w.approvalEvent(st, call))
+	_, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, &eventlog.StatusChange{To: eventlog.StatusAwaitingApproval, Reason: "tool"})
+	if err != nil {
+		return err
+	}
+	return errParked
+}
+
+// approvalEvent asks the User about call. A Connector tool's event also names
+// the tool and the hash of the definition shown, so approving it can store
+// that hash.
+func (w *Worker) approvalEvent(st State, call Call) eventlog.NewEvent {
+	p := map[string]any{"approval_id": uuid.New(), "kind": eventlog.ApprovalKindTool, "tool_call_id": call.ID, "tool": call.Name, "args": call.Args}
+	t, _ := st.tools.Get(call.Name)
+	if reason := approver.Decide(t).Reason; reason != "" {
+		p["reason"] = reason
+	}
+	if ct, ok := t.(connector.Tool); ok {
+		p["connector_id"], p["connector"], p["tool_name"], p["tool_hash"] = ct.Conn.ID, ct.Conn.Name, ct.Cached.Name, ct.CurrentHash()
+	}
+	return eventlog.NewEvent{Type: eventlog.TypeApprovalRequested, Actor: w.actor(), CorrelationID: call.ID, Payload: p}
+}
+
+// finishDenied closes the calls the User denied, and those after them, in one
+// transaction, so none of them starts.
+func (w *Worker) finishDenied(ctx context.Context, c eventlog.Claim, f eventlog.Fence, st State) error {
+	var evs []eventlog.NewEvent
+	for _, call := range st.calls(CallRequested) {
+		switch {
+		case call.Denied:
+			text := "denied by user"
+			if call.DenyReason != "" {
+				text += ": " + call.DenyReason
+			}
+			done := w.completedEvent(call.ID, tool.TextResult(text, true), 0)
+			done.Payload.(map[string]any)["denied"] = true
+			evs = append(evs, done)
+		case call.Skipped:
+			evs = append(evs, w.completedEvent(call.ID, tool.TextResult("skipped because an earlier call was denied", true), 0))
+		}
 	}
 	_, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, nil)
 	return err
 }
 
-func (w *Worker) requestedEvent(call Call) eventlog.NewEvent {
+func (w *Worker) requestedEvent(call Call, ask bool) eventlog.NewEvent {
 	return eventlog.NewEvent{
 		Type:          eventlog.TypeToolRequested,
 		Actor:         w.actor(),
 		CorrelationID: call.ID,
-		Payload:       map[string]any{"tool_call_id": call.ID, "tool": call.Name, "args": call.Args},
+		Payload:       map[string]any{"tool_call_id": call.ID, "tool": call.Name, "args": call.Args, "ask": ask},
 	}
 }
 
@@ -112,7 +179,7 @@ func (w *Worker) startTools(ctx context.Context, c eventlog.Claim, f eventlog.Fe
 			Type:          eventlog.TypeToolStarted,
 			Actor:         w.actor(),
 			CorrelationID: call.ID,
-			Payload:       map[string]string{"tool_call_id": call.ID},
+			Payload:       map[string]any{"tool_call_id": call.ID, "approved_by": approvedBy(call), "trace": ""},
 		}
 	}
 	seqs, err := w.store.AppendFenced(ctx, c.SessionID, f, evs, nil)
@@ -130,6 +197,13 @@ func (w *Worker) startTools(ctx context.Context, c eventlog.Claim, f eventlog.Fe
 	}
 	wg.Wait()
 	return errors.Join(errs...)
+}
+
+func approvedBy(call Call) string {
+	if call.Ask {
+		return approver.ByUser
+	}
+	return approver.ByMode
 }
 
 // runCall calls one tool and records its result. A call cut short by ctx
@@ -295,7 +369,7 @@ func (w *Worker) userStopEvents(st State) []eventlog.NewEvent {
 		case CallStarted:
 			evs = append(evs, w.interruptedEvent(call.ID, "user_interrupt", noteUserStop))
 		case CallAsked:
-			evs = append(evs, w.requestedEvent(call), w.completedEvent(call.ID, tool.TextResult(noteNotRun, true), 0))
+			evs = append(evs, w.requestedEvent(call, false), w.completedEvent(call.ID, tool.TextResult(noteNotRun, true), 0))
 		case CallRequested:
 			evs = append(evs, w.completedEvent(call.ID, tool.TextResult(noteNotRun, true), 0))
 		}

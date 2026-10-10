@@ -35,6 +35,7 @@ export function Thought({ text, streaming = false }: { text: string; streaming?:
 
 const stateWords = {
   pending: 'calling',
+  waiting: 'waiting for approval',
   running: 'running',
   done: 'done',
   failed: 'failed',
@@ -46,6 +47,7 @@ const dangerTint = 'bg-danger-tint text-danger'
 
 const stateCircles = {
   pending: 'bg-accent-tint text-accent-ink',
+  waiting: 'bg-attention-tint text-attention',
   running: 'bg-accent-tint text-accent-ink',
   done: 'bg-success-tint text-success',
   failed: dangerTint,
@@ -110,6 +112,8 @@ function StateIcon({ state }: { state: ToolChip['state'] }) {
       )
     case 'unknown':
       return <span aria-hidden="true" className="text-sm font-semibold leading-none">?</span>
+    case 'waiting':
+      return <span aria-hidden="true" className="text-sm font-semibold leading-none">…</span>
     default:
       return (
         <svg {...common}>
@@ -130,11 +134,13 @@ function Row({ sessionId, call, first }: { sessionId: string; call: ToolChip; fi
   const note =
     call.state === 'pending'
       ? 'calling…'
-      : call.state === 'running'
-        ? `running · ${elapsed}s`
-        : call.state === 'unknown'
-          ? 'outcome unknown — check before retrying'
-          : call.error
+      : call.state === 'waiting'
+        ? 'waiting for approval'
+        : call.state === 'running'
+          ? `running · ${elapsed}s`
+          : call.state === 'unknown'
+            ? 'outcome unknown — check before retrying'
+            : call.error
   const noteTone = call.state === 'failed' || call.state === 'stopped' ? 'text-danger' : 'text-muted'
   return (
     <div className={first ? '' : 'border-t border-line'}>
@@ -152,6 +158,7 @@ function Row({ sessionId, call, first }: { sessionId: string; call: ToolChip; fi
             <span className="shrink-0 font-mono text-ink">{call.name}</span>
             <span className="sr-only">{stateWords[call.state]}</span>
             {summary && <span className="truncate text-muted">{summary}</span>}
+            {call.approvedBy === 'user' && <span className="shrink-0 text-xs text-muted">approved by you</span>}
           </span>
           {note && <span className={`line-clamp-2 text-[12.5px] ${noteTone}`}>{note}</span>}
         </span>

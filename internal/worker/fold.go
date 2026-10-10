@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/blob"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
@@ -85,6 +86,8 @@ type Approval struct {
 	ID        string
 	Kind      string
 	Dimension string
+	// ToolCallID is the call a tool approval asks about.
+	ToolCallID string
 }
 
 // Limit is the limit of a budget dimension: the snapshot's value plus one
@@ -121,6 +124,12 @@ type Call struct {
 	// TurnID is the turn whose reply asked for the call.
 	TurnID string
 	Status CallStatus
+	// Ask is set when the call waits for the User; Resolved once they allow it.
+	Ask, Resolved bool
+	// Denied is the call the User refused, DenyReason their words; Skipped is
+	// a call after it in the batch.
+	Denied, Skipped bool
+	DenyReason      string
 	// Result is the tool_result part, once the call is done.
 	Result *msg.Part
 }
@@ -143,6 +152,29 @@ func (st *State) call(id string) (*Call, error) {
 		}
 	}
 	return nil, fmt.Errorf("unknown tool call %q", id)
+}
+
+// answer applies the User's answer to the call id. Allowing with all set
+// allows every call that asks; denying skips the calls after it.
+func (st *State) answer(id string, allow bool, reason string, all bool) error {
+	i := slices.IndexFunc(st.Calls, func(c Call) bool { return c.ID == id })
+	if i < 0 {
+		return fmt.Errorf("unknown tool call %q", id)
+	}
+	if allow {
+		st.Calls[i].Resolved = true
+		for j := range st.Calls {
+			if all && st.Calls[j].Ask {
+				st.Calls[j].Resolved = true
+			}
+		}
+		return nil
+	}
+	st.Calls[i].Denied, st.Calls[i].DenyReason = true, reason
+	for j := i + 1; j < len(st.Calls); j++ {
+		st.Calls[j].Skipped = true
+	}
+	return nil
 }
 
 // setResult records c's result and rewrites the results message, so results
@@ -273,15 +305,18 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 			ApprovalID string `json:"approval_id"`
 			Kind       string `json:"kind"`
 			Dimension  string `json:"dimension"`
+			ToolCallID string `json:"tool_call_id"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
 		}
-		st.OpenApproval = &Approval{ID: p.ApprovalID, Kind: p.Kind, Dimension: p.Dimension}
+		st.OpenApproval = &Approval{ID: p.ApprovalID, Kind: p.Kind, Dimension: p.Dimension, ToolCallID: p.ToolCallID}
 	case eventlog.TypeApprovalResolved:
 		var p struct {
 			ApprovalID string `json:"approval_id"`
 			Decision   string `json:"decision"`
+			Reason     string `json:"reason"`
+			All        bool   `json:"all"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
@@ -289,6 +324,11 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		a := st.OpenApproval
 		if a == nil || a.ID != p.ApprovalID {
 			break
+		}
+		if a.Kind == eventlog.ApprovalKindTool {
+			if err := st.answer(a.ToolCallID, p.Decision == eventlog.DecisionAllow, p.Reason, p.All); err != nil {
+				return err
+			}
 		}
 		if a.Kind == eventlog.ApprovalKindBudget && p.Decision == eventlog.DecisionAllow {
 			if st.Allows == nil {
@@ -335,6 +375,7 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 	case eventlog.TypeToolRequested, eventlog.TypeToolStarted:
 		var p struct {
 			CallID string `json:"tool_call_id"`
+			Ask    bool   `json:"ask"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
@@ -343,10 +384,11 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		if err != nil {
 			return err
 		}
-		c.Status = CallRequested
 		if e.Type == eventlog.TypeToolStarted {
 			c.Status = CallStarted
+			break
 		}
+		c.Status, c.Ask = CallRequested, p.Ask
 	case eventlog.TypeToolCompleted:
 		var p struct {
 			CallID  string      `json:"tool_call_id"`

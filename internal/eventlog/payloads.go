@@ -26,6 +26,9 @@ const (
 // ApprovalKindBudget is the kind of an approval.requested for a Budget limit.
 const ApprovalKindBudget = "budget"
 
+// ApprovalKindTool is the kind of an approval.requested for a tool call.
+const ApprovalKindTool = "tool"
+
 // DecisionAllow is the approval.resolved decision that raises a Budget limit.
 const DecisionAllow = "allow"
 

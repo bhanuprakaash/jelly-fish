@@ -176,6 +176,10 @@ func handleRenameSession(repo SessionRepo, logger *slog.Logger) http.HandlerFunc
 
 type resolveApprovalRequest struct {
 	Decision string `json:"decision"`
+	// Scope is only ever "once"; it names what an allow covers.
+	Scope  string `json:"scope"`
+	Reason string `json:"reason"`
+	All    bool   `json:"all"`
 }
 
 func handleResolveApproval(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
@@ -197,7 +201,12 @@ func handleResolveApproval(repo SessionRepo, logger *slog.Logger) http.HandlerFu
 			writeError(w, http.StatusBadRequest, "decision must be allow or deny")
 			return
 		}
-		switch err := repo.ResolveApproval(r.Context(), scopeFrom(r), sessionID, approvalID, req.Decision); {
+		if req.Scope != "" && req.Scope != "once" {
+			writeError(w, http.StatusBadRequest, "scope must be once")
+			return
+		}
+		answer := eventlog.Answer{Decision: req.Decision, Reason: req.Reason, All: req.All}
+		switch err := repo.ResolveApproval(r.Context(), scopeFrom(r), sessionID, approvalID, answer); {
 		case errors.Is(err, eventlog.ErrNotFound):
 			writeError(w, http.StatusNotFound, "session not found")
 		case errors.Is(err, eventlog.ErrNoOpenApproval):

@@ -318,11 +318,19 @@ export async function retrySession(sessionId: string): Promise<void> {
   await request(`/api/sessions/${sessionId}/retry`, { method: 'POST' })
 }
 
-export async function resolveApproval(sessionId: string, approvalId: string, decision: 'allow' | 'deny'): Promise<void> {
+// resolveApproval answers the session's open approval. reason and all apply to
+// a tool approval: why it was denied, and whether allowing covers every call
+// of the batch that asks.
+export async function resolveApproval(
+  sessionId: string,
+  approvalId: string,
+  decision: 'allow' | 'deny',
+  extra: { reason?: string; all?: boolean } = {},
+): Promise<void> {
   await request(`/api/sessions/${sessionId}/approvals/${approvalId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decision }),
+    body: JSON.stringify({ decision, ...extra }),
   })
 }
 
