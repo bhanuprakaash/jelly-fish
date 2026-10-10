@@ -46,6 +46,53 @@ const retryable = (code: string, failed: boolean) =>
 
 const linkClass = 'btn btn-secondary btn-sm'
 
+function ToolApproval({ sessionId, notice }: { sessionId: string; notice: Extract<Notice, { kind: 'tool' }> }) {
+  const { run, busy, error } = useAction({}, 'Could not do that. Try again.')
+  const [reason, setReason] = useState('')
+  const answer = (decision: 'allow' | 'deny', extra: { reason?: string; all?: boolean } = {}) =>
+    run(() => resolveApproval(sessionId, notice.approvalId, decision, extra))
+  const args = notice.args === undefined || notice.args === null ? '' : JSON.stringify(notice.args, null, 2)
+  return (
+    <div role="alert" className="w-full space-y-3 rounded-[14px] border border-attention-line bg-attention-tint px-4 py-3">
+      <p className="text-sm font-semibold text-ink">
+        {notice.index} of {notice.total} · {notice.connector} · <span className="font-mono">{notice.tool}</span>
+      </p>
+      {notice.reason && <p className="text-sm text-attention">{notice.reason}</p>}
+      {args && (
+        <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-btn border border-line bg-surface p-3 font-mono text-xs text-ink2">
+          {args}
+        </pre>
+      )}
+      <input
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        aria-label="Reason for denying"
+        placeholder="Reason for denying (optional)"
+        className="input w-full"
+      />
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={busy} onClick={() => answer('allow')} className="btn btn-attention btn-sm">
+          Approve once
+        </button>
+        {notice.total > 1 && (
+          <button type="button" disabled={busy} onClick={() => answer('allow', { all: true })} className={linkClass}>
+            Approve all
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => answer('deny', { reason: reason.trim() || undefined })}
+          className={linkClass}
+        >
+          Deny
+        </button>
+      </div>
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
+  )
+}
+
 export function SessionNotice({ sessionId, notice, provider, picker }: Props) {
   const { run, busy, error } = useAction({}, 'Could not do that. Try again.')
   const [picking, setPicking] = useState(false)
@@ -57,6 +104,8 @@ export function SessionNotice({ sessionId, notice, provider, picker }: Props) {
       {label}
     </button>
   )
+
+  if (notice.kind === 'tool') return <ToolApproval key={notice.approvalId} sessionId={sessionId} notice={notice} />
 
   let text: string
   let actions: React.ReactNode

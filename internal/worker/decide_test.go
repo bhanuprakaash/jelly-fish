@@ -48,6 +48,15 @@ func TestDecide(t *testing.T) {
 	requested := func(seq int64, id string) eventlog.Event {
 		return ev(t, seq, eventlog.TypeToolRequested, map[string]any{"tool_call_id": id, "tool": "sleep", "args": json.RawMessage(`{}`)})
 	}
+	asking := func(seq int64, id string) eventlog.Event {
+		return ev(t, seq, eventlog.TypeToolRequested, map[string]any{"tool_call_id": id, "tool": "sleep", "args": json.RawMessage(`{}`), "ask": true})
+	}
+	card := func(seq int64, id string) eventlog.Event {
+		return ev(t, seq, eventlog.TypeApprovalRequested, map[string]any{"approval_id": "ap-" + id, "kind": "tool", "tool_call_id": id})
+	}
+	answer := func(seq int64, id, decision string) eventlog.Event {
+		return ev(t, seq, eventlog.TypeApprovalResolved, map[string]any{"approval_id": "ap-" + id, "decision": decision})
+	}
 	started := func(seq int64, id string) eventlog.Event {
 		return ev(t, seq, eventlog.TypeToolStarted, map[string]any{"tool_call_id": id})
 	}
@@ -68,6 +77,10 @@ func TestDecide(t *testing.T) {
 	}{
 		{"tool_use requests the tools", asked, worker.Step{Kind: worker.StepRequestTools}},
 		{"requested tools start", append(asked[:5:5], requested(6, "a"), requested(7, "b")), worker.Step{Kind: worker.StepStartTool}},
+		{"a call that asks is asked about before anything starts", append(asked[:5:5], asking(6, "a"), asking(7, "b")), worker.Step{Kind: worker.StepRequestApproval}},
+		{"the next call that asks is asked about after an allow", append(asked[:5:5], asking(6, "a"), asking(7, "b"), card(8, "a"), answer(9, "a", "allow")), worker.Step{Kind: worker.StepRequestApproval}},
+		{"the batch starts once every call that asks is allowed", append(asked[:5:5], asking(6, "a"), asking(7, "b"), card(8, "a"), answer(9, "a", "allow"), card(10, "b"), answer(11, "b", "allow")), worker.Step{Kind: worker.StepStartTool}},
+		{"a denied call is closed before anything starts", append(asked[:5:5], requested(6, "a"), asking(7, "b"), card(8, "b"), answer(9, "b", "deny")), worker.Step{Kind: worker.StepFinishDenied}},
 		{"a requested tool starts before a waiting message", append(asked[:5:5], requested(6, "a"), requested(7, "b"), user(8)), worker.Step{Kind: worker.StepStartTool}},
 		{"a started tool with no result is interrupted", append(asked[:5:5], requested(6, "a"), requested(7, "b"), started(8, "a")), worker.Step{Kind: worker.StepMarkToolsInterrupted}},
 		{"the rest start after one completes", append(asked[:5:5], requested(6, "a"), requested(7, "b"), started(8, "a"), completed(9, "a")), worker.Step{Kind: worker.StepStartTool}},

@@ -174,21 +174,24 @@ func (r *Repo) Retry(ctx context.Context, scope TenantScope, sessionID uuid.UUID
 	})
 }
 
+// Answer is the User's answer to an approval.
+type Answer struct {
+	Decision string
+	// Reason and All apply to a tool approval: why it was denied, and whether
+	// allowing it allows every call of the batch that asks.
+	Reason string
+	All    bool
+}
+
 // ResolveApproval appends the User's approval.resolved for the session's open
-// approval. allow makes the session runnable, so the raised limit applies;
-// deny parks it as awaiting_user. A session that is not awaiting approval, or an
-// approvalID that is not the open one, returns ErrNoOpenApproval and appends
-// nothing.
-func (r *Repo) ResolveApproval(ctx context.Context, scope TenantScope, sessionID, approvalID uuid.UUID, decision string) error {
-	next := &StatusChange{To: StatusAwaitingUser, Reason: "denied"}
-	if decision == DecisionAllow {
-		next = &StatusChange{To: StatusRunnable, Reason: "approved"}
-	}
-	resolved := NewEvent{
-		Type:    TypeApprovalResolved,
-		Actor:   "user:" + scope.UserID.String(),
-		Payload: map[string]any{"approval_id": approvalID, "decision": decision, "by": scope.UserID},
-	}
+// approval. A budget allow makes the session runnable, so the raised limit
+// applies; a budget deny parks it as awaiting_user. A tool answer, either
+// way, makes the session runnable: the Worker closes a denied call itself.
+// Allowing a tool approval also stores the definition hash it showed, so the
+// tool asks without the changed reason from then on. A session that is not
+// awaiting approval, or an approvalID that is not the open one, returns
+// ErrNoOpenApproval and appends nothing.
+func (r *Repo) ResolveApproval(ctx context.Context, scope TenantScope, sessionID, approvalID uuid.UUID, a Answer) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		status, err := lockStatus(ctx, tx, scope, sessionID)
 		if err != nil {
@@ -197,18 +200,43 @@ func (r *Repo) ResolveApproval(ctx context.Context, scope TenantScope, sessionID
 		if status != StatusAwaitingApproval {
 			return ErrNoOpenApproval
 		}
-		var open bool
+		var open struct{ id, kind, connectorID, toolName, toolHash string }
 		err = tx.QueryRow(ctx, `
-			SELECT payload->>'approval_id' = $3 FROM events
+			SELECT payload->>'approval_id', payload->>'kind', COALESCE(payload->>'connector_id', ''),
+				COALESCE(payload->>'tool_name', ''), COALESCE(payload->>'tool_hash', '')
+			FROM events
 			WHERE session_id = $1 AND type = $2
 			ORDER BY seq DESC LIMIT 1`,
-			sessionID, TypeApprovalRequested, approvalID.String()).Scan(&open)
+			sessionID, TypeApprovalRequested).Scan(&open.id, &open.kind, &open.connectorID, &open.toolName, &open.toolHash)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("look up open approval: %w", err)
 		}
-		if !open {
+		if open.id != approvalID.String() {
 			return ErrNoOpenApproval
 		}
+		payload := map[string]any{"approval_id": approvalID, "decision": a.Decision, "by": scope.UserID}
+		next := &StatusChange{To: StatusAwaitingUser, Reason: "denied"}
+		if a.Decision == DecisionAllow {
+			next = &StatusChange{To: StatusRunnable, Reason: "approved"}
+		}
+		if open.kind == ApprovalKindTool {
+			payload["scope"] = "once"
+			if a.Reason != "" {
+				payload["reason"] = a.Reason
+			}
+			if a.All {
+				payload["all"] = true
+			}
+			next = &StatusChange{To: StatusRunnable, Reason: "answered"}
+			if a.Decision == DecisionAllow && open.toolHash != "" {
+				_, err = tx.Exec(ctx, `UPDATE connector_tools SET tool_hash = $3 WHERE connector_id = $1::uuid AND name = $2`,
+					open.connectorID, open.toolName, open.toolHash)
+				if err != nil {
+					return fmt.Errorf("store approved tool hash: %w", err)
+				}
+			}
+		}
+		resolved := NewEvent{Type: TypeApprovalResolved, Actor: "user:" + scope.UserID.String(), Payload: payload}
 		_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{resolved}, next)
 		return err
 	})

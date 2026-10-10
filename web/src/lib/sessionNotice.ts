@@ -7,11 +7,31 @@ export type Notice =
   | { kind: 'sleeping'; wakeAt: Date; longWait: boolean }
   | { kind: 'error'; code: string; requestId: string; failed: boolean }
   | { kind: 'budget'; approvalId: string; dimension: string; limit: number; used: number; nextLimit: number }
+  | {
+      kind: 'tool'
+      approvalId: string
+      // index is the 1-based place of the call among the calls of its batch that ask.
+      index: number
+      total: number
+      connector: string
+      tool: string
+      args: unknown
+      reason?: string
+    }
 
 type SessionError = { code: string; retryable: boolean; request_id?: string }
 type TimerSet = { wake_at: string; reason: string }
 type BudgetExceeded = { dimension: string; limit: number; used: number }
-type ApprovalRequested = { approval_id: string; kind: string; dimension: string }
+type ApprovalRequested = {
+  approval_id: string
+  kind: string
+  dimension: string
+  tool_call_id?: string
+  tool?: string
+  args?: unknown
+  connector?: string
+  reason?: string
+}
 type ApprovalResolved = { approval_id: string; decision: string }
 
 const budgetField = { tokens: 'tokens', dollars: 'cost_micros', turns: 'turns' } as const
@@ -47,6 +67,38 @@ function openBudgetApproval(events: UIEvent[]): Notice | null {
   return { kind: 'budget', approvalId: open.approval_id, dimension: open.dimension, limit: base * (1 + n), used: exceeded.used, nextLimit: base * (2 + n) }
 }
 
+// openToolApproval finds the tool approval the session waits on, and counts
+// the calls of the latest reply that ask, which the card steps through.
+function openToolApproval(events: UIEvent[]): Notice | null {
+  let open: ApprovalRequested | null = null
+  let asking: string[] = []
+  for (const e of events) {
+    if (e.type === 'llm.response') {
+      asking = []
+    } else if (e.type === 'tool.call.requested') {
+      const p = e.payload as { tool_call_id: string; ask?: boolean }
+      if (p.ask) asking.push(p.tool_call_id)
+    } else if (e.type === 'approval.requested') {
+      const a = e.payload as ApprovalRequested
+      open = a.kind === 'tool' ? a : null
+    } else if (e.type === 'approval.resolved') {
+      if (open?.approval_id === (e.payload as ApprovalResolved).approval_id) open = null
+    }
+  }
+  if (!open) return null
+  const name = open.tool ?? ''
+  return {
+    kind: 'tool',
+    approvalId: open.approval_id,
+    index: asking.indexOf(open.tool_call_id ?? '') + 1,
+    total: asking.length,
+    connector: open.connector ?? '',
+    tool: name.includes('__') ? name.slice(name.indexOf('__') + 2) : name,
+    args: open.args,
+    reason: open.reason,
+  }
+}
+
 // sessionNotice derives the Notice from the stream's events: the session's
 // status is its latest status change, and the cause is the last event that
 // isn't one (a rename says nothing about the session's state either).
@@ -63,7 +115,7 @@ export function sessionNotice(events: UIEvent[]): Notice | null {
   }
   if (!cause) return null
 
-  if (status === 'awaiting_approval') return openBudgetApproval(events)
+  if (status === 'awaiting_approval') return openToolApproval(events) ?? openBudgetApproval(events)
   if (status === 'sleeping' && cause.type === 'timer.set') {
     const t = cause.payload as TimerSet
     return { kind: 'sleeping', wakeAt: new Date(t.wake_at), longWait: t.reason === 'long_wait' }

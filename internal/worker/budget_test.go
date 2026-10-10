@@ -118,7 +118,7 @@ func TestAllowedTurnLimitRunsTheNextTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := eventlog.NewRepo(pool, "fake").ResolveApproval(t.Context(), scope, sid, approvalID, eventlog.DecisionAllow); err != nil {
+	if err := eventlog.NewRepo(pool, "fake").ResolveApproval(t.Context(), scope, sid, approvalID, eventlog.Answer{Decision: eventlog.DecisionAllow}); err != nil {
 		t.Fatal(err)
 	}
 	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 2)
@@ -262,7 +262,7 @@ func answerLatestApproval(t *testing.T, pool *pgxpool.Pool, scope eventlog.Tenan
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := eventlog.NewRepo(pool, "fake").ResolveApproval(t.Context(), scope, sid, approvalID, decision); err != nil {
+	if err := eventlog.NewRepo(pool, "fake").ResolveApproval(t.Context(), scope, sid, approvalID, eventlog.Answer{Decision: decision}); err != nil {
 		t.Fatal(err)
 	}
 }

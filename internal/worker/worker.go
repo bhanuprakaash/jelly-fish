@@ -412,6 +412,10 @@ func (w *Worker) exec(ctx context.Context, c eventlog.Claim, f eventlog.Fence, s
 		return w.markToolsInterrupted(ctx, c, f, st)
 	case StepRequestTools:
 		return w.requestTools(ctx, c, f, st)
+	case StepFinishDenied:
+		return w.finishDenied(ctx, c, f, st)
+	case StepRequestApproval:
+		return w.requestApproval(ctx, c, f, st)
 	case StepStartTool:
 		return w.startTools(ctx, c, f, st)
 	case StepStartTurn:

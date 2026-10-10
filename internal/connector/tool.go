@@ -32,6 +32,12 @@ func (t Tool) Def() tool.Def {
 	}
 }
 
+// CurrentHash is ToolHash of the definition the server last listed. It differs
+// from Cached.Hash once the tool has changed since the User approved it.
+func (t Tool) CurrentHash() string {
+	return ToolHash(t.Cached.Name, t.Cached.Description, t.Cached.InputSchema, t.Cached.Annotations)
+}
+
 // Call calls the tool under the name its server gave it. A server that cannot
 // be reached is an error Result the model sees, not an error.
 func (t Tool) Call(ctx context.Context, in tool.CallInput) (tool.Result, error) {
