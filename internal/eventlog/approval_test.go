@@ -11,7 +11,6 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/testdb"
 )
 
-// parkOnBudget creates a session and parks it on an open budget approval.
 func parkOnBudget(t *testing.T, pool *pgxpool.Pool, repo *eventlog.Repo, scope eventlog.TenantScope) (sessionID, approvalID uuid.UUID) {
 	t.Helper()
 	sessionID, approvalID = uuid.New(), uuid.New()

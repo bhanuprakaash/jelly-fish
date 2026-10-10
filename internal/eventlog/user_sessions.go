@@ -32,8 +32,6 @@ func (s *Store) InterruptUserSessions(ctx context.Context, userID uuid.UUID, act
 	})
 }
 
-// interruptRunning appends interrupt to a locked running session, flags it
-// and wakes its Worker on jf_cancel.
 func (s *Store) interruptRunning(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, scope *TenantScope, interrupt NewEvent) error {
 	if _, err := s.appendTx(ctx, tx, sessionID, scope, nil, []NewEvent{interrupt}, nil); err != nil {
 		return err

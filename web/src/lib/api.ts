@@ -252,7 +252,6 @@ export async function changeModel(sessionId: string, model: string): Promise<voi
   })
 }
 
-// changeBudget replaces all three of a session's limits.
 export async function changeBudget(sessionId: string, budget: Budget): Promise<void> {
   await request(`/api/sessions/${sessionId}/budget`, {
     method: 'PUT',
@@ -319,8 +318,6 @@ export async function retrySession(sessionId: string): Promise<void> {
   await request(`/api/sessions/${sessionId}/retry`, { method: 'POST' })
 }
 
-// resolveApproval answers the budget card: allow raises the limit, deny parks
-// the session.
 export async function resolveApproval(sessionId: string, approvalId: string, decision: 'allow' | 'deny'): Promise<void> {
   await request(`/api/sessions/${sessionId}/approvals/${approvalId}`, {
     method: 'POST',

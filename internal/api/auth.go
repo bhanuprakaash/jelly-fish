@@ -54,8 +54,7 @@ var _ Mailer = (*mail.SMTP)(nil)
 type AuthConfig struct {
 	Authenticator Authenticator
 	// Admin backs /api/admin/*.
-	Admin UserAdmin
-	// UserSessions ends a disabled User's running sessions.
+	Admin        UserAdmin
 	UserSessions UserSessions
 	Mailer       Mailer
 	// ProviderKeys backs /api/provider-keys.
