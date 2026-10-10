@@ -63,6 +63,8 @@ type AuthConfig struct {
 	Models ModelConfig
 	// Memories backs /api/memories and the memory chips.
 	Memories *memory.Pages
+	// Connectors backs /api/connectors.
+	Connectors ConnectorConfig
 	// PublicURL is the app's external origin, used for links in email. It is
 	// config because the request Host is attacker-controlled.
 	PublicURL string

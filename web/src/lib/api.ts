@@ -411,6 +411,61 @@ export async function setUseUserMemory(projectId: string, use: boolean): Promise
   })
 }
 
+export type ConnectorEra = 'modern' | 'legacy'
+
+export type ConnectorTool = { name: string; description: string; enabled: boolean }
+
+export type Connector = {
+  id: string
+  slug: string
+  name: string
+  url: string
+  auth_header: string
+  era: ConnectorEra
+  tools: ConnectorTool[]
+}
+
+export type ConnectorServer = {
+  url: string
+  auth_header?: string
+  secret?: string
+}
+
+// getConnectors lists the Connectors of the User's project, never their credentials.
+export async function getConnectors(): Promise<Connector[]> {
+  const res = await request('/api/connectors')
+  return res.json() as Promise<Connector[]>
+}
+
+// probeConnector lists the tools a server offers. It throws HttpError 422 when
+// the address can't be used or the server's MCP version is outdated, and 502
+// when the server can't be reached.
+export async function probeConnector(server: ConnectorServer): Promise<{ era: ConnectorEra; tools: Omit<ConnectorTool, 'enabled'>[] }> {
+  return postJSON('/api/connectors/probe', server)
+}
+
+// createConnector adds a Connector with the tools it enables; slug is optional.
+// It throws HttpError 409 when a chosen slug is taken.
+export async function createConnector(
+  server: ConnectorServer & { name: string; slug?: string; era: ConnectorEra; tools: { name: string; enabled: boolean }[] },
+): Promise<Connector> {
+  return postJSON('/api/connectors', server)
+}
+
+// setConnectorToolEnabled turns one tool of a Connector on or off for the model.
+export async function setConnectorToolEnabled(id: string, tool: string, enabled: boolean): Promise<void> {
+  await request(`/api/connectors/${id}/tools/${encodeURIComponent(tool)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+}
+
+// deleteConnector removes a Connector with its tools and credential.
+export async function deleteConnector(id: string): Promise<void> {
+  await request(`/api/connectors/${id}`, { method: 'DELETE' })
+}
+
 // Delta is an ephemeral fragment of a streaming reply (streaming.md §4.1).
 export type Delta = {
   turn_id: string

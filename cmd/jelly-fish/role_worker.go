@@ -9,8 +9,10 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/config"
+	"github.com/bhanuprakaash/jelly-fish/internal/connector"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
+	"github.com/bhanuprakaash/jelly-fish/internal/mcpclient"
 	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
@@ -60,7 +62,9 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 	g.Go(func() error { return runHTTPServer(gctx, healthSrv, logger) })
 	g.Go(func() error { worker.RunModelRefresh(gctx, keys, kr, gw.Adapters, logger); return nil })
 	g.Go(func() error {
-		worker.New(pool, gw, tool.NewRegistry(append(devTools(), memory.New(pool))...), stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger).Run(gctx)
+		w := worker.New(pool, gw, tool.NewRegistry(append(devTools(), memory.New(pool))...), stream.NewPGDeltaBus(pool), worker.Lease{TTL: cfg.LeaseTTL, Heartbeat: cfg.Heartbeat}, eventlog.Upcasters{}, logger)
+		w.UseConnectors(connector.NewStore(pool), mcpclient.New(cfg.DevAllowLocalhost))
+		w.Run(gctx)
 		return nil
 	})
 	return g.Wait()

@@ -37,6 +37,9 @@ type Config struct {
 	// DefaultModel is JF_DEFAULT_MODEL, the model new sessions use; empty
 	// means the build's default.
 	DefaultModel string
+	// DevAllowLocalhost lets Connectors use http://localhost and
+	// http://127.0.0.1, for local development only.
+	DevAllowLocalhost bool
 }
 
 // Load reads Config from the environment.
@@ -70,6 +73,7 @@ func Load() (Config, error) {
 		DevInsecureCookie: os.Getenv("JF_DEV_INSECURE_COOKIE") == "1",
 		MasterKey:         os.Getenv("JF_MASTER_KEY"),
 		DefaultModel:      os.Getenv("JF_DEFAULT_MODEL"),
+		DevAllowLocalhost: os.Getenv("JF_DEV_ALLOW_LOCALHOST") == "1",
 	}, nil
 }
 

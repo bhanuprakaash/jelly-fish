@@ -19,7 +19,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bhanuprakaash/jelly-fish/internal/blob"
+	"github.com/bhanuprakaash/jelly-fish/internal/connector"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
+	"github.com/bhanuprakaash/jelly-fish/internal/mcpclient"
 	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
@@ -70,6 +72,11 @@ type Worker struct {
 	slots    chan struct{}
 	// titleTimeout bounds each Title call; zero or less turns Titles off.
 	titleTimeout time.Duration
+
+	// connectors and mcp add each session's Project Connectors to tools; both
+	// are nil when the Worker has none.
+	connectors *connector.Store
+	mcp        *mcpclient.Client
 }
 
 // New builds a Worker that runs each turn on the Provider gw picks, offers
@@ -95,6 +102,13 @@ func New(pool *pgxpool.Pool, gw Gateway, tools *tool.Registry, deltas DeltaPubli
 
 		titleTimeout: defaultTitleTimeout,
 	}
+}
+
+// UseConnectors makes the Worker offer the tools of each session's Project
+// Connectors, listed and called through client. Credentials open with the
+// Gateway's Keyring.
+func (w *Worker) UseConnectors(store *connector.Store, client *mcpclient.Client) {
+	w.connectors, w.mcp = store, client
 }
 
 // Run claims and drives sessions until ctx is cancelled (SIGTERM), then waits
@@ -201,6 +215,11 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 		w.fail(ctx, logger, c, errCrashLoop)
 		return
 	}
+	tools, err := w.registry(ctx, c)
+	if err != nil {
+		w.stop(ctx, logger, c, err)
+		return
+	}
 	for {
 		evs, err := w.store.Load(ctx, c.SessionID)
 		if err != nil {
@@ -216,6 +235,7 @@ func (w *Worker) drive(parent context.Context, c eventlog.Claim) {
 			w.fail(ctx, logger, c, err)
 			return
 		}
+		st.tools = tools
 		step := Decide(st)
 
 		f := c.Fence
@@ -433,7 +453,7 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	case err != nil:
 		return fmt.Errorf("pick provider: %w", err)
 	}
-	defs := w.tools.Defs()
+	defs := st.tools.Defs()
 	if c.Incognito {
 		defs = slices.DeleteFunc(defs, func(d tool.Def) bool { return d.Name == memory.ToolName })
 	}

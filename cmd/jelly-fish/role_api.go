@@ -13,9 +13,11 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/api"
 	"github.com/bhanuprakaash/jelly-fish/internal/auth"
 	"github.com/bhanuprakaash/jelly-fish/internal/config"
+	"github.com/bhanuprakaash/jelly-fish/internal/connector"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/health"
 	"github.com/bhanuprakaash/jelly-fish/internal/mail"
+	"github.com/bhanuprakaash/jelly-fish/internal/mcpclient"
 	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/pg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider/catalog"
@@ -95,8 +97,9 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Sealer: kr,
 			Models: listers,
 		},
-		Models:   api.ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: model, Fake: fakeModel},
-		Memories: memory.NewPages(pool),
+		Models:     api.ModelConfig{Lists: providerkeys.NewStore(pool), Catalog: cat, Default: model, Fake: fakeModel},
+		Memories:   memory.NewPages(pool),
+		Connectors: api.ConnectorConfig{Store: connector.NewStore(pool), Client: mcpclient.New(cfg.DevAllowLocalhost), Sealer: kr},
 	})
 
 	g, gctx := errgroup.WithContext(ctx)

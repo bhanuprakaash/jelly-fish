@@ -54,18 +54,18 @@ func (w *Worker) requestedEvent(call Call) eventlog.NewEvent {
 // parallel-safe calls right after it, up to maxBatch.
 func (w *Worker) nextBatch(st State) []Call {
 	reqs := st.calls(CallRequested)
-	if len(reqs) == 0 || !w.parallelSafe(reqs[0]) {
+	if len(reqs) == 0 || !parallelSafe(st.tools, reqs[0]) {
 		return reqs[:min(1, len(reqs))]
 	}
 	n := 1
-	for n < len(reqs) && n < maxBatch && w.parallelSafe(reqs[n]) {
+	for n < len(reqs) && n < maxBatch && parallelSafe(st.tools, reqs[n]) {
 		n++
 	}
 	return reqs[:n]
 }
 
-func (w *Worker) parallelSafe(call Call) bool {
-	t, ok := w.tools.Get(call.Name)
+func parallelSafe(tools *tool.Registry, call Call) bool {
+	t, ok := tools.Get(call.Name)
 	if p, byArgs := t.(tool.ParallelByArgs); ok && byArgs {
 		return p.ParallelSafeCall(call.Args)
 	}
@@ -96,7 +96,7 @@ func (w *Worker) redactMemoryCalls(sid uuid.UUID, parts []msg.Part) []msg.Part {
 // session is the Session a tool call sees.
 func (w *Worker) session(c eventlog.Claim, st State) tool.Session {
 	tainted := slices.ContainsFunc(st.ToolsSinceUser, func(name string) bool {
-		t, ok := w.tools.Get(name)
+		t, ok := st.tools.Get(name)
 		return ok && t.Def().Untrusted
 	})
 	return tool.Session{ID: c.SessionID, UserID: c.UserID, WorkspaceID: c.WorkspaceID, ProjectID: c.ProjectID, Child: !st.TopLevel, Tainted: tainted}
@@ -125,7 +125,7 @@ func (w *Worker) startTools(ctx context.Context, c eventlog.Claim, f eventlog.Fe
 	var wg sync.WaitGroup
 	for i, call := range batch {
 		wg.Go(func() {
-			errs[i] = w.runCall(ctx, c, f, call, fmt.Sprintf("%s:%d", c.SessionID, seqs[i]), sess)
+			errs[i] = w.runCall(ctx, c, f, st.tools, call, fmt.Sprintf("%s:%d", c.SessionID, seqs[i]), sess)
 		})
 	}
 	wg.Wait()
@@ -134,9 +134,9 @@ func (w *Worker) startTools(ctx context.Context, c eventlog.Claim, f eventlog.Fe
 
 // runCall calls one tool and records its result. A call cut short by ctx
 // records nothing: whoever ends the drive closes it.
-func (w *Worker) runCall(ctx context.Context, c eventlog.Claim, f eventlog.Fence, call Call, key string, sess tool.Session) error {
+func (w *Worker) runCall(ctx context.Context, c eventlog.Claim, f eventlog.Fence, tools *tool.Registry, call Call, key string, sess tool.Session) error {
 	began := time.Now()
-	res := w.invoke(ctx, c, call, key, sess)
+	res := w.invoke(ctx, c, tools, call, key, sess)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -211,8 +211,8 @@ func (w *Worker) commit(ctx context.Context, tx pgx.Tx, c eventlog.Claim, call C
 }
 
 // invoke turns every way a call can fail into an error Result for the model.
-func (w *Worker) invoke(ctx context.Context, c eventlog.Claim, call Call, key string, sess tool.Session) tool.Result {
-	t, ok := w.tools.Get(call.Name)
+func (w *Worker) invoke(ctx context.Context, c eventlog.Claim, tools *tool.Registry, call Call, key string, sess tool.Session) tool.Result {
+	t, ok := tools.Get(call.Name)
 	if !ok || c.Incognito && call.Name == memory.ToolName {
 		return tool.TextResult(fmt.Sprintf("unknown tool %q", call.Name), true)
 	}

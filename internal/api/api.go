@@ -57,6 +57,13 @@ func newServer(addr string, logger *slog.Logger, webFS fs.FS, repo SessionRepo, 
 	protected.HandleFunc("DELETE /api/memories/{id}", mem.delete)
 	protected.HandleFunc("PATCH /api/projects/{id}", mem.patchProject)
 
+	conns := &connectorHandlers{cfg: authCfg.Connectors, logger: logger}
+	protected.HandleFunc("GET /api/connectors", conns.list)
+	protected.HandleFunc("POST /api/connectors/probe", conns.probe)
+	protected.HandleFunc("POST /api/connectors", conns.create)
+	protected.HandleFunc("PATCH /api/connectors/{id}/tools/{name}", conns.setToolEnabled)
+	protected.HandleFunc("DELETE /api/connectors/{id}", conns.delete)
+
 	admin := http.NewServeMux()
 	admin.HandleFunc("POST /api/admin/invites", authH.handleCreateInvite)
 	admin.HandleFunc("POST /api/admin/invites/{id}/resend", authH.handleResendInvite)
