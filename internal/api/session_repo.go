@@ -25,6 +25,7 @@ type SessionRepo interface {
 	ActivitySnapshot(ctx context.Context, scope eventlog.TenantScope) ([]eventlog.ActivityRow, error)
 	ActivityStatusOf(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID) (eventlog.ActivityRow, bool, error)
 	ListEvents(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, after int64) ([]eventlog.Event, error)
+	Blob(ctx context.Context, scope eventlog.TenantScope, sessionID uuid.UUID, sha string) (mime string, data []byte, err error)
 }
 
 var _ SessionRepo = (*eventlog.Repo)(nil)

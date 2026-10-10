@@ -211,6 +211,28 @@ func handleResolveApproval(repo SessionRepo, logger *slog.Logger) http.HandlerFu
 	}
 }
 
+func handleGetBlob(repo SessionRepo, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := pathID(w, r, "blob not found")
+		if !ok {
+			return
+		}
+		mime, data, err := repo.Blob(r.Context(), scopeFrom(r), sessionID, r.PathValue("sha256"))
+		if errors.Is(err, eventlog.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "blob not found")
+			return
+		}
+		if err != nil {
+			logger.Error("get blob", "error", err, "session_id", sessionID)
+			writeError(w, http.StatusInternalServerError, "could not load blob")
+			return
+		}
+		w.Header().Set("Content-Type", mime)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(data)
+	}
+}
+
 // handleSessionAction serves a POST on a session that takes no body and
 // answers 204: do is one of the repo's tenant-scoped actions.
 func handleSessionAction(do func(context.Context, eventlog.TenantScope, uuid.UUID) error, logger *slog.Logger) http.HandlerFunc {

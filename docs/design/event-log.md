@@ -117,7 +117,7 @@ CREATE TABLE deletions (                      -- tracks async cleanup; no conten
  "preview": "first 2 KB of the content"}
 ```
 
-Upload the blob before appending the event that references it.
+Upload the blob before appending the event that references it. Until uploads arrive, blobs live in a Postgres `blobs` table keyed by sha256, written in the event's transaction; object storage replaces it with the same `blob_ref` shape.
 
 **Status is a projection.** `sessions.status` always equals the `to` of the latest `session.status_changed` event. Both are written in the same transaction.
 

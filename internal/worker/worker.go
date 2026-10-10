@@ -4,6 +4,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,8 +15,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/bhanuprakaash/jelly-fish/internal/blob"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
@@ -447,18 +450,29 @@ func (w *Worker) startTurn(ctx context.Context, c eventlog.Claim, f eventlog.Fen
 	if err != nil {
 		return err
 	}
-	seqs, err := w.store.AppendFenced(ctx, sid, f, []eventlog.NewEvent{{
-		Type:          eventlog.TypeTurnStarted,
-		Actor:         w.actor(),
-		CorrelationID: turnID,
-		Payload: map[string]any{
-			"turn_id":           turnID,
-			"model":             st.Model,
-			"provider":          prov.Name(),
-			"input_through_seq": st.LastSeq,
-			"tools_hash":        toolsHash,
-		},
-	}}, nil)
+	seqs, err := w.store.AppendFencedFunc(ctx, sid, f, func(ctx context.Context, tx pgx.Tx) ([]eventlog.NewEvent, error) {
+		list, err := json.Marshal(defs)
+		if err != nil {
+			return nil, fmt.Errorf("marshal tool list: %w", err)
+		}
+		toolsBlob, err := blob.Put(ctx, tx, "application/json", list)
+		if err != nil {
+			return nil, err
+		}
+		return []eventlog.NewEvent{{
+			Type:          eventlog.TypeTurnStarted,
+			Actor:         w.actor(),
+			CorrelationID: turnID,
+			Payload: map[string]any{
+				"turn_id":           turnID,
+				"model":             st.Model,
+				"provider":          prov.Name(),
+				"input_through_seq": st.LastSeq,
+				"tools_hash":        toolsHash,
+				"tools_blob":        toolsBlob,
+			},
+		}}, nil
+	})
 	if err != nil {
 		return err
 	}

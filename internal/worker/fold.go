@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bhanuprakaash/jelly-fish/internal/blob"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
@@ -344,8 +345,11 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		}
 	case eventlog.TypeToolCompleted:
 		var p struct {
-			CallID string      `json:"tool_call_id"`
-			Result msg.Message `json:"result"`
+			CallID  string      `json:"tool_call_id"`
+			Result  msg.Message `json:"result"`
+			BlobRef *blob.Ref   `json:"blob_ref"`
+			Preview string      `json:"preview"`
+			IsError bool        `json:"is_error"`
 		}
 		if err := json.Unmarshal(e.Payload, &p); err != nil {
 			return err
@@ -354,10 +358,17 @@ func (st *State) apply(e eventlog.Event, userSeqs *[]int64) error {
 		if err != nil {
 			return err
 		}
-		if len(p.Result.Parts) != 1 || p.Result.Parts[0].Kind != msg.KindToolResult {
+		parts := p.Result.Parts
+		if p.BlobRef != nil {
+			text := fmt.Sprintf("%s\n[result truncated: %d bytes, see blob]", p.Preview, p.BlobRef.Size)
+			parts = []msg.Part{{Kind: msg.KindToolResult, ToolResult: &msg.ToolResult{
+				CallID: p.CallID, IsError: p.IsError, Parts: []msg.Part{{Kind: msg.KindText, Text: text}},
+			}}}
+		}
+		if len(parts) != 1 || parts[0].Kind != msg.KindToolResult {
 			return fmt.Errorf("tool call %q: result is not one tool_result", p.CallID)
 		}
-		st.setResult(c, p.Result.Parts[0])
+		st.setResult(c, parts[0])
 		st.ToolsSinceUser = append(st.ToolsSinceUser, c.Name)
 	case eventlog.TypeToolInterrupted:
 		var p struct {

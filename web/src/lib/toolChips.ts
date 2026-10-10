@@ -15,6 +15,9 @@ export type ToolChip = {
   durationMs?: number
   // result is the text of the call's result.
   result?: string
+  // blob is set when the full result is too large to keep inline; result then
+  // holds only its preview.
+  blob?: { sha256: string; size: number }
   // error is the error text of a failed call, or the note of an interrupted one.
   error?: string
   // memory is set for a finished memory write.
@@ -33,6 +36,8 @@ type Payload = {
   reason?: string
   note?: string
   result?: { parts: { tr?: { parts: Part[] } }[] }
+  blob_ref?: { sha256: string; size: number }
+  preview?: string
 }
 
 const memoryWrites = ['create', 'str_replace', 'insert', 'delete', 'rename']
@@ -63,7 +68,8 @@ export function toolChips(events: UIEvent[]): ToolChip[] {
         if (!chip) break
         chip.state = p.is_error ? 'failed' : 'done'
         chip.durationMs = p.duration_ms
-        chip.result = resultText(p)
+        chip.result = p.blob_ref ? p.preview : resultText(p)
+        chip.blob = p.blob_ref
         if (p.is_error) chip.error = chip.result
         const a = chip.args as Payload['args']
         const mem = resultParts(p).find((x) => x.mem)?.mem

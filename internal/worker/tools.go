@@ -3,15 +3,18 @@ package worker
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/bhanuprakaash/jelly-fish/internal/blob"
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/memory"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
@@ -147,9 +150,47 @@ func (w *Worker) runCall(ctx context.Context, c eventlog.Claim, f eventlog.Fence
 				evs = append(evs, eventlog.NewEvent{Type: e.Type, Actor: w.actor(), CorrelationID: call.ID, Payload: e.Payload})
 			}
 		}
-		return append(evs, w.completedEvent(call.ID, res, took)), nil
+		done, err := w.completedWithBlob(ctx, tx, call.ID, res, took)
+		if err != nil {
+			return nil, err
+		}
+		return append(evs, done), nil
 	})
 	return err
+}
+
+// completedWithBlob is completedEvent, except that a result over
+// blob.InlineLimit is stored as a blob in tx and the event keeps its Ref and a
+// preview.
+func (w *Worker) completedWithBlob(ctx context.Context, tx pgx.Tx, id string, res tool.Result, d time.Duration) (eventlog.NewEvent, error) {
+	content, err := json.Marshal(res.Content)
+	if err != nil {
+		return eventlog.NewEvent{}, fmt.Errorf("marshal tool result: %w", err)
+	}
+	if len(content) <= blob.InlineLimit {
+		return w.completedEvent(id, res, d), nil
+	}
+	ref, err := blob.Put(ctx, tx, "application/json", content)
+	if err != nil {
+		return eventlog.NewEvent{}, err
+	}
+	text := msg.Message{Parts: res.Content}.Text()
+	n := min(len(text), blob.PreviewLen)
+	for n > 0 && n < len(text) && !utf8.RuneStart(text[n]) {
+		n--
+	}
+	return eventlog.NewEvent{
+		Type:          eventlog.TypeToolCompleted,
+		Actor:         w.actor(),
+		CorrelationID: id,
+		Payload: map[string]any{
+			"tool_call_id": id,
+			"blob_ref":     ref,
+			"preview":      text[:n],
+			"is_error":     res.IsError,
+			"duration_ms":  d.Milliseconds(),
+		},
+	}, nil
 }
 
 // commit runs res.Commit in a savepoint, so a failure turns the call into an

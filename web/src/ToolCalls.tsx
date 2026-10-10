@@ -122,7 +122,7 @@ function StateIcon({ state }: { state: ToolChip['state'] }) {
 const codeClass =
   'overflow-x-auto whitespace-pre-wrap break-words rounded-btn border border-line bg-sunk p-3 font-mono text-xs text-ink2'
 
-function Row({ call, first }: { call: ToolChip; first: boolean }) {
+function Row({ sessionId, call, first }: { sessionId: string; call: ToolChip; first: boolean }) {
   const [open, setOpen] = useState(false)
   const args = call.args === undefined || call.args === null ? '' : JSON.stringify(call.args, null, 2)
   const elapsed = useElapsedSeconds(call.startedAt, call.state === 'running')
@@ -163,6 +163,16 @@ function Row({ call, first }: { call: ToolChip; first: boolean }) {
         <div className="space-y-2 px-4 pb-3">
           {args && <pre className={codeClass}>{args}</pre>}
           {call.result && <pre className={codeClass}>{call.result}</pre>}
+          {call.blob && (
+            <a
+              href={`/api/sessions/${sessionId}/blobs/${call.blob.sha256}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-sm text-accent-ink underline underline-offset-2 focus-ring"
+            >
+              Open full result ({Math.round(call.blob.size / 1024)} KB)
+            </a>
+          )}
         </div>
       )}
     </div>
@@ -219,11 +229,11 @@ export function SourceFooter({ sources }: { sources: Source[] }) {
 
 // ToolCalls is the card of one turn's tool calls: a row each, which opens to
 // the call's arguments and result.
-export function ToolCalls({ calls }: { calls: ToolChip[] }) {
+export function ToolCalls({ sessionId, calls }: { sessionId: string; calls: ToolChip[] }) {
   return (
     <div className="w-full overflow-hidden rounded-card border border-line bg-surface">
       {calls.map((call, i) => (
-        <Row key={call.seq} call={call} first={i === 0} />
+        <Row key={call.seq} sessionId={sessionId} call={call} first={i === 0} />
       ))}
     </div>
   )
