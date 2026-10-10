@@ -48,7 +48,7 @@ Run before driving anything, and again after any failed drive:
 
 ## Drive
 
-See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `admin-users`, `hello-api`, `migrate`, `web-shell`, `chat-list`, `activity-stream`, `rename-title`, `s5-demo`, `tool-calls`, `memory`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
+See [`features/`](./features/README.md) for the per-feature recipes: `healthz`, `readyz`, `sign-in`, `admin-users`, `hello-api`, `migrate`, `web-shell`, `chat-list`, `activity-stream`, `rename-title`, `s5-demo`, `tool-calls`, `memory`, `connectors`. Every `/api` route except `/api/auth/*` needs the cookie from `sign-in`.
 
 UI flows are driven with the Playwright **library** in [`scripts/`](./scripts) (never the Playwright MCP). Install once: `cd .claude/skills/verify-jelly-fish/scripts && npm install`. `playwright` is pinned to `1.62.1` because its Chromium build (`chromium-1234`) is the one cached in `~/Library/Caches/ms-playwright`. If you bump the pin, run `npx playwright install chromium`. Browsers: desktop Chromium (1280×800) and Playwright's `Pixel 7` emulation, which is desktop Chromium with a phone viewport, UA, touch and `isMobile`. It is not a real Android browser, so a real-device or installed-PWA check stays with the user.
 
@@ -88,3 +88,4 @@ Deploy, Doctor and curl drives are plain `docker`/`kubectl`/`curl` commands. Bro
 - `node rename-title.mjs <subdir>` runs the [`rename-title`](./features/rename-title.md) drive.
 - `node tool-calls.mjs <subdir>` runs the [`tool-calls`](./features/tool-calls.md) drive. It needs `DATABASE_URL`.
 - `node s5-demo.mjs <desktop|pixel7> <subdir>` runs the [`s5-demo`](./features/s5-demo.md) end-to-end flow on one device profile.
+- `node connectors.mjs <desktop|pixel7> <subdir>` runs the [`connectors`](./features/connectors.md) drive. It needs a public MCP server over https (`JF_MCP_URL`, default DeepWiki).

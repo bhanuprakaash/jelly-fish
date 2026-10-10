@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react'
 import {
+  deleteConnector,
   deleteLoginSession,
   deleteProviderKey,
+  getConnectors,
   getLoginSessions,
   getMe,
   getProviderKeys,
   logout,
   logoutAll,
   putProviderKey,
+  setConnectorToolEnabled,
+  type Connector,
+  type ConnectorTool,
   type LoginSession,
   type Me,
   type ProviderKey,
 } from './lib/api'
+import { ConnectorForm, ToolSwitch } from './ConnectorForm'
 import { useAction } from './lib/useAction'
 import { getTheme, setTheme, themes, type Theme } from './lib/theme'
 
@@ -97,6 +103,8 @@ export function Settings({ onSignedOut }: Props) {
         </section>
 
         <ProviderKeys />
+
+        <Connectors />
 
         {me?.is_admin && (
           <a
@@ -283,6 +291,102 @@ function ProviderKeyRow({ provider, name, initial }: RowProps) {
             Save
           </button>
         </form>
+      )}
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
+  )
+}
+
+// Connectors lists the Connectors of the User's project and adds more.
+function Connectors() {
+  const [list, setList] = useState<Connector[] | null>(null)
+  const [error, setError] = useState('')
+  const [formKey, setFormKey] = useState(0)
+
+  useEffect(() => {
+    getConnectors().then(setList, () => setError('Could not load your connectors.'))
+  }, [])
+
+  return (
+    <section className="space-y-3 border-t border-line pt-6">
+      <h2 className="section-heading">Connectors</h2>
+      {error && <p className="text-sm text-danger">{error}</p>}
+      {list?.length === 0 && <p className="text-muted">No connectors yet.</p>}
+      {list?.map((c) => (
+        <ConnectorRow key={c.id} connector={c} onRemoved={() => setList((l) => l && l.filter((x) => x.id !== c.id))} />
+      ))}
+      {list && (
+        <ConnectorForm
+          key={formKey}
+          onAdded={(c) => {
+            setList((l) => l && [...l, c])
+            setFormKey((n) => n + 1)
+          }}
+        />
+      )}
+    </section>
+  )
+}
+
+type ConnectorRowProps = { connector: Connector; onRemoved: () => void }
+
+function ConnectorRow({ connector: c, onRemoved }: ConnectorRowProps) {
+  const [tools, setTools] = useState(c.tools)
+  const [open, setOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const { run, busy, error } = useAction()
+
+  const toggle = (tool: ConnectorTool) =>
+    run(async () => {
+      await setConnectorToolEnabled(c.id, tool.name, !tool.enabled)
+      setTools((ts) => ts.map((t) => (t.name === tool.name ? { ...t, enabled: !t.enabled } : t)))
+    })
+
+  const remove = () =>
+    run(async () => {
+      await deleteConnector(c.id)
+      onRemoved()
+    })
+
+  return (
+    <div className="space-y-3 rounded-card border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="min-w-0 flex-1 basis-48">
+          <p className="truncate">
+            {c.name}
+            <span className="ml-2 font-mono text-sm text-muted">{c.slug}</span>
+          </p>
+          <p className="truncate text-sm text-muted">{c.url}</p>
+        </div>
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="btn btn-ghost h-11">
+          {tools.filter((t) => t.enabled).length} of {tools.length} tools on
+        </button>
+        {!confirming && (
+          <button type="button" onClick={() => setConfirming(true)} className="btn btn-danger h-11">
+            Remove
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="border-t border-line pt-2">
+          {tools.map((t) => (
+            <ToolSwitch key={t.name} tool={t} disabled={busy} onToggle={() => toggle(t)} />
+          ))}
+        </div>
+      )}
+      {confirming && (
+        <div role="group" aria-label={`Remove ${c.name}`} className="space-y-3 border-t border-line pt-3">
+          <p>Remove {c.name}?</p>
+          {c.auth_header && <p className="text-sm text-muted">Also revoke this key in {c.name}&apos;s settings</p>}
+          <div className="flex gap-3">
+            <button type="button" onClick={remove} disabled={busy} className="btn btn-danger h-11">
+              Remove
+            </button>
+            <button type="button" onClick={() => setConfirming(false)} className="btn btn-secondary h-11">
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
