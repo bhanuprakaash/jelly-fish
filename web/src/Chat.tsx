@@ -109,7 +109,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
 
   const budget = sessionBudget(events)
   const setBudget = async (args: string) => {
-    const next = budget && parseBudget(args, budget)
+    const next = parseBudget(args, budget)
     if (!next) {
       setError('Could not set the budget.')
       return
@@ -252,7 +252,7 @@ export function Chat({ sessionId, isNew, navigate, listTitle, listIncognito, onT
 
   const commands = [
     ...(picker ? [{ name: '/model', hint: 'Switch model' }] : []),
-    ...(hasSession && budget ? [{ name: '/budget', hint: budgetHint(budget) }] : []),
+    ...(hasSession ? [{ name: '/budget', hint: budgetHint(budget) }] : []),
     ...(canStop ? [{ name: '/stop', hint: 'Interrupt this chat' }] : []),
   ]
   const typed = /^\/\S*$/.test(draft) ? draft.toLowerCase() : null

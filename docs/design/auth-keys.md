@@ -236,7 +236,7 @@ At every startup: if `JF_ADMIN_EMAIL` is set and no User has that email, create 
 
 ### 5.7 Disable a User (D9)
 
-One tx: `disabled_at = now`, delete all their `login_sessions`, and append `user.interrupt{reason: user_disabled}` to each of their `running` sessions (event-log.md §5.8; propagates to Child Sessions). Parked sessions stay parked: while disabled, nothing can send them a message, approval or retry. Code and Google logins are refused. Open streams close at the next ping (§5.5). `enable` clears `disabled_at`; parked sessions stay as they were until the User acts.
+One tx: `disabled_at = now` and delete all their `login_sessions`. A second tx appends `user.interrupt{reason: user_disabled}` to every live session (event-log.md §5.8; propagates to Child Sessions): `running` ones are cancelled (flag + `jf_cancel`), `runnable` and `sleeping` ones park `awaiting_user`. Disabling is idempotent, so a failed second tx is repaired by repeating the call. Sessions already awaiting the User or an approval stay as they are: while disabled, nothing can send them a message, approval or retry. Code and Google logins are refused. Open streams close at the next ping (§5.5). `enable` clears `disabled_at`; parked sessions stay as they were until the User acts.
 
 ### 5.8 Provider Key save (D10, D12)
 
@@ -307,7 +307,7 @@ All accepted 2026-09-27 (grilling Q0–Q13).
 
 Accepted 2026-09-27 (open-gap round, Q14–Q16):
 
-14. **Disabling a User interrupts their running sessions** (`user.interrupt{reason: user_disabled}`); parked ones stay parked. Stops platform spend at once. (Q14)
+14. **Disabling a User interrupts their live sessions** (`user.interrupt{reason: user_disabled}`); ones already awaiting the User or an approval stay parked. Stops platform spend at once. (Q14)
 15. **Minimal `projects` table defined here** (§3); build slices may add columns. (Q15)
 16. **No hard Login Session age cap** for now; Out. (Q16)
 
@@ -339,7 +339,7 @@ Accepted 2026-09-27 (open-gap round, Q14–Q16):
 - A cross-site `POST` (`Sec-Fetch-Site: cross-site`) to any API route is rejected; a same-origin one passes.
 - A stream request with `Sec-Fetch-Site: cross-site` gets `403`.
 - Startup with `JF_ADMIN_EMAIL` creates the admin once; a second startup changes nothing.
-- A disabled User can't log in by code or Google, their open streams close within 15 s, and each of their `running` sessions gets `user.interrupt{reason: user_disabled}` and ends `awaiting_user`.
+- A disabled User can't log in by code or Google, their open streams close within 15 s, and each of their `running`, `runnable` and `sleeping` sessions gets `user.interrupt{reason: user_disabled}` and ends `awaiting_user`.
 - `PUT /api/provider-keys/openai` with a key the models-list call rejects returns `422` and writes nothing.
 - A `provider_keys` row copied to another `user_id` fails `Open` (AAD mismatch).
 - After `jf keys rotate`, no row has the old `key_id`, and every key still decrypts.

@@ -285,6 +285,18 @@ func TestDeniedTokenLimitAsksAgainOnTheNextMessage(t *testing.T) {
 	}
 }
 
+func TestBudgetParkIsNotClaimableSoACrashDoesNotAskAgain(t *testing.T) {
+	pool, sid, _ := parkOnTokens(t)
+
+	_, ok, err := eventlog.NewStore(pool).Claim(t.Context(), "w2", 30*time.Second)
+	if err != nil || ok {
+		t.Fatalf("Claim: ok=%v err=%v, want found=false", ok, err)
+	}
+	if n := len(ofType(loadEvents(t, pool, sid), eventlog.TypeApprovalRequested)); n != 1 {
+		t.Fatalf("approval.requested events = %d, want 1", n)
+	}
+}
+
 func TestAllowedTokenLimitAsksAgainAtTheRaisedLimit(t *testing.T) {
 	pool, sid, scope := parkOnTokens(t)
 	answerLatestApproval(t, pool, scope, sid, eventlog.DecisionAllow)
