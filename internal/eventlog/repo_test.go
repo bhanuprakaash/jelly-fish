@@ -632,42 +632,50 @@ func TestChangeModelChecksTenancy(t *testing.T) {
 	}
 }
 
-func TestInterruptUserSessionsStopsOnlyRunningSessions(t *testing.T) {
+func TestInterruptUserSessionsStopsLiveSessionsOnly(t *testing.T) {
 	pool := testdb.NewPool(t)
 	repo := eventlog.NewRepo(pool, "fake")
 	store := eventlog.NewStore(pool)
 	scope := testdb.NewUser(t, pool).Scope()
-	for range 2 {
+	claim := func() eventlog.Claim {
+		t.Helper()
 		if _, err := repo.CreateSession(t.Context(), scope, uuid.New(), uuid.New(), "hi", "", false); err != nil {
 			t.Fatal(err)
 		}
+		c, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
+		if err != nil || !ok {
+			t.Fatalf("Claim: ok=%v err=%v", ok, err)
+		}
+		return c
 	}
-	first, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
-	if err != nil || !ok {
-		t.Fatalf("Claim: ok=%v err=%v", ok, err)
-	}
-	second, ok, err := store.Claim(t.Context(), "w1", 30*time.Second)
-	if err != nil || !ok {
-		t.Fatalf("Claim: ok=%v err=%v", ok, err)
-	}
-	running, parked := first.SessionID, second.SessionID
-	if _, err := store.AppendFenced(t.Context(), parked, second.Fence, nil, &eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "turn_complete"}); err != nil {
+	running := claim().SessionID
+	sleepingClaim := claim()
+	if _, err := store.AppendFenced(t.Context(), sleepingClaim.SessionID, sleepingClaim.Fence, nil, &eventlog.StatusChange{To: eventlog.StatusSleeping, Reason: "rate_limit", WakeIn: time.Minute}); err != nil {
 		t.Fatal(err)
 	}
-	runningLast, err := repo.SessionLastSeq(t.Context(), scope, running)
-	if err != nil {
+	parkedClaim := claim()
+	if _, err := store.AppendFenced(t.Context(), parkedClaim.SessionID, parkedClaim.Fence, nil, &eventlog.StatusChange{To: eventlog.StatusAwaitingUser, Reason: "turn_complete"}); err != nil {
 		t.Fatal(err)
 	}
-	parkedLast, err := repo.SessionLastSeq(t.Context(), scope, parked)
-	if err != nil {
+	runnable := uuid.New()
+	if _, err := repo.CreateSession(t.Context(), scope, runnable, uuid.New(), "hi", "", false); err != nil {
 		t.Fatal(err)
+	}
+	sleeping, parked := sleepingClaim.SessionID, parkedClaim.SessionID
+	last := map[uuid.UUID]int64{}
+	for _, id := range []uuid.UUID{running, runnable, sleeping, parked} {
+		seq, err := repo.SessionLastSeq(t.Context(), scope, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		last[id] = seq
 	}
 
 	if err := store.InterruptUserSessions(t.Context(), scope.UserID, "user:admin"); err != nil {
 		t.Fatal(err)
 	}
 
-	evs, err := repo.ListEvents(t.Context(), scope, running, runningLast)
+	evs, err := repo.ListEvents(t.Context(), scope, running, last[running])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -677,32 +685,19 @@ func TestInterruptUserSessionsStopsOnlyRunningSessions(t *testing.T) {
 	if r := readRow(t, pool, running); r.status != eventlog.StatusRunning || !r.cancel {
 		t.Fatalf("running row = %+v, want running with cancel_requested", r)
 	}
-	if got := eventTypes(t, repo, scope, parked, parkedLast); len(got) != 0 {
+	wantParked := []string{eventlog.TypeUserInterrupt, eventlog.TypeStatusChanged}
+	for name, id := range map[string]uuid.UUID{"runnable": runnable, "sleeping": sleeping} {
+		if got := eventTypes(t, repo, scope, id, last[id]); !reflect.DeepEqual(got, wantParked) {
+			t.Fatalf("%s session events = %v, want %v", name, got, wantParked)
+		}
+		if r := readRow(t, pool, id); r.status != eventlog.StatusAwaitingUser || r.wake != nil || r.cancel {
+			t.Fatalf("%s row = %+v, want awaiting_user without wake_at or cancel_requested", name, r)
+		}
+	}
+	if got := eventTypes(t, repo, scope, parked, last[parked]); len(got) != 0 {
 		t.Fatalf("parked session got events %v", got)
 	}
 	if r := readRow(t, pool, parked); r.status != eventlog.StatusAwaitingUser || r.cancel {
 		t.Fatalf("parked row = %+v, want awaiting_user without cancel_requested", r)
-	}
-}
-
-func TestInterruptUserSessionsWithNoRunningSessionAppendsNothing(t *testing.T) {
-	pool := testdb.NewPool(t)
-	repo := eventlog.NewRepo(pool, "fake")
-	store := eventlog.NewStore(pool)
-	scope := testdb.NewUser(t, pool).Scope()
-	sid := uuid.New()
-	if _, err := repo.CreateSession(t.Context(), scope, sid, uuid.New(), "hi", "", false); err != nil {
-		t.Fatal(err)
-	}
-	last, err := repo.SessionLastSeq(t.Context(), scope, sid)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.InterruptUserSessions(t.Context(), scope.UserID, "user:admin"); err != nil {
-		t.Fatal(err)
-	}
-	if got := eventTypes(t, repo, scope, sid, last); len(got) != 0 {
-		t.Fatalf("events = %v, want none", got)
 	}
 }

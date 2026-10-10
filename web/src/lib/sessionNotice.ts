@@ -1,4 +1,5 @@
 import type { UIEvent } from './api'
+import { sessionBudget } from './budget'
 
 // Notice is what the chat shows beside the transcript when the session is
 // waiting on a Provider problem (provider-gateway.md §9 D9).
@@ -13,13 +14,12 @@ type BudgetExceeded = { dimension: string; limit: number; used: number }
 type ApprovalRequested = { approval_id: string; kind: string; dimension: string }
 type ApprovalResolved = { approval_id: string; decision: string }
 
+const budgetField = { tokens: 'tokens', dollars: 'cost_micros', turns: 'turns' } as const
+
 // openBudgetApproval finds the budget approval the session waits on: the
-// newest approval.requested with no approval.resolved after it. Each allow
-// adds one original increment, so the next limit is the limit plus the
-// original, which is the limit over (1 + allows so far).
+// newest approval.requested with no approval.resolved after it. An allow adds
+// one snapshot limit, so the next limit is the limit plus the snapshot's.
 function openBudgetApproval(events: UIEvent[]): Notice | null {
-  const dimensionOf = new Map<string, string>()
-  const allows: Record<string, number> = {}
   let open: ApprovalRequested | null = null
   let exceeded: BudgetExceeded | undefined
   for (const e of events) {
@@ -27,25 +27,16 @@ function openBudgetApproval(events: UIEvent[]): Notice | null {
       exceeded = e.payload as BudgetExceeded
     } else if (e.type === 'approval.requested') {
       const a = e.payload as ApprovalRequested
-      dimensionOf.set(a.approval_id, a.dimension)
       open = a.kind === 'budget' ? a : null
     } else if (e.type === 'approval.resolved') {
-      const r = e.payload as ApprovalResolved
-      const dimension = dimensionOf.get(r.approval_id)
-      if (r.decision === 'allow' && dimension) allows[dimension] = (allows[dimension] ?? 0) + 1
-      if (open?.approval_id === r.approval_id) open = null
+      if (open?.approval_id === (e.payload as ApprovalResolved).approval_id) open = null
     }
   }
   if (!open || !exceeded || exceeded.dimension !== open.dimension) return null
   const { limit, used } = exceeded
-  return {
-    kind: 'budget',
-    approvalId: open.approval_id,
-    dimension: open.dimension,
-    limit,
-    used,
-    nextLimit: limit + limit / (1 + (allows[open.dimension] ?? 0)),
-  }
+  const field = budgetField[open.dimension as keyof typeof budgetField]
+  const base = (field && sessionBudget(events)?.[field]) || 0
+  return { kind: 'budget', approvalId: open.approval_id, dimension: open.dimension, limit, used, nextLimit: limit + base }
 }
 
 // sessionNotice derives the Notice from the stream's events: the session's

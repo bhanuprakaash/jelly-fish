@@ -365,6 +365,29 @@ func TestInterruptStopsARunningTurnWithinASecond(t *testing.T) {
 	assertStoppedByUser(t, pool, sid, p)
 }
 
+func TestDisablingTheUserStopsItsRunningTurn(t *testing.T) {
+	pool := testdb.NewPool(t)
+	sid, scope := newFakeSession(t, pool)
+	p := blockingProvider()
+	startScripted(t, pool, p, 30*time.Second)
+	waitProviderCalled(t, p)
+
+	if err := eventlog.NewStore(pool).InterruptUserSessions(t.Context(), scope.UserID, "user:admin"); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, pool, sid, eventlog.StatusAwaitingUser, 0)
+
+	evs := loadEvents(t, pool, sid)
+	ui := ofType(evs, eventlog.TypeUserInterrupt)
+	if len(ui) != 1 || ui[0].Payload["reason"] != "user_disabled" {
+		t.Fatalf("user.interrupt = %v, want one user_disabled", ui)
+	}
+	ti := ofType(evs, eventlog.TypeTurnInterrupted)
+	if len(ti) != 1 || ti[0].Payload["reason"] != "user_interrupt" {
+		t.Fatalf("turn.interrupted = %v, want one user_interrupt", ti)
+	}
+}
+
 // Flagging the row without a notify is what a lost notify looks like.
 func TestInterruptReachesARunningTurnThroughTheHeartbeat(t *testing.T) {
 	pool := testdb.NewPool(t)
@@ -399,6 +422,14 @@ func TestCancelNotifyForAnotherSessionIsIgnored(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if n := len(ofType(loadEvents(t, pool, sid), eventlog.TypeTurnInterrupted)); n != 0 {
 		t.Fatalf("turn.interrupted events = %d, want none", n)
+	}
+	var status string
+	var cancel bool
+	if err := pool.QueryRow(t.Context(), `SELECT status, cancel_requested FROM sessions WHERE id = $1`, sid).Scan(&status, &cancel); err != nil {
+		t.Fatal(err)
+	}
+	if status != eventlog.StatusRunning || cancel {
+		t.Fatalf("status = %s, cancel_requested = %v, want running without cancel", status, cancel)
 	}
 
 	if err := eventlog.NewRepo(pool, fake.Name).Interrupt(t.Context(), scope, sid); err != nil {

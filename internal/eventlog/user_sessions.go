@@ -8,23 +8,36 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// InterruptUserSessions interrupts every running session of the User with
-// reason user_disabled, as actor, in one transaction. Parked sessions are
-// left alone (auth-keys.md §5.7). The caller's authorization is the
-// Admin-only route, not a TenantScope.
+// InterruptUserSessions interrupts every live session of the User with
+// reason user_disabled, as actor, in one transaction: a running session is
+// cancelled, a runnable or sleeping one parks as awaiting_user. Sessions
+// already awaiting the User or an approval are left alone (auth-keys.md
+// §5.7). The caller's authorization is the Admin-only route, not a
+// TenantScope.
 func (s *Store) InterruptUserSessions(ctx context.Context, userID uuid.UUID, actor string) error {
 	interrupt := NewEvent{Type: TypeUserInterrupt, Actor: actor, Payload: map[string]string{"reason": "user_disabled"}}
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT id FROM sessions WHERE user_id = $1 AND status = $2 FOR UPDATE`, userID, StatusRunning)
+		rows, err := tx.Query(ctx, `
+			SELECT id, status FROM sessions
+			WHERE user_id = $1 AND status IN ($2, $3, $4) FOR UPDATE`,
+			userID, StatusRunning, StatusRunnable, StatusSleeping)
 		if err != nil {
-			return fmt.Errorf("lock running sessions: %w", err)
+			return fmt.Errorf("lock live sessions: %w", err)
 		}
-		ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		live, err := pgx.CollectRows(rows, pgx.RowToStructByPos[struct {
+			ID     uuid.UUID
+			Status string
+		}])
 		if err != nil {
-			return fmt.Errorf("read running sessions: %w", err)
+			return fmt.Errorf("read live sessions: %w", err)
 		}
-		for _, id := range ids {
-			if err := s.interruptRunning(ctx, tx, id, nil, interrupt); err != nil {
+		for _, l := range live {
+			if l.Status == StatusRunning {
+				err = s.interruptRunning(ctx, tx, l.ID, nil, interrupt)
+			} else {
+				_, err = s.appendTx(ctx, tx, l.ID, nil, nil, []NewEvent{interrupt}, &StatusChange{To: StatusAwaitingUser, Reason: "interrupted"})
+			}
+			if err != nil {
 				return err
 			}
 		}

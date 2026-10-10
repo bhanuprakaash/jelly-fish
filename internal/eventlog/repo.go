@@ -174,9 +174,9 @@ func (r *Repo) Retry(ctx context.Context, scope TenantScope, sessionID uuid.UUID
 
 // ResolveApproval appends the User's approval.resolved for the session's open
 // approval. allow makes the session runnable, so the raised limit applies;
-// deny parks it as awaiting_user. Any other decision, a session that is not
-// awaiting approval, or an approvalID that is not the open one returns
-// ErrNoOpenApproval and appends nothing.
+// deny parks it as awaiting_user. A session that is not awaiting approval, or an
+// approvalID that is not the open one, returns ErrNoOpenApproval and appends
+// nothing.
 func (r *Repo) ResolveApproval(ctx context.Context, scope TenantScope, sessionID, approvalID uuid.UUID, decision string) error {
 	next := &StatusChange{To: StatusAwaitingUser, Reason: "denied"}
 	if decision == DecisionAllow {
@@ -197,17 +197,14 @@ func (r *Repo) ResolveApproval(ctx context.Context, scope TenantScope, sessionID
 		}
 		var open bool
 		err = tx.QueryRow(ctx, `
-			SELECT e.payload->>'approval_id' = $3 AND NOT EXISTS (
-				SELECT 1 FROM events r
-				WHERE r.session_id = $1 AND r.type = $4 AND r.seq > e.seq AND r.payload->>'approval_id' = $3)
-			FROM events e
-			WHERE e.session_id = $1 AND e.type = $2
-			ORDER BY e.seq DESC LIMIT 1`,
-			sessionID, TypeApprovalRequested, approvalID.String(), TypeApprovalResolved).Scan(&open)
+			SELECT payload->>'approval_id' = $3 FROM events
+			WHERE session_id = $1 AND type = $2
+			ORDER BY seq DESC LIMIT 1`,
+			sessionID, TypeApprovalRequested, approvalID.String()).Scan(&open)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("look up open approval: %w", err)
 		}
-		if !open || (decision != DecisionAllow && decision != DecisionDeny) {
+		if !open {
 			return ErrNoOpenApproval
 		}
 		_, err = r.store.appendTx(ctx, tx, sessionID, &scope, nil, []NewEvent{resolved}, next)

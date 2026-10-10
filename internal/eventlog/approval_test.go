@@ -89,9 +89,6 @@ func TestResolveApproval_OnlyTheOpenApprovalCanBeAnswered(t *testing.T) {
 	if err := repo.ResolveApproval(t.Context(), scope, sessionID, uuid.New(), eventlog.DecisionAllow); !errors.Is(err, eventlog.ErrNoOpenApproval) {
 		t.Fatalf("unknown approval: err = %v, want ErrNoOpenApproval", err)
 	}
-	if err := repo.ResolveApproval(t.Context(), scope, sessionID, approvalID, "maybe"); !errors.Is(err, eventlog.ErrNoOpenApproval) {
-		t.Fatalf("unknown decision: err = %v, want ErrNoOpenApproval", err)
-	}
 	if status, _ := sessionState(t, pool, sessionID); status != eventlog.StatusAwaitingApproval {
 		t.Fatalf("status after refused answers = %s, want awaiting_approval", status)
 	}

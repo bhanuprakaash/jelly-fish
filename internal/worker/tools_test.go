@@ -274,7 +274,11 @@ func TestInterruptClosesEveryCallOfTheBatch(t *testing.T) {
 	startTools(t, pool, p, 10*time.Second, tool.NewRegistry(a, b, c))
 
 	<-started
+	deadline := time.Now().Add(15 * time.Second)
 	for len(ofType(loadEvents(t, pool, sid), eventlog.TypeToolCompleted)) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("tool b never completed")
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	if err := eventlog.NewRepo(pool, fake.Name).Interrupt(t.Context(), scope, sid); err != nil {
