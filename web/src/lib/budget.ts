@@ -27,10 +27,10 @@ export function budgetHint(b?: Budget): string {
 // undefined for anything that isn't a positive number.
 export function parseBudget(args: string, current?: Budget): Budget | undefined {
   const [dollars, tokens, turns, ...extra] = args.trim().split(/\s+/)
-  const next = {
+  const next: Budget = {
     cost_micros: Math.round(Number(dollars) * 1e6),
-    tokens: tokens === undefined ? current?.tokens : Number(tokens),
-    turns: turns === undefined ? current?.turns : Number(turns),
+    tokens: tokens === undefined ? (current?.tokens ?? NaN) : Number(tokens),
+    turns: turns === undefined ? (current?.turns ?? NaN) : Number(turns),
   }
   const valid = extra.length === 0 && Object.values(next).every((n) => Number.isInteger(n) && n > 0)
   return valid ? next : undefined
