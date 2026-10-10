@@ -33,6 +33,10 @@ type Def struct {
 	// Strict asks the Provider to enforce Schema exactly. Only a schema in the
 	// intersection dialect may set it (provider-gateway.md §4.5).
 	Strict bool
+	// Source is "connector:<id>" for a Connector's tool; empty means built in.
+	Source string
+	// ReadOnly and Destructive are the tool's hints, set only when trusted.
+	ReadOnly, Destructive bool
 }
 
 // CallInput is one call's arguments. IdempotencyKey is stable for the call
@@ -97,6 +101,15 @@ func NewRegistry(tools ...Tool) *Registry {
 		r.tools[t.Def().Name] = t
 	}
 	return r
+}
+
+// With returns a Registry of r's tools and tools; on a name clash r's tool wins.
+func (r *Registry) With(tools ...Tool) *Registry {
+	n := NewRegistry(tools...)
+	if r != nil {
+		maps.Copy(n.tools, r.tools)
+	}
+	return n
 }
 
 // Defs lists the tools by name, so the list sent to the model is stable.

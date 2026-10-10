@@ -9,6 +9,7 @@ import (
 	"github.com/bhanuprakaash/jelly-fish/internal/eventlog"
 	"github.com/bhanuprakaash/jelly-fish/internal/msg"
 	"github.com/bhanuprakaash/jelly-fish/internal/provider"
+	"github.com/bhanuprakaash/jelly-fish/internal/tool"
 )
 
 // State is a session folded from its events; it mirrors the sessions row's
@@ -70,6 +71,9 @@ type State struct {
 	// afterStop is set from a turn the User interrupted until the next
 	// user.message, which then carries interruptMarker.
 	afterStop bool
+	// tools is what the drive offers this session; the drive sets it after
+	// each fold.
+	tools *tool.Registry
 }
 
 // interruptMarker prefixes the user message that follows an interrupted turn,
